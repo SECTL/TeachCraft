@@ -252,8 +252,8 @@
 
             <Border Grid.Row="2" Classes="panel-card">
                 <Grid RowDefinitions="Auto,*">
-                    <!-- 与行内容的左缘（list-row 边框 1px + 内边距 8）对齐，列标题不偏移。 -->
-                    <Grid ColumnDefinitions="*,150,180,68,60" ColumnSpacing="8" Margin="9,0,9,6">
+                    <!-- 左缘与行内容对齐（list-row 边框 1px + 内边距 8），右缘同补 14px 滚动条预留。 -->
+                    <Grid ColumnDefinitions="*,150,180,68,60" ColumnSpacing="8" Margin="9,0,23,6">
                         <TextBlock Text="姓名" Classes="field-label" />
                         <TextBlock Grid.Column="1" Text="学科" Classes="field-label" />
                         <TextBlock Grid.Column="2" Text="任课与周课时" Classes="field-label" />
@@ -469,10 +469,10 @@
                                                        Foreground="{StaticResource MutedBrush}"
                                                        TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
-                                            <TextBlock Grid.Column="1" Text="{Binding Meta}"
-                                                       FontFamily="{StaticResource MonoFont}" FontSize="9"
-                                                       Foreground="{StaticResource MutedBrush}"
-                                                       VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Meta}"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           VerticalAlignment="Center" />
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

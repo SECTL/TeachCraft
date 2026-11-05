@@ -251,7 +251,7 @@ public partial class AssignmentEditorViewModel : ObservableObject
         {
             SetRosterMessage(duplicates > 0
                 ? "没有新增教师：这些姓名都已经在名单里了。" + invalidNote
-                : "没有新增教师：粘贴的内容里没有找到有效的教师行。");
+                : "没有新增教师：粘贴的内容里没有找到有效的教师行。", alert: true);
         }
         else
         {
