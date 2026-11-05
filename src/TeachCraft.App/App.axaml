@@ -630,35 +630,47 @@
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="MinHeight" Value="32" />
         </Style>
-        <!-- 纸墨滑块：2px 细轨 + 强调色填充 + 墨边纸面圆钮 -->
-        <Style Selector="Slider">
-            <Setter Property="MinHeight" Value="26" />
-            <Setter Property="Background" Value="Transparent" />
+        <!-- 纸墨滑块：2px 细轨 + 陶土已填充段 + 15px 墨边纸面圆钮。
+             选择器必须带 :horizontal：Fluent 的 Slider 主题把模板挂在 `^:horizontal` 触发器上，
+             不带伪类的 `Style Selector="Slider"` 优先级更低，写了也不会生效。
+             两侧 RepeatButton 必须叫 PART_DecreaseButton / PART_IncreaseButton，Slider 靠这两个名字挂
+             「点轨道跳到该处」；还必须显式拉伸：Fluent 的 RepeatButton 主题默认左对齐 + 垂直居中，
+             会被压成 0 宽，已填充段就画不出来。 -->
+        <Style Selector="Slider:horizontal">
+            <Setter Property="MinHeight" Value="24" />
             <Setter Property="Template">
                 <ControlTemplate>
-                    <Grid Background="{TemplateBinding Background}">
-                        <Border Height="2" CornerRadius="1"
-                                VerticalAlignment="Center"
-                                Background="{StaticResource LineBrush}" />
+                    <Grid Background="Transparent">
+                        <Border Height="2" CornerRadius="1" VerticalAlignment="Center"
+                                Background="{StaticResource LineStrongBrush}" />
                         <Track Name="PART_Track"
+                               Orientation="Horizontal"
                                Minimum="{TemplateBinding Minimum}"
                                Maximum="{TemplateBinding Maximum}"
-                               Value="{Binding Value, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                               Orientation="{TemplateBinding Orientation}"
+                               Value="{TemplateBinding Value, Mode=TwoWay}"
                                IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
                             <Track.DecreaseButton>
-                                <RepeatButton Focusable="False" IsTabStop="False">
+                                <RepeatButton Name="PART_DecreaseButton" Focusable="False" IsTabStop="False"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                                     <RepeatButton.Template>
                                         <ControlTemplate>
-                                            <Border Height="2" CornerRadius="1"
-                                                    VerticalAlignment="Center"
-                                                    Background="{StaticResource AccentBrush}" />
+                                            <Border Background="Transparent">
+                                                <Border Height="2" CornerRadius="1" VerticalAlignment="Center"
+                                                        Background="{StaticResource AccentBrush}" />
+                                            </Border>
                                         </ControlTemplate>
                                     </RepeatButton.Template>
                                 </RepeatButton>
                             </Track.DecreaseButton>
                             <Track.IncreaseButton>
-                                <RepeatButton Focusable="False" IsTabStop="False" Background="Transparent" />
+                                <RepeatButton Name="PART_IncreaseButton" Focusable="False" IsTabStop="False"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate>
+                                            <Border Background="Transparent" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
                             </Track.IncreaseButton>
                             <Track.Thumb>
                                 <Thumb>
@@ -677,14 +689,15 @@
                 </ControlTemplate>
             </Setter>
         </Style>
-        <Style Selector="Slider:pointerover /template/ Ellipse#PART_ThumbFace">
+        <!-- 圆钮在 Thumb 自己的模板里：悬停、禁用与键盘聚焦都要两层 /template/ 链才能选中 -->
+        <Style Selector="Slider:pointerover /template/ Thumb /template/ Ellipse#PART_ThumbFace">
             <Setter Property="Stroke" Value="{StaticResource AccentBrush}" />
             <Setter Property="StrokeThickness" Value="2" />
         </Style>
-        <Style Selector="Slider:disabled /template/ Ellipse#PART_ThumbFace">
+        <Style Selector="Slider:disabled /template/ Thumb /template/ Ellipse#PART_ThumbFace">
             <Setter Property="Stroke" Value="{StaticResource MutedBrush}" />
         </Style>
-        <!-- 键盘聚焦：圆钮转陶土描边；按钮面在 Thumb 模板里，需要两层 /template/ 链 -->
+        <!-- 键盘聚焦：圆钮转陶土描边 -->
         <Style Selector="Slider:focus-visible /template/ Thumb /template/ Ellipse#PART_ThumbFace">
             <Setter Property="Stroke" Value="{StaticResource AccentBrush}" />
             <Setter Property="StrokeThickness" Value="2" />

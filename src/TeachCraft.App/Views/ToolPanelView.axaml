@@ -142,20 +142,25 @@
                 <ComboBox ItemsSource="{Binding WatermarkPositions}"
                           SelectedItem="{Binding SelectedWatermarkPosition, Mode=TwoWay}"
                           HorizontalAlignment="Stretch" />
-                <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
-                    <TextBlock Text="字号" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
-                    <TextBlock Grid.Column="1" Text="{Binding WatermarkScale, StringFormat='{}{0:0.0}×'}"
-                               FontFamily="{StaticResource MonoFont}" FontSize="10.5"
-                               Foreground="{StaticResource InkBrush}" />
-                </Grid>
-                <Slider Minimum="0.4" Maximum="3" Value="{Binding WatermarkScale, Mode=TwoWay}" />
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="不透明度" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
-                    <TextBlock Grid.Column="1" Text="{Binding WatermarkOpacity, StringFormat='{}{0:0.00}'}"
-                               FontFamily="{StaticResource MonoFont}" FontSize="10.5"
-                               Foreground="{StaticResource InkBrush}" />
-                </Grid>
-                <Slider Minimum="0.05" Maximum="1" Value="{Binding WatermarkOpacity, Mode=TwoWay}" />
+                <!-- 标签与滑块成对编组（与「画质」同一写法），避免下一项标签离上一条滑块更近 -->
+                <StackPanel Spacing="4" Margin="0,4,0,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="字号" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding WatermarkScale, StringFormat='{}{0:0.0}×'}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="10.5"
+                                   Foreground="{StaticResource InkBrush}" />
+                    </Grid>
+                    <Slider Minimum="0.4" Maximum="3" Value="{Binding WatermarkScale, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Spacing="4" Margin="0,4,0,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="不透明度" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding WatermarkOpacity, StringFormat='{}{0:0.00}'}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="10.5"
+                                   Foreground="{StaticResource InkBrush}" />
+                    </Grid>
+                    <Slider Minimum="0.05" Maximum="1" Value="{Binding WatermarkOpacity, Mode=TwoWay}" />
+                </StackPanel>
             </StackPanel>
 
             <StackPanel Spacing="6" IsVisible="{Binding ShowPageRange}">
