@@ -126,6 +126,35 @@ public partial class SeatGridWindow : Window
         bitmap.Render(this);
         using var stream = File.Create(path);
         bitmap.Save(stream, new PngBitmapEncoderOptions());
+
+        // 设置面板比窗口高，窗口截图只能看到上半截：按内容全高另存一张 *-settings.png。
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
+        CaptureSettingsTo(Path.Combine(directory, Path.GetFileNameWithoutExtension(path) + "-settings.png"));
+    }
+
+    /// <summary>设计走查：把右侧设置面板的完整内容（含滚动区以下部分）渲染成一张图。</summary>
+    public void CaptureSettingsTo(string path)
+    {
+        var content = SettingsContent;
+        var size = content.Bounds.Size;
+        if (size.Width < 1 || size.Height < 1) return;
+
+        // 面板白底画在外层 Border 上；单独渲染内容时临时补一层白底，截完还原。
+        var previous = content.Background;
+        content.Background = Brushes.White;
+        try
+        {
+            // 与窗口截图一样按整像素截断：内容宽常是 349.33 这类小数，向上取整会多出一列半透明像素。
+            var pixelSize = new PixelSize((int)size.Width, (int)size.Height);
+            using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96, 96));
+            bitmap.Render(content);
+            using var stream = File.Create(path);
+            bitmap.Save(stream, new PngBitmapEncoderOptions());
+        }
+        finally
+        {
+            content.Background = previous;
+        }
     }
 
     // ----------------------------- 名单 -----------------------------

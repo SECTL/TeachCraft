@@ -20,12 +20,93 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
-        <Style Selector="Border.settings-card">
-            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+        <!-- 右侧设置面板：一张白卡内按节排布，节间用内缩细线分隔，不再卡中套卡 -->
+        <Style Selector="Border.inspector-section">
+            <Setter Property="Padding" Value="16,14,16,16" />
+        </Style>
+        <Style Selector="Border.inspector-divider">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="16,0" />
+            <Setter Property="Background" Value="{StaticResource LineBrush}" />
+        </Style>
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="LetterSpacing" Value="1.4" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.subhead">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.6" />
+            <Setter Property="Foreground" Value="{StaticResource InkSoftBrush}" />
+        </Style>
+        <!-- 复选框下的说明与复选框文字左对齐：20px 方框 + 8px 间距 -->
+        <Style Selector="TextBlock.toggle-note">
+            <Setter Property="Margin" Value="28,-5,0,4" />
+        </Style>
+        <!-- 面板内按钮等分铺满所在列；纵向拉伸让无边框的 primary 与 1px 边的 ghost 同高 -->
+        <Style Selector="Button.tool">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="FontSize" Value="11.5" />
+        </Style>
+        <Style Selector="Path.shift-icon">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Stroke" Value="{StaticResource InkSoftBrush}" />
+            <Setter Property="StrokeThickness" Value="1.4" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+        </Style>
+        <Style Selector="StackPanel.swatch">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Spacing" Value="8" />
+        </Style>
+        <Style Selector="StackPanel.swatch > TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- 视角分段控件：浅槽 + 白色选中块，两段等分 -->
+        <Style Selector="Border.segmented">
+            <Setter Property="Background" Value="{StaticResource PaperDeepBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="9" />
-            <Setter Property="Padding" Value="14" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="3" />
+        </Style>
+        <Style Selector="Button.segment">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <Style Selector="Button.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource WashBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.segment.active">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <!-- 选中块放在悬停样式之后：悬停在已选中的一段上仍保持白底，不像被取消选中 -->
+        <Style Selector="Button.segment.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.segment:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource WashDeepBrush}" />
         </Style>
         <Style Selector="Border.chart-card">
             <Setter Property="Background" Value="{StaticResource CardBrush}" />
@@ -46,7 +127,7 @@
             <Setter Property="LetterSpacing" Value="0.4" />
         </Style>
         <Style Selector="TextBlock.helper">
-            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontSize" Value="10" />
             <Setter Property="LineHeight" Value="16" />
             <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
@@ -273,7 +354,7 @@
         </Border>
 
         <!-- ==================== 主体 ==================== -->
-        <Grid Grid.Row="1" ColumnDefinitions="264,*,372" ColumnSpacing="14" Margin="16,14">
+        <Grid Grid.Row="1" ColumnDefinitions="264,*,352" ColumnSpacing="14" Margin="16,14">
             <!-- 名单 -->
             <Border Grid.Column="0" Classes="panel" Padding="13">
                 <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
@@ -560,220 +641,271 @@
             <!-- 设置 -->
             <Border Grid.Column="2" Classes="panel">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="14" Spacing="11">
-                        <!-- 布局 -->
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="9">
+                    <StackPanel x:Name="SettingsContent">
+                        <!-- 座位布局 -->
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="12">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="section-title" Text="视角模式" />
-                                    <TextBlock Grid.Column="1" Text="VIEW" FontFamily="{StaticResource MonoFont}"
-                                               FontSize="8.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Classes="section-title" Text="座位布局" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="LAYOUT" />
                                 </Grid>
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
-                                    <Button Classes="mode" Classes.active="{Binding IsTeacherView}"
-                                            Content="教师视角" Click="OnTeacherView" />
-                                    <Button Grid.Column="1" Classes="mode" Classes.active="{Binding IsStudentView}"
-                                            Content="学生视角" Click="OnStudentView" />
-                                </Grid>
-                                <TextBlock Text="教师视角讲台在下方，适合打印给教师查看。"
-                                           Classes="helper" />
-
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,5,0,0">
-                                    <TextBlock Classes="field-label" Text="小组数量" />
-                                    <TextBlock Grid.Column="1" Text="{Binding GroupCountLabel}"
-                                               Classes="numeral" FontSize="11" />
-                                </Grid>
-                                <Slider Minimum="1" Maximum="8" TickFrequency="1" IsSnapToTickEnabled="True"
-                                        Value="{Binding GroupCount, Mode=TwoWay}" />
-
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="field-label" Text="每组排数" />
-                                    <TextBlock Grid.Column="1" Text="{Binding RowCountLabel}"
-                                               Classes="numeral" FontSize="11" />
-                                </Grid>
-                                <Slider Minimum="1" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
-                                        Value="{Binding RowCount, Mode=TwoWay}" />
-
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="field-label" Text="每组人数（列）" />
-                                    <TextBlock Grid.Column="1" Text="{Binding ColumnCountLabel}"
-                                               Classes="numeral" FontSize="11" />
-                                </Grid>
-                                <Slider Minimum="1" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True"
-                                        Value="{Binding ColumnCount, Mode=TwoWay}" />
-
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="field-label" Text="格子大小" />
-                                    <TextBlock Grid.Column="1" Text="{Binding CellSizeLabel}"
-                                               Classes="numeral" FontSize="11" />
-                                </Grid>
-                                <Slider Minimum="50" Maximum="200" TickFrequency="1" IsSnapToTickEnabled="True"
-                                        Value="{Binding CellScale, Mode=TwoWay}" />
+                                <StackPanel Spacing="6">
+                                    <Border Classes="segmented">
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="3">
+                                            <Button Classes="segment" Classes.active="{Binding IsTeacherView}"
+                                                    Content="教师视角" Click="OnTeacherView" />
+                                            <Button Grid.Column="1" Classes="segment" Classes.active="{Binding IsStudentView}"
+                                                    Content="学生视角" Click="OnStudentView" />
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Classes="helper"
+                                               Text="教师视角讲台在下，适合打印给教师；学生视角讲台在上。" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="小组数量" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding GroupCountLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="1" Maximum="8" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding GroupCount, Mode=TwoWay}" AutomationProperties.Name="小组数量" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="每组排数" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding RowCountLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="1" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding RowCount, Mode=TwoWay}" AutomationProperties.Name="每组排数" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="每组人数（列）" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ColumnCountLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="1" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding ColumnCount, Mode=TwoWay}" AutomationProperties.Name="每组人数（列）" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="格子大小" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding CellSizeLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="50" Maximum="200" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding CellScale, Mode=TwoWay}" AutomationProperties.Name="格子大小" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
+                        <Border Classes="inspector-divider" />
 
                         <!-- 行列调整 -->
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="9">
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Classes="section-title" Text="调整行列" />
-                                    <TextBlock Grid.Column="1" Text="SHIFT" FontFamily="{StaticResource MonoFont}"
-                                               FontSize="8.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="SHIFT" />
                                 </Grid>
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="5">
-                                    <Button Classes="mode" Content="全部向左平移" Click="OnShiftLeft"
-                                            AutomationProperties.Name="全部向左平移" />
-                                    <Button Grid.Column="1" Classes="mode" Content="全部向右平移" Click="OnShiftRight"
-                                            AutomationProperties.Name="全部向右平移" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="5">
-                                    <Button Classes="mode" Content="全部向上平移" Click="OnShiftUp"
-                                            AutomationProperties.Name="全部向上平移" />
-                                    <Button Grid.Column="1" Classes="mode" Content="全部向下平移" Click="OnShiftDown"
-                                            AutomationProperties.Name="全部向下平移" />
-                                </Grid>
-                                <TextBlock Text="整班座位沿当前视角平移一格，超出边缘自动绕回。行首与列尾的暖色把手可按住拖动，与目标整排 / 整列对调。"
-                                           Classes="helper" />
+                                <StackPanel Spacing="6">
+                                    <TextBlock Classes="field-label" Text="整班平移一格" />
+                                    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="6">
+                                        <Button Classes="ghost tool" Click="OnShiftLeft"
+                                                ToolTip.Tip="整班向左平移一格" AutomationProperties.Name="全部向左平移">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Classes="shift-icon" Data="M9,5 L1,5 M4.5,1.5 L1,5 L4.5,8.5" />
+                                                <TextBlock Text="左移" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="1" Classes="ghost tool" Click="OnShiftRight"
+                                                ToolTip.Tip="整班向右平移一格" AutomationProperties.Name="全部向右平移">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Classes="shift-icon" Data="M1,5 L9,5 M5.5,1.5 L9,5 L5.5,8.5" />
+                                                <TextBlock Text="右移" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="2" Classes="ghost tool" Click="OnShiftUp"
+                                                ToolTip.Tip="整班向上平移一格" AutomationProperties.Name="全部向上平移">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Classes="shift-icon" Data="M5,9 L5,1 M1.5,4.5 L5,1 L8.5,4.5" />
+                                                <TextBlock Text="上移" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="3" Classes="ghost tool" Click="OnShiftDown"
+                                                ToolTip.Tip="整班向下平移一格" AutomationProperties.Name="全部向下平移">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Classes="shift-icon" Data="M5,1 L5,9 M1.5,5.5 L5,9 L8.5,5.5" />
+                                                <TextBlock Text="下移" />
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                                <TextBlock Classes="helper"
+                                           Text="方向按当前视角计算，超出边缘自动绕回。行首排号与列尾 ⠿ 把手可按住拖动，与目标整排 / 整列对调。" />
                             </StackPanel>
                         </Border>
+                        <Border Classes="inspector-divider" />
 
                         <!-- 标题 -->
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title" Text="座位表标题" />
-                                <TextBox Classes="field" Text="{Binding Title, Mode=TwoWay}"
-                                         PlaceholderText="例如：九年级六班座位表" />
-                                <CheckBox IsChecked="{Binding BoldTitle, Mode=TwoWay}" Content="标题加粗"
-                                          FontSize="11" />
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="标题与信息" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="TITLE" />
+                                </Grid>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="座位表标题" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                        <TextBox Classes="field" Text="{Binding Title, Mode=TwoWay}"
+                                                 PlaceholderText="例如：九年级六班座位表"
+                                                 AutomationProperties.Name="座位表标题" />
+                                        <CheckBox Grid.Column="1" IsChecked="{Binding BoldTitle, Mode=TwoWay}"
+                                                  Content="加粗" MinWidth="0" VerticalAlignment="Center"
+                                                  ToolTip.Tip="座位表标题加粗" AutomationProperties.Name="标题加粗" />
+                                    </Grid>
+                                </StackPanel>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                     <StackPanel Spacing="4">
                                         <TextBlock Classes="field-label" Text="班主任" />
                                         <TextBox Classes="field" Text="{Binding HeadTeacher, Mode=TwoWay}"
-                                                 PlaceholderText="可选" />
+                                                 PlaceholderText="可选" AutomationProperties.Name="班主任" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="4">
                                         <TextBlock Classes="field-label" Text="班长" />
                                         <TextBox Classes="field" Text="{Binding Monitor, Mode=TwoWay}"
-                                                 PlaceholderText="可选" />
+                                                 PlaceholderText="可选" AutomationProperties.Name="班长" />
                                     </StackPanel>
                                 </Grid>
-                                <TextBlock Text="{Binding InfoLine}" FontSize="9.5"
-                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                                <!-- 信息行预览：与座位表标题下的那一行同源 -->
+                                <Border Background="{StaticResource WashBrush}" BorderBrush="{StaticResource LineBrush}"
+                                        BorderThickness="1" CornerRadius="6" Padding="10,7">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <TextBlock Classes="field-label" Text="信息行" />
+                                        <TextBlock Grid.Column="1" Text="{Binding InfoLine}" FontSize="10.5"
+                                                   Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap" />
+                                    </Grid>
+                                </Border>
+                                <TextBlock Classes="helper" Text="人数按名单自动统计；班主任、班长留空则不显示。" />
                             </StackPanel>
                         </Border>
+                        <Border Classes="inspector-divider" />
 
-                        <!-- 样式 -->
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="9">
+                        <!-- 样式：「恢复默认」覆盖本节全部（文字、显示、配色），不动布局、标题与名单 -->
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Classes="section-title" Text="座位表样式" />
-                                    <Button Grid.Column="1" Classes="link" Content="重置"
-                                            Click="OnResetStyle" FontSize="10.5" />
+                                    <Button Grid.Column="1" Classes="link" Content="恢复默认" Click="OnResetStyle"
+                                            FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                                            ToolTip.Tip="恢复本节的文字、显示与配色默认值；不改动布局、标题与名单"
+                                            AutomationProperties.Name="恢复座位表样式默认值" />
                                 </Grid>
-                                <WrapPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="座位背景" />
-                                        <controls:ColorSwatchButton Color="{Binding SeatBackgroundColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="座位背景颜色" />
+                                <StackPanel Spacing="8">
+                                    <TextBlock Classes="subhead" Text="文字" />
+                                    <StackPanel Spacing="3">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Classes="field-label" Text="名字字体大小" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding NameFontSizeLabel}" Classes="numeral" FontSize="11" />
+                                        </Grid>
+                                        <Slider Minimum="10" Maximum="36" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                Value="{Binding NameFontSize, Mode=TwoWay}" AutomationProperties.Name="名字字体大小" />
                                     </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="空位背景" />
-                                        <controls:ColorSwatchButton Color="{Binding EmptySeatColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="空位背景颜色" />
+                                    <StackPanel>
+                                        <CheckBox IsChecked="{Binding BoldNames, Mode=TwoWay}" Content="名字加粗" />
+                                        <CheckBox IsChecked="{Binding SpaceTwoCharNames, Mode=TwoWay}" Content="两字姓名自动加空格" />
+                                        <CheckBox IsChecked="{Binding MarkFemales, Mode=TwoWay}" Content="标记女生" />
+                                        <TextBlock Classes="helper toggle-note"
+                                                   Text="女生姓名改用「女生标记」颜色；关闭则统一用姓名颜色。" />
                                     </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="姓名颜色" />
-                                        <controls:ColorSwatchButton Color="{Binding SeatTextColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="姓名颜色" />
+                                </StackPanel>
+                                <StackPanel Spacing="8" Margin="0,4,0,0">
+                                    <TextBlock Classes="subhead" Text="显示" />
+                                    <StackPanel>
+                                        <CheckBox IsChecked="{Binding HideEmptySeats, Mode=TwoWay}" Content="隐藏空座位" />
+                                        <TextBlock Classes="helper toggle-note" Text="未安排学生的座位不再画虚线框。" />
+                                        <CheckBox IsChecked="{Binding ShowGroupRowHints, Mode=TwoWay}" Content="显示组排提示" />
+                                        <TextBlock Classes="helper toggle-note"
+                                                   Text="关闭后隐藏「第几组」标题；行首排号把手仍保留，用于拖动整排。" />
                                     </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="边框颜色" />
-                                        <controls:ColorSwatchButton Color="{Binding SeatBorderColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="座位边框颜色" />
+                                    <StackPanel Spacing="3">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Classes="field-label" Text="讲台与座位距离" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding PodiumGapLabel}" Classes="numeral" FontSize="11" />
+                                        </Grid>
+                                        <Slider Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                Value="{Binding PodiumGap, Mode=TwoWay}" AutomationProperties.Name="讲台与座位距离" />
                                     </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="讲台底色" />
-                                        <controls:ColorSwatchButton Color="{Binding PodiumBackgroundColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="讲台底色" />
-                                    </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="讲台文字" />
-                                        <controls:ColorSwatchButton Color="{Binding PodiumTextColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="讲台文字颜色" />
-                                    </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="组标题" />
-                                        <controls:ColorSwatchButton Color="{Binding GroupLabelColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="组标题颜色" />
-                                    </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="排标题" />
-                                        <controls:ColorSwatchButton Color="{Binding RowLabelColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="排标题颜色" />
-                                    </StackPanel>
-                                    <StackPanel Width="102" Spacing="4" Margin="0,0,4,8">
-                                        <TextBlock Classes="field-label" Text="女生标记" />
-                                        <controls:ColorSwatchButton Color="{Binding FemaleMarkColor, Mode=TwoWay}"
-                                                                    AutomationProperties.Name="女生标记颜色" />
-                                    </StackPanel>
-                                </WrapPanel>
-
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="field-label" Text="讲台与座位距离" />
-                                    <TextBlock Grid.Column="1" Text="{Binding PodiumGapLabel}"
-                                               Classes="numeral" FontSize="11" />
-                                </Grid>
-                                <Slider Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
-                                        Value="{Binding PodiumGap, Mode=TwoWay}" />
+                                </StackPanel>
+                                <StackPanel Spacing="8" Margin="0,4,0,0">
+                                    <TextBlock Classes="subhead" Text="配色" />
+                                    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto"
+                                          ColumnSpacing="8" RowSpacing="8">
+                                        <StackPanel Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding SeatBackgroundColor, Mode=TwoWay}" AutomationProperties.Name="座位背景颜色" />
+                                            <TextBlock Text="座位背景" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding EmptySeatColor, Mode=TwoWay}" AutomationProperties.Name="空位背景颜色" />
+                                            <TextBlock Text="空位背景" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding SeatBorderColor, Mode=TwoWay}" AutomationProperties.Name="座位边框颜色" />
+                                            <TextBlock Text="边框颜色" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding SeatTextColor, Mode=TwoWay}" AutomationProperties.Name="姓名颜色" />
+                                            <TextBlock Text="姓名颜色" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding FemaleMarkColor, Mode=TwoWay}" AutomationProperties.Name="女生标记颜色" />
+                                            <TextBlock Text="女生标记" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="2" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding GroupLabelColor, Mode=TwoWay}" AutomationProperties.Name="组标题颜色" />
+                                            <TextBlock Text="组标题" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding RowLabelColor, Mode=TwoWay}" AutomationProperties.Name="排标题颜色" />
+                                            <TextBlock Text="排标题" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="1" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding PodiumBackgroundColor, Mode=TwoWay}" AutomationProperties.Name="讲台底色" />
+                                            <TextBlock Text="讲台底色" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="2" Classes="swatch">
+                                            <controls:ColorSwatchButton Width="28" HorizontalAlignment="Left"
+                                                Color="{Binding PodiumTextColor, Mode=TwoWay}" AutomationProperties.Name="讲台文字颜色" />
+                                            <TextBlock Text="讲台文字" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
-
-                        <!-- 文字与显示 -->
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title" Text="文字与显示" />
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Classes="field-label" Text="名字字体大小" />
-                                    <TextBlock Grid.Column="1" Text="{Binding NameFontSizeLabel}"
-                                               Classes="numeral" FontSize="11" />
-                                </Grid>
-                                <Slider Minimum="10" Maximum="36" TickFrequency="1" IsSnapToTickEnabled="True"
-                                        Value="{Binding NameFontSize, Mode=TwoWay}" />
-
-                                <CheckBox IsChecked="{Binding BoldNames, Mode=TwoWay}" Content="名字加粗"
-                                          FontSize="11" />
-                                <CheckBox IsChecked="{Binding SpaceTwoCharNames, Mode=TwoWay}"
-                                          Content="两字姓名自动加空格" FontSize="11" />
-                                <CheckBox IsChecked="{Binding MarkFemales, Mode=TwoWay}" Content="标记女生"
-                                          FontSize="11" />
-                                <TextBlock Text="开启后，女生姓名使用强调色；关闭则统一用姓名颜色。"
-                                           Classes="helper" />
-
-                                <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,3" />
-                                <CheckBox IsChecked="{Binding HideEmptySeats, Mode=TwoWay}"
-                                          Content="隐藏空座位" FontSize="11" />
-                                <TextBlock Text="未安排学生的座位将隐藏虚线框。" Classes="helper" />
-                                <CheckBox IsChecked="{Binding ShowGroupRowHints, Mode=TwoWay}"
-                                          Content="显示组排提示" FontSize="11" />
-                                <TextBlock Text="关闭后隐藏「第几组」标题；行首排号把手仍保留，用于拖动整排。" Classes="helper" />
-                            </StackPanel>
-                        </Border>
+                        <Border Classes="inspector-divider" />
 
                         <!-- 配置 -->
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title" Text="Excel 配置" />
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
-                                    <Button Classes="primary" Content="导出配置" Padding="10,6" FontSize="10.5"
-                                            Click="OnExportConfig" IsEnabled="{Binding IsIdle}" />
-                                    <Button Grid.Column="1" Classes="ghost" Content="导入配置" Padding="10,6"
-                                            FontSize="10.5" Click="OnImportConfig" IsEnabled="{Binding IsIdle}" />
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="Excel 配置" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="CONFIG" />
                                 </Grid>
-                                <TextBlock Text="配置文件包含座位设置、名单与座位位置；导入会覆盖当前状态。"
-                                           Classes="helper" />
-                                <TextBlock Text="请勿修改导出的配置表格结构，否则可能无法导入。"
-                                           FontSize="9.5" Foreground="{StaticResource AccentDeepBrush}"
-                                           TextWrapping="Wrap" />
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                    <Button Classes="primary tool" Content="导出配置"
+                                            Click="OnExportConfig" IsEnabled="{Binding IsIdle}" />
+                                    <Button Grid.Column="1" Classes="ghost tool" Content="导入配置"
+                                            Click="OnImportConfig" IsEnabled="{Binding IsIdle}" />
+                                </Grid>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="helper" Text="配置文件包含座位设置、名单与座位位置；导入会覆盖当前状态。" />
+                                    <TextBlock Classes="helper" Foreground="{StaticResource AccentDeepBrush}"
+                                               Text="请勿修改导出的配置表格结构，否则可能无法导入。" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
