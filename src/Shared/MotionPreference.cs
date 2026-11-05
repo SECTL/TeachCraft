@@ -18,6 +18,12 @@ internal static class MotionPreference
 
     public static bool ReduceMotion => _reduceMotion ??= Detect();
 
+    /// <summary>
+    /// 仅供设计走查与自动化测试注入：把结果钉成指定值，用来在没改系统设置的情况下
+    /// 复现「减弱动效」路径。传 null 恢复按系统设置探测。生产代码不得调用。
+    /// </summary>
+    internal static void OverrideForDiagnostics(bool? reduceMotion) => _reduceMotion = reduceMotion;
+
     private static bool Detect()
     {
         try

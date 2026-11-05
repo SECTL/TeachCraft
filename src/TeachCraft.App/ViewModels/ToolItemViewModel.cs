@@ -12,6 +12,8 @@ public partial class ToolItemViewModel : ObservableObject
     public string Id { get; }
     public string Name { get; }
     public string Description { get; }
+    /// <summary>点开卡片后展开的完整说明；工具 ID 未登记时为 null，此时不显示展开区。</summary>
+    public ToolDescription? Detail { get; }
     public string Category { get; }
     public string CategoryLabel { get; }
     public string CategoryEn { get; }
@@ -44,6 +46,7 @@ public partial class ToolItemViewModel : ObservableObject
     [ObservableProperty] private bool _hasResult;
     [ObservableProperty] private bool _resultIsError;
     [ObservableProperty] private string? _lastOutputPath;
+    [ObservableProperty] private bool _isDescriptionExpanded;
 
     public ToolItemViewModel(
         ToolKind kind,
@@ -55,13 +58,15 @@ public partial class ToolItemViewModel : ObservableObject
         string glyph,
         string inputText,
         string outputText,
-        IEnumerable<string>? formats = null)
+        IEnumerable<string>? formats = null,
+        ToolDescription? detail = null)
     {
         Kind = kind;
         No = no;
         Id = id;
         Name = name;
         Description = description;
+        Detail = detail ?? ToolDescriptionCatalog.ForTool(id);
         Category = category;
         CategoryLabel = category == "image" ? "图片处理" : "格式工厂";
         CategoryEn = category == "image" ? "IMAGE" : "FILE / PDF";
@@ -81,6 +86,22 @@ public partial class ToolItemViewModel : ObservableObject
 
         Files.CollectionChanged += OnFilesChanged;
     }
+
+    /// <summary>点卡片或标题时调用：展开 / 收起说明。没有详情时不响应，避免出现空的白条。</summary>
+    public void ToggleDescription()
+    {
+        if (Detail is null) return;
+        IsDescriptionExpanded = !IsDescriptionExpanded;
+    }
+
+    public bool HasDetail => Detail is not null;
+
+    /// <summary>展开区右上角的小标，随状态切换文案。</summary>
+    public string DescriptionToggleLabel => IsDescriptionExpanded ? "收起说明" : "展开说明";
+
+    /// <summary>读屏用的名称：把「按下会发生什么」说清楚，而不是只念一个工具名。</summary>
+    public string DescriptionAccessibleName =>
+        Detail is null ? Name : $"{Name}，{DescriptionToggleLabel}";
 
     public bool HasFiles => Files.Count > 0;
     public bool CanRun => HasFiles && !IsBusy;
@@ -242,6 +263,12 @@ public partial class ToolItemViewModel : ObservableObject
     partial void OnResultIsErrorChanged(bool value)
     {
         OnPropertyChanged(nameof(ResultBrush));
+    }
+
+    partial void OnIsDescriptionExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DescriptionToggleLabel));
+        OnPropertyChanged(nameof(DescriptionAccessibleName));
     }
 
     partial void OnWidthValueChanged(decimal? value)

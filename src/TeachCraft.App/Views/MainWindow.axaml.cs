@@ -15,6 +15,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using TeachCraft.App.Controls;
 using SeatGrid.App;
 using ClassBlock.App;
 using TeachCraft.App.ViewModels;
@@ -41,6 +43,54 @@ public partial class MainWindow : Window
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext!;
+
+    /// <summary>走查用：把当前 DataContext 暴露成 ViewModel，供 --preview-update-badge 使用。</summary>
+    internal MainViewModel? DataContextAsMainViewModel => DataContext as MainViewModel;
+
+    /// <summary>用户点「稍后」：收起提示条，并把该版本记进跳过列表。</summary>
+    private void OnDismissUpdateClick(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.DismissUpdate();
+        ViewModel.SetStatus(TeachCraft.App.ViewModels.MainViewModel.DefaultStatusText);
+    }
+
+    /// <summary>
+    /// 用户点「更新」：下载 → 校验 → 按安装形态执行。
+    /// 进度与结果都落在状态栏，不弹模态框。
+    /// </summary>
+    private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var progress = new Progress<int>(percent =>
+                ViewModel.SetStatus($"正在下载更新… {percent}%"));
+
+            var message = await ViewModel.DownloadAndInstallAsync(progress);
+            ViewModel.SetStatus(message);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus(ErrorText.Describe(ex, "更新"), error: true);
+        }
+    }
+
+    /// <summary>
+    /// 状态栏「检查更新」。这是本 App 唯一会联网的入口，
+    /// 因此失败必须说清原因（由 UpdateErrorText 给出整句），不能只说「失败了」。
+    /// </summary>
+    private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ViewModel.SetStatus("正在检查更新…");
+            await ViewModel.CheckUpdateAsync(fromUserGesture: true);
+        }
+        catch (Exception ex)
+        {
+            // 预期内失败已在 ViewModel 里转成人话；这里只兜住真正的意外。
+            ViewModel.SetStatus(ErrorText.Describe(ex, "检查更新"), error: true);
+        }
+    }
 
     /// <summary>把窗口渲染成 PNG，供设计走查使用（--shot 参数触发）。</summary>
     public void CaptureTo(string path)
@@ -70,6 +120,7 @@ public partial class MainWindow : Window
 
         await ShowPanelAsync(wasOpen);
     }
+
 
     // ----------------------------- 抽屉动效 -----------------------------
 
@@ -275,16 +326,166 @@ public partial class MainWindow : Window
 
     private async void OnOpenTool(object? sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not ToolItemViewModel tool) return;
+        // 工具卡的「打开」以事件冒上来，DataContext 就是该工具；
+        // 旧版按钮走 Tag，两种来源都认，避免漏掉将来的入口。
+        var tool = (sender as Control)?.DataContext as ToolItemViewModel
+                   ?? (sender as Control)?.Tag as ToolItemViewModel;
+        if (tool is null) return;
 
+        await OpenToolAsync(tool);
+    }
+
+    /// <summary>打开某件工具的抽屉（工具卡的「打开」与「打开工具面板」共用）。</summary>
+    private async Task OpenToolAsync(ToolItemViewModel tool)
+    {
         var wasOpen = ViewModel.IsPanelOpen;
         ViewModel.OpenTool(tool);
         await ShowPanelAsync(wasOpen);
     }
 
+    // ----------------------------- 卡片说明展开 -----------------------------
+
+    /// <summary>常备卡：点卡片或标题展开说明；点卡内按钮（打开应用 / 项目详情）时不抢点击。</summary>
+    private void OnAppCardPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if ((e.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true) is not null) return;
+
+        if ((sender as Control)?.Tag is AppCardViewModel card)
+        {
+            card.ToggleDescription();
+            ViewModel.SetStatus(card.IsDescriptionExpanded
+                ? "已展开 " + card.Name + " 的说明"
+                : "已收起 " + card.Name + " 的说明");
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnAppCardKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Space)) return;
+        if ((sender as Control)?.Tag is not AppCardViewModel card) return;
+
+        card.ToggleDescription();
+        e.Handled = true;
+    }
+
+    private void OnCollapseAppDescription(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if ((sender as Control)?.Tag is AppCardViewModel { IsDescriptionExpanded: true } card)
+            card.ToggleDescription();
+    }
+
+    /// <summary>工具卡展开后把卡片本身滚进可见区（收起时不滚，避免页面无故跳动）。</summary>
+    private void OnToolCardExpanded(object? sender, EventArgs e)
+    {
+        if ((sender as ToolCardView)?.DataContext is not ToolItemViewModel tool) return;
+        BringCardIntoView(tool);
+    }
+
     private async void OnClosePanel(object? sender, EventArgs e) => await HidePanelAsync();
 
     private async void OnBackdropPressed(object? sender, PointerPressedEventArgs e) => await HidePanelAsync();
+
+
+    /// <summary>
+    /// 展开后把卡片滚进可见区。必须等高度长开再算：揭示动画期间卡片高度还在变，
+    /// 这一刻算出来的底部位置偏小，滚完内容仍然有一截落在视口外。
+    /// 与揭示动画同长（0.26s）之后再量一次最终 Bounds，然后做「最少必要」的滚动。
+    /// </summary>
+    private void RevealScrollTo(Control? card)
+    {
+        if (card is null) return;
+
+        // 复用同一个定时器：每次展开都 new 一个会让 Tick 委托与卡片一起挂在窗口上，
+        // 反复展开几十次就积压几十个计时器，而且旧的那些还会按过期卡片乱滚。
+        _pendingScrollCard = card;
+        if (_revealScrollTimer is null)
+        {
+            _revealScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+            _revealScrollTimer.Tick += OnRevealScrollTick;
+            _revealScrollTimerCount++;
+        }
+
+        _revealScrollTimer.Stop();
+        _revealScrollTimer.Start();
+    }
+
+    private DispatcherTimer? _revealScrollTimer;
+    private Control? _pendingScrollCard;
+    private int _revealScrollTimerCount;
+
+    /// <summary>走查用：确认滚动定时器被复用而不是每次都新建（防止泄漏回归）。</summary>
+    public int RevealScrollTimerCount => _revealScrollTimerCount;
+
+    private void OnRevealScrollTick(object? sender, EventArgs e)
+    {
+        _revealScrollTimer?.Stop();
+        var card = _pendingScrollCard;
+        _pendingScrollCard = null;
+        if (card is not null) ScrollIntoView(card);
+    }
+
+    /// <summary>
+    /// 展开后把卡片滚到可见区：说明区有 300–400px 高，靠窗口底部的卡展开时
+    /// 内容会直接落到视口外面，看起来就像「点了没反应」。
+    /// 先等一帧让揭示动画起头把高度撑开，再按展开后的目标位置滚。
+    /// </summary>
+    private void BringCardIntoView(ToolItemViewModel tool)
+    {
+        var card = this.GetVisualDescendants().OfType<ToolCardView>()
+            .FirstOrDefault(view => ReferenceEquals(view.DataContext, tool));
+        RevealScrollTo(card);
+    }
+
+    private void BringAppCardIntoView(AppCardViewModel card)
+    {
+        var border = this.GetVisualDescendants().OfType<Border>()
+            .FirstOrDefault(view => ReferenceEquals(view.Tag, card) && view.Classes.Contains("app-card"));
+        RevealScrollTo(border);
+    }
+
+
+    /// <summary>只做「最少必要的滚动」：卡片整张可见时不动，避免每次展开都把页面跳走。</summary>
+    private void ScrollIntoView(Control card)
+    {
+        UpdateLayout();
+
+        var top = card.TranslatePoint(new Point(0, 0), MainScroll)?.Y;
+        if (top is null) return;
+
+        var viewport = MainScroll.Viewport.Height;
+        if (viewport <= 0) return;
+
+        var offset = MainScroll.Offset.Y;
+        var contentTop = offset + top.Value;
+        var contentBottom = contentTop + card.Bounds.Height;
+        var maxOffset = Math.Max(0, MainScroll.Extent.Height - viewport);
+
+        double target;
+        if (card.Bounds.Height <= viewport - 32)
+        {
+            // 整张卡放得下：上边露出一截就往上顶，下边被切就往下送，尽量不动。
+            if (contentTop < offset + 8)
+                target = contentTop - 16;
+            else if (contentBottom > offset + viewport - 8)
+                target = contentBottom - viewport + 16;
+            else
+                return;
+        }
+        else
+        {
+            // 比视口还高：只保证从卡片顶部开始看，剩下的交给用户自己滚。
+            target = contentTop - 16;
+        }
+
+        target = Math.Clamp(target, 0, maxOffset);
+        if (Math.Abs(target - offset) < 1) return;
+
+        MainScroll.Offset = new Vector(MainScroll.Offset.X, target);
+    }
 
     // ----------------------------- 文件选择 -----------------------------
 

@@ -56,7 +56,7 @@
             <TextBlock Grid.Row="2" Grid.Column="0" Text="输出" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,9,0,0" />
             <TextBlock Grid.Row="2" Grid.Column="1" Text="A4 横向成绩条 .xlsx" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource InkSoftBrush}" Margin="0,9,0,0" />
             <TextBlock Grid.Row="3" Grid.Column="0" Text="数据" FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,9,0,0" />
-            <TextBlock Grid.Row="3" Grid.Column="1" Text="全程本机，文件不上传" FontSize="10.5" Foreground="{StaticResource InkSoftBrush}" Margin="0,9,0,0" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="文件不上传" FontSize="10.5" Foreground="{StaticResource InkSoftBrush}" Margin="0,9,0,0" />
         </Grid>
 
         <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,8,0,0" />

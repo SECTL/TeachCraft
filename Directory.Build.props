@@ -1,11 +1,19 @@
 <Project>
   <PropertyGroup>
-    <Version>1.15.0</Version>
+    <Version>1.17.0</Version>
     <Product>知微 · TeachCraft</Product>
     <Company>Evan0148</Company>
     <Authors>Evan0148</Authors>
     <Copyright>© 2026 Evan0148</Copyright>
     <NeutralLanguage>zh-CN</NeutralLanguage>
+  </PropertyGroup>
+
+  <!-- 检查更新需要「可自证的构建身份」（见 .omo/plans/app-update.md）。
+       SDK 默认会把 git sha 追加进 InformationalVersion（Microsoft.NET.GenerateAssemblyInfo.targets），
+       那会让严格解析全部退化成 IsLegacyIdentity，因此这里显式关闭，改由 CI 通过 -p:InformationalVersion 注入
+       形如 1.17.0-preview.142.sc.win-x64 的身份串。 -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'TeachCraft.App'">
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <!-- 共享 UI 工具：以链接文件编入各 App 项目（internal 类型，各程序集独立，不产生跨程序集冲突） -->

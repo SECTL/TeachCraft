@@ -3,6 +3,7 @@
         xmlns:vm="using:TeachCraft.App.ViewModels"
         xmlns:views="using:TeachCraft.App.Views"
         xmlns:controls="using:TeachCraft.App.Controls"
+        xmlns:conv="using:TeachCraft.App.Converters"
         x:Class="TeachCraft.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         x:Name="Root"
@@ -323,7 +324,7 @@
                         <TextBlock Text="LOCAL ONLY" FontFamily="{StaticResource MonoFont}" FontSize="9"
                                    LetterSpacing="1.6" Foreground="{StaticResource MossBrush}" />
                     </StackPanel>
-                    <TextBlock Text="文件只在本机处理，不上传也不留存。" FontSize="10.5"
+                    <TextBlock Text="你的文件只在本机处理、从不上传；更新相关的少量记录与安装包只留在本机。检查更新需要联网读取版本号，也不发送任何本机信息。" FontSize="10.5"
                                LineHeight="17" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
                     <TextBlock Text="{Binding VersionText}" FontFamily="{StaticResource MonoFont}" FontSize="9"
                                LetterSpacing="1.2" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
@@ -368,7 +369,7 @@
                                                LetterSpacing="1.3" Foreground="{StaticResource MutedBrush}" />
                                     <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                                Foreground="#C9C1AE" />
-                                    <TextBlock Text="无需联网" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                    <TextBlock Text="除更新外不联网" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                                LetterSpacing="1.3" Foreground="{StaticResource MutedBrush}" />
                                 </StackPanel>
                             </StackPanel>
@@ -417,9 +418,14 @@
                                        Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
                         </Grid>
 
-                        <Border Background="{StaticResource PinnedBrush}" BorderBrush="{StaticResource LineBrush}"
+                        <Border Classes="app-card pinned" Classes.expanded="{Binding GradeStripCard.IsDescriptionExpanded}"
                                 BorderThickness="1" CornerRadius="12" Padding="26,24" ClipToBounds="True"
-                                IsVisible="{Binding IsGradeStripVisible}">
+                                IsVisible="{Binding IsGradeStripVisible}" Focusable="True" Cursor="Hand"
+                                Tag="{Binding GradeStripCard}"
+                                PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
+                                AutomationProperties.Name="{Binding GradeStripCard.DescriptionAccessibleName}"
+                                ToolTip.Tip="{Binding GradeStripCard.DescriptionToggleLabel}">
+                            <StackPanel Spacing="0">
                             <Grid ColumnDefinitions="*,372" ColumnSpacing="34">
                                 <Border Grid.Column="0" Width="2" CornerRadius="1"
                                         Background="{StaticResource AccentBrush}"
@@ -490,13 +496,33 @@
                                     <controls:StripPreview />
                                 </ContentControl>
                             </Grid>
+
+                            <!-- 说明区右侧留出与 372px 预览图同宽的空白，让展开后的正文与上面的
+                                 标题 / 简介左边界对齐，不被预览图压成窄条 -->
+                            <controls:ExpandReveal IsExpanded="{Binding GradeStripCard.IsDescriptionExpanded}"
+                                                   Duration="0:0:0.26">
+                                <StackPanel Margin="8,20,406,0">
+                                    <Border Height="1" Background="{StaticResource LineBrush}"
+                                            Margin="-8,0,0,16" />
+                                    <views:ToolDescriptionView DataContext="{Binding GradeStripCard.Detail}" />
+                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
+                                            HorizontalAlignment="Left" Margin="0,14,0,0"
+                                            Click="OnCollapseAppDescription" Tag="{Binding GradeStripCard}" />
+                                </StackPanel>
+                            </controls:ExpandReveal>
+                            </StackPanel>
                         </Border>
 
                         <!-- 归位 · SeatGrid -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource LineBrush}"
+                        <Border Classes="app-card" Classes.expanded="{Binding SeatGridCard.IsDescriptionExpanded}"
                                 BorderThickness="1" CornerRadius="10" Padding="18,14" Margin="0,10,0,0"
-                                IsVisible="{Binding IsSeatGridVisible}">
-                            <Grid ColumnDefinitions="46,*,Auto" ColumnSpacing="14">
+                                IsVisible="{Binding IsSeatGridVisible}" Focusable="True" Cursor="Hand"
+                                Tag="{Binding SeatGridCard}"
+                                PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
+                                AutomationProperties.Name="{Binding SeatGridCard.DescriptionAccessibleName}"
+                                ToolTip.Tip="{Binding SeatGridCard.DescriptionToggleLabel}">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="46,*,Auto,Auto" ColumnSpacing="14">
                                 <Border Grid.Column="0" Width="44" Height="44" CornerRadius="7"
                                         Background="#FCFAF4" BorderBrush="#E3DDCE" BorderThickness="1"
                                         VerticalAlignment="Center">
@@ -537,14 +563,40 @@
                                     </StackPanel>
                                     <Button Classes="primary" Content="打开应用" Click="OnLaunchSeatGrid" />
                                 </StackPanel>
+
+                                <Path Grid.Column="3" Classes="tool-chevron"
+                                      Classes.expanded="{Binding SeatGridCard.IsDescriptionExpanded}"
+                                      Data="M 1 1 L 6 6 L 11 1"
+                                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Width="12" Height="7" VerticalAlignment="Center"
+                                      IsHitTestVisible="False" />
                             </Grid>
+
+                            <controls:ExpandReveal IsExpanded="{Binding SeatGridCard.IsDescriptionExpanded}"
+                                                   Duration="0:0:0.26">
+                                <StackPanel Margin="0,15,0,0">
+                                    <Border Height="1" Background="{StaticResource LineBrush}"
+                                            Margin="0,0,0,14" />
+                                    <views:ToolDescriptionView DataContext="{Binding SeatGridCard.Detail}" />
+                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
+                                            HorizontalAlignment="Left" Margin="0,14,0,0"
+                                            Click="OnCollapseAppDescription" Tag="{Binding SeatGridCard}" />
+                                </StackPanel>
+                            </controls:ExpandReveal>
+                            </StackPanel>
                         </Border>
 
                         <!-- 时序 · ClassBlock -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource LineBrush}"
+                        <Border Classes="app-card" Classes.expanded="{Binding ClassBlockCard.IsDescriptionExpanded}"
                                 BorderThickness="1" CornerRadius="10" Padding="18,14" Margin="0,10,0,0"
-                                IsVisible="{Binding IsClassBlockVisible}">
-                            <Grid ColumnDefinitions="46,*,Auto" ColumnSpacing="14">
+                                IsVisible="{Binding IsClassBlockVisible}" Focusable="True" Cursor="Hand"
+                                Tag="{Binding ClassBlockCard}"
+                                PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
+                                AutomationProperties.Name="{Binding ClassBlockCard.DescriptionAccessibleName}"
+                                ToolTip.Tip="{Binding ClassBlockCard.DescriptionToggleLabel}">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="46,*,Auto,Auto" ColumnSpacing="14">
                                 <Border Grid.Column="0" Width="44" Height="44" CornerRadius="7"
                                         Background="#FCFAF4" BorderBrush="#E3DDCE" BorderThickness="1"
                                         VerticalAlignment="Center">
@@ -582,14 +634,40 @@
                                     </StackPanel>
                                     <Button Classes="primary" Content="打开应用" Click="OnLaunchClassBlock" />
                                 </StackPanel>
+
+                                <Path Grid.Column="3" Classes="tool-chevron"
+                                      Classes.expanded="{Binding ClassBlockCard.IsDescriptionExpanded}"
+                                      Data="M 1 1 L 6 6 L 11 1"
+                                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Width="12" Height="7" VerticalAlignment="Center"
+                                      IsHitTestVisible="False" />
                             </Grid>
+
+                            <controls:ExpandReveal IsExpanded="{Binding ClassBlockCard.IsDescriptionExpanded}"
+                                                   Duration="0:0:0.26">
+                                <StackPanel Margin="0,15,0,0">
+                                    <Border Height="1" Background="{StaticResource LineBrush}"
+                                            Margin="0,0,0,14" />
+                                    <views:ToolDescriptionView DataContext="{Binding ClassBlockCard.Detail}" />
+                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
+                                            HorizontalAlignment="Left" Margin="0,14,0,0"
+                                            Click="OnCollapseAppDescription" Tag="{Binding ClassBlockCard}" />
+                                </StackPanel>
+                            </controls:ExpandReveal>
+                            </StackPanel>
                         </Border>
 
                         <!-- 织序 · GradeWeave -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource LineBrush}"
+                        <Border Classes="app-card" Classes.expanded="{Binding GradeWeaveCard.IsDescriptionExpanded}"
                                 BorderThickness="1" CornerRadius="10" Padding="18,14" Margin="0,10,0,0"
-                                IsVisible="{Binding IsGradeWeaveVisible}">
-                            <Grid ColumnDefinitions="46,*,Auto" ColumnSpacing="14">
+                                IsVisible="{Binding IsGradeWeaveVisible}" Focusable="True" Cursor="Hand"
+                                Tag="{Binding GradeWeaveCard}"
+                                PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
+                                AutomationProperties.Name="{Binding GradeWeaveCard.DescriptionAccessibleName}"
+                                ToolTip.Tip="{Binding GradeWeaveCard.DescriptionToggleLabel}">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="46,*,Auto,Auto" ColumnSpacing="14">
                                 <Border Grid.Column="0" Width="44" Height="44" CornerRadius="7"
                                         Background="#FCFAF4" BorderBrush="#E3DDCE" BorderThickness="1"
                                         VerticalAlignment="Center">
@@ -630,14 +708,40 @@
                                     </StackPanel>
                                     <Button Classes="primary" Content="打开应用" Click="OnLaunchGradeWeave" />
                                 </StackPanel>
+
+                                <Path Grid.Column="3" Classes="tool-chevron"
+                                      Classes.expanded="{Binding GradeWeaveCard.IsDescriptionExpanded}"
+                                      Data="M 1 1 L 6 6 L 11 1"
+                                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Width="12" Height="7" VerticalAlignment="Center"
+                                      IsHitTestVisible="False" />
                             </Grid>
+
+                            <controls:ExpandReveal IsExpanded="{Binding GradeWeaveCard.IsDescriptionExpanded}"
+                                                   Duration="0:0:0.26">
+                                <StackPanel Margin="0,15,0,0">
+                                    <Border Height="1" Background="{StaticResource LineBrush}"
+                                            Margin="0,0,0,14" />
+                                    <views:ToolDescriptionView DataContext="{Binding GradeWeaveCard.Detail}" />
+                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
+                                            HorizontalAlignment="Left" Margin="0,14,0,0"
+                                            Click="OnCollapseAppDescription" Tag="{Binding GradeWeaveCard}" />
+                                </StackPanel>
+                            </controls:ExpandReveal>
+                            </StackPanel>
                         </Border>
 
                         <!-- 竞名 · MeetRoster -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource LineBrush}"
+                        <Border Classes="app-card" Classes.expanded="{Binding MeetRosterCard.IsDescriptionExpanded}"
                                 BorderThickness="1" CornerRadius="10" Padding="18,14" Margin="0,10,0,0"
-                                IsVisible="{Binding IsMeetRosterVisible}">
-                            <Grid ColumnDefinitions="46,*,Auto" ColumnSpacing="14">
+                                IsVisible="{Binding IsMeetRosterVisible}" Focusable="True" Cursor="Hand"
+                                Tag="{Binding MeetRosterCard}"
+                                PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
+                                AutomationProperties.Name="{Binding MeetRosterCard.DescriptionAccessibleName}"
+                                ToolTip.Tip="{Binding MeetRosterCard.DescriptionToggleLabel}">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="46,*,Auto,Auto" ColumnSpacing="14">
                                 <Border Grid.Column="0" Width="44" Height="44" CornerRadius="7"
                                         Background="#FCFAF4" BorderBrush="#E3DDCE" BorderThickness="1"
                                         VerticalAlignment="Center">
@@ -682,7 +786,28 @@
                                     </StackPanel>
                                     <Button Classes="primary" Content="打开应用" Click="OnLaunchMeetRoster" />
                                 </StackPanel>
+
+                                <Path Grid.Column="3" Classes="tool-chevron"
+                                      Classes.expanded="{Binding MeetRosterCard.IsDescriptionExpanded}"
+                                      Data="M 1 1 L 6 6 L 11 1"
+                                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Width="12" Height="7" VerticalAlignment="Center"
+                                      IsHitTestVisible="False" />
                             </Grid>
+
+                            <controls:ExpandReveal IsExpanded="{Binding MeetRosterCard.IsDescriptionExpanded}"
+                                                   Duration="0:0:0.26">
+                                <StackPanel Margin="0,15,0,0">
+                                    <Border Height="1" Background="{StaticResource LineBrush}"
+                                            Margin="0,0,0,14" />
+                                    <views:ToolDescriptionView DataContext="{Binding MeetRosterCard.Detail}" />
+                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
+                                            HorizontalAlignment="Left" Margin="0,14,0,0"
+                                            Click="OnCollapseAppDescription" Tag="{Binding MeetRosterCard}" />
+                                </StackPanel>
+                            </controls:ExpandReveal>
+                            </StackPanel>
                         </Border>
 
                         <!-- 02 图片处理 -->
@@ -706,46 +831,17 @@
                                       IsVisible="{Binding HasImageResults}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="2" />
+                                    <!-- 双列但不做等高：一张卡展开说明时，另一张不会被拉出空白 -->
+                                    <WrapPanel Orientation="Horizontal" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ToolItemViewModel">
-                                    <Button Classes="tool-card" Margin="0,0,7,7" Click="OnOpenTool" Tag="{Binding}"
-                                                ToolTip.Tip="{Binding Description}"
-                                                AutomationProperties.Name="{Binding Name}">
-                                        <Grid ColumnDefinitions="44,*,18" ColumnSpacing="13">
-                                            <Border Grid.Column="0" Classes="tool-glyph" Width="44" Height="44"
-                                                    CornerRadius="7" BorderBrush="#E3DDCE" BorderThickness="1"
-                                                    Background="#FCFAF4">
-                                                <TextBlock Text="{Binding Glyph}" Classes="tool-glyph-text"
-                                                           FontFamily="{StaticResource SerifFont}" FontSize="17"
-                                                           Foreground="#6E6859" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" />
-                                            </Border>
-                                            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <TextBlock Text="{Binding No}" FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="9" LetterSpacing="1"
-                                                               Foreground="{StaticResource AccentDeepBrush}" />
-                                                    <TextBlock Text="{Binding Id}" FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="9" LetterSpacing="0.6"
-                                                               Foreground="{StaticResource MutedBrush}" />
-                                                </StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
-                                                           LetterSpacing="0.3" Foreground="{StaticResource InkBrush}" />
-                                                <TextBlock Text="{Binding Description}" FontSize="11.5"
-                                                           Foreground="{StaticResource MutedBrush}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <Path Grid.Column="2" Classes="tool-arrow"
-                                                  Data="M 3.5 10.5 L 10.5 3.5 M 5 3.5 L 10.5 3.5 L 10.5 9"
-                                                  Stroke="{StaticResource MutedBrush}" StrokeThickness="1.2"
-                                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                                  Width="13" Height="13" Opacity="0"
-                                                  HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </Button>
+                                    <!-- 工具卡：点卡片或标题展开说明，右上「打开」进抽屉 -->
+                                    <views:ToolCardView Margin="0,0,7,7" OpenRequested="OnOpenTool" Expanded="OnToolCardExpanded"
+                                                        VerticalAlignment="Top"
+                                                        Width="{Binding $parent[ItemsControl].Bounds.Width,
+                                                                        Converter={x:Static conv:ColumnWidthConverter.TwoColumns}}" />
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -771,46 +867,17 @@
                                       IsVisible="{Binding HasFileResults}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="2" />
+                                    <!-- 双列但不做等高：一张卡展开说明时，另一张不会被拉出空白 -->
+                                    <WrapPanel Orientation="Horizontal" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ToolItemViewModel">
-                                    <Button Classes="tool-card" Margin="0,0,7,7" Click="OnOpenTool" Tag="{Binding}"
-                                                ToolTip.Tip="{Binding Description}"
-                                                AutomationProperties.Name="{Binding Name}">
-                                        <Grid ColumnDefinitions="44,*,18" ColumnSpacing="13">
-                                            <Border Grid.Column="0" Classes="tool-glyph" Width="44" Height="44"
-                                                    CornerRadius="7" BorderBrush="#E3DDCE" BorderThickness="1"
-                                                    Background="#FCFAF4">
-                                                <TextBlock Text="{Binding Glyph}" Classes="tool-glyph-text"
-                                                           FontFamily="{StaticResource SerifFont}" FontSize="17"
-                                                           Foreground="#6E6859" HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center" />
-                                            </Border>
-                                            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <TextBlock Text="{Binding No}" FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="9" LetterSpacing="1"
-                                                               Foreground="{StaticResource AccentDeepBrush}" />
-                                                    <TextBlock Text="{Binding Id}" FontFamily="{StaticResource MonoFont}"
-                                                               FontSize="9" LetterSpacing="0.6"
-                                                               Foreground="{StaticResource MutedBrush}" />
-                                                </StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
-                                                           LetterSpacing="0.3" Foreground="{StaticResource InkBrush}" />
-                                                <TextBlock Text="{Binding Description}" FontSize="11.5"
-                                                           Foreground="{StaticResource MutedBrush}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                            <Path Grid.Column="2" Classes="tool-arrow"
-                                                  Data="M 3.5 10.5 L 10.5 3.5 M 5 3.5 L 10.5 3.5 L 10.5 9"
-                                                  Stroke="{StaticResource MutedBrush}" StrokeThickness="1.2"
-                                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                                  Width="13" Height="13" Opacity="0"
-                                                  HorizontalAlignment="Right" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </Button>
+                                    <!-- 工具卡：点卡片或标题展开说明，右上「打开」进抽屉 -->
+                                    <views:ToolCardView Margin="0,0,7,7" OpenRequested="OnOpenTool" Expanded="OnToolCardExpanded"
+                                                        VerticalAlignment="Top"
+                                                        Width="{Binding $parent[ItemsControl].Bounds.Width,
+                                                                        Converter={x:Static conv:ColumnWidthConverter.TwoColumns}}" />
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -852,9 +919,32 @@
                                    MaxWidth="820" TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="{Binding StatusText}" />
                     </StackPanel>
-                    <TextBlock Grid.Column="2" Text="{Binding VersionLine}"
-                               FontFamily="{StaticResource MonoFont}" FontSize="9" LetterSpacing="1.2"
-                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                    <!-- 有新版时的非阻塞提示条：与 StatusText 分开的两块视觉，
+                         不改变状态栏 Auto,*,Auto 的列语义。 -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                HorizontalAlignment="Right" Margin="12,0"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding IsUpdateAvailable}">
+                        <Ellipse Width="6" Height="6" Fill="{Binding WarningBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding UpdateBadgeText}" FontSize="11"
+                                   Foreground="{StaticResource InkSoftBrush}" VerticalAlignment="Center"
+                                   ToolTip.Tip="{Binding UpdateExplanation}" />
+                        <Button Content="更新" Classes="mini"
+                                AutomationProperties.Name="下载并安装新版本"
+                                Click="OnInstallUpdateClick" />
+                        <Button Content="稍后" Classes="mini"
+                                AutomationProperties.Name="暂时忽略这次更新"
+                                Click="OnDismissUpdateClick" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
+                                VerticalAlignment="Center">
+                        <Button Content="检查更新" Classes="link"
+                                AutomationProperties.Name="检查更新"
+                                Click="OnCheckUpdateClick" />
+                        <TextBlock Text="{Binding VersionLine}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="9" LetterSpacing="1.2"
+                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

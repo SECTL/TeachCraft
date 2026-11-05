@@ -362,66 +362,121 @@
             <Setter Property="TextDecorations" Value="Underline" />
         </Style>
 
-        <!-- 工具卡：整卡可点，细边 + 纸感悬停 -->
-        <Style Selector="Button.tool-card">
+        <!-- 工具卡：整卡可点（点卡片或标题展开说明），细边 + 纸感悬停。
+             卡片本体是 Border 而不是 Button：卡内还要放「打开」按钮与可展开的说明区，
+             嵌套 Button 会互相吞掉点击与键盘焦点。 -->
+        <Style Selector="Border.tool-card">
             <Setter Property="Background" Value="{StaticResource CardBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Padding" Value="16,15" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Transitions">
                 <Transitions>
                     <BrushTransition Property="Background" Duration="0:0:0.16" />
                     <BrushTransition Property="BorderBrush" Duration="0:0:0.16" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.08" Easing="CircularEaseOut" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.1" />
                 </Transitions>
             </Setter>
-            <Setter Property="Template">
-                <ControlTemplate>
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="{TemplateBinding CornerRadius}"
-                            Padding="{TemplateBinding Padding}"
-                            ClipToBounds="True">
-                        <ContentPresenter Content="{TemplateBinding Content}"
-                                          ContentTemplate="{TemplateBinding ContentTemplate}"
-                                          HorizontalContentAlignment="Stretch"
-                                          VerticalContentAlignment="Center" />
-                    </Border>
-                </ControlTemplate>
-            </Setter>
         </Style>
-        <Style Selector="Button.tool-card:pointerover">
+        <Style Selector="Border.tool-card:pointerover">
             <Setter Property="Background" Value="#FEFCF7" />
             <Setter Property="BorderBrush" Value="#CFC8B6" />
         </Style>
-        <Style Selector="Button.tool-card:pressed">
-            <Setter Property="RenderTransform" Value="scale(0.994)" />
+        <!-- 说明展开时卡片改用暖白底与陶土描边，和未展开的卡片区分开 -->
+        <Style Selector="Border.tool-card.expanded">
+            <Setter Property="Background" Value="{StaticResource HighlightBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HighlightLineBrush}" />
         </Style>
-        <Style Selector="Button.tool-card:pointerover Border.tool-glyph">
-            <Setter Property="Background" Value="#FBF1EA" />
-            <Setter Property="BorderBrush" Value="#E3B7A4" />
-        </Style>
-        <Style Selector="Button.tool-card:pointerover TextBlock.tool-glyph-text">
-            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
-        </Style>
-        <Style Selector="Path.tool-arrow">
+
+        <!-- 卡片标题：悬停 / 展开时加下划线，让「点标题也能展开」看得见 -->
+        <Style Selector="TextBlock.tool-card-title">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.16" />
                 </Transitions>
             </Setter>
         </Style>
-        <Style Selector="Button.tool-card:pointerover Path.tool-arrow">
-            <Setter Property="Opacity" Value="1" />
+        <Style Selector="Border.tool-card:pointerover TextBlock.tool-card-title">
+            <Setter Property="TextDecorations" Value="Underline" />
+        </Style>
+        <!-- 后缀 .expanded 直接落在 TextBlock 上：放在祖先选择器里会被全局
+             `Style Selector="TextBlock"` 的 Foreground 压住，颜色改不动。 -->
+        <Style Selector="TextBlock.tool-card-title.expanded">
+            <Setter Property="TextDecorations" Value="Underline" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+        <Style Selector="Border.tool-card:pointerover Border.tool-glyph">
+            <Setter Property="Background" Value="#FBF1EA" />
+            <Setter Property="BorderBrush" Value="#E3B7A4" />
+        </Style>
+        <Style Selector="Border.tool-card:pointerover TextBlock.tool-glyph-text">
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
         </Style>
         <!-- 键盘聚焦：1px 陶土描边（置于 pointerover 之后，聚焦优先显示） -->
-        <Style Selector="Button.tool-card:focus-visible">
+        <Style Selector="Border.tool-card:focus-visible">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <!-- 展开指示箭头：收起朝下，展开翻转朝上 -->
+        <Style Selector="Path.tool-chevron">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                  Duration="0:0:0.22" Easing="CubicEaseOut" />
+                    <BrushTransition Property="Stroke" Duration="0:0:0.16" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Path.tool-chevron.expanded">
+            <Setter Property="RenderTransform" Value="rotate(180deg)" />
+            <Setter Property="Stroke" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+        <Style Selector="Border.tool-card:pointerover Path.tool-chevron">
+            <Setter Property="Stroke" Value="{StaticResource InkBrush}" />
+        </Style>
+
+        <!-- 卡片右上「打开」：轻量描边按钮，不与整卡点击抢视觉 -->
+        <Style Selector="Button.card-open">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#D6D1C4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource InkSoftBrush}" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="Button.card-open:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentWashBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource HighlightLineBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+
+        <!-- 案头常备卡：整卡可点展开说明，悬停只提亮描边，不搬动卡片 -->
+        <Style Selector="Border.app-card">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.16" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <!-- 分晓大卡用更暖的常备底色；放在这里而不是 XAML 局部值，
+             否则局部值会压过下面的 .expanded 描边样式 -->
+        <Style Selector="Border.app-card.pinned">
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
+        </Style>
+        <Style Selector="Border.app-card:pointerover">
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+        </Style>
+        <Style Selector="Border.app-card.expanded">
+            <Setter Property="BorderBrush" Value="{StaticResource HighlightLineBrush}" />
+        </Style>
+        <Style Selector="Border.app-card:focus-visible">
             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
         </Style>
 

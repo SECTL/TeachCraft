@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             x:Class="TeachCraft.App.Views.ToolDescriptionView"
+             x:DataType="vm:ToolDescription">
+    <StackPanel Spacing="0">
+        <!-- 小标：与抽屉里的 PINNED / 常备同一套等宽小字 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <Border Width="16" Height="1" Background="{StaticResource AccentBrush}"
+                    VerticalAlignment="Center" Opacity="0.8" />
+            <TextBlock Text="ABOUT" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       LetterSpacing="2.2" Foreground="{StaticResource MutedBrush}" />
+            <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="#C9C1AE" />
+            <TextBlock Text="说明" FontSize="10" LetterSpacing="0.8"
+                       Foreground="{StaticResource MutedBrush}" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding Tagline}" FontSize="12.5" LineHeight="22"
+                   TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" />
+
+        <ItemsControl ItemsSource="{Binding Highlights}" Margin="0,12,0,0"
+                      HorizontalAlignment="Stretch">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                    <Border Classes="chip" Margin="0,0,6,6">
+                        <TextBlock Text="{Binding}" FontSize="10.5" Foreground="#6B6557" />
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Grid ColumnDefinitions="46,*" RowDefinitions="Auto,Auto,Auto" Margin="0,6,0,0">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="输入" FontSize="10.5"
+                       Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding InputDetail}" FontSize="10.5"
+                       TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="输出" FontSize="10.5"
+                       Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding OutputDetail}"
+                       FontFamily="{StaticResource MonoFont}" FontSize="10.5"
+                       TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="处理" FontSize="10.5"
+                       Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ProcessingDetail}" FontSize="10.5"
+                       TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" Margin="0,7,0,0" />
+        </Grid>
+
+        <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,12,0,2" />
+
+        <ItemsControl ItemsSource="{Binding Features}" Margin="0,4,0,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                    <Grid ColumnDefinitions="18,*" Margin="0,5,0,5">
+                        <Path Grid.Column="0" Width="7" Height="7"
+                              Data="M3.5,0.6 L6.4,3.5 L3.5,6.4 L0.6,3.5 Z"
+                              Fill="{StaticResource AccentBrush}" Opacity="0.85"
+                              VerticalAlignment="Top" Margin="0,6,0,0" />
+                        <TextBlock Grid.Column="1" Text="{Binding}" FontSize="11.5" LineHeight="19"
+                                   TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

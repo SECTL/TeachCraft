@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             xmlns:views="using:TeachCraft.App.Views"
+             xmlns:controls="using:TeachCraft.App.Controls"
+             x:Class="TeachCraft.App.Views.ToolCardView"
+             x:DataType="vm:ToolItemViewModel">
+    <!-- 整卡可点：点卡片或标题展开 / 收起说明；右上「打开」直接进抽屉。
+         展开区由 ExpandReveal 做高度揭示动画（系统减弱动效时直接落位）。 -->
+    <Border Classes="tool-card" Classes.expanded="{Binding IsDescriptionExpanded}"
+            Cursor="Hand" Focusable="True"
+            PointerPressed="OnCardPressed" KeyDown="OnCardKeyDown"
+            AutomationProperties.Name="{Binding DescriptionAccessibleName}"
+            ToolTip.Tip="{Binding DescriptionToggleLabel}">
+        <StackPanel Spacing="0">
+            <Grid ColumnDefinitions="44,*,Auto,Auto" ColumnSpacing="13">
+                <Border Grid.Column="0" Classes="tool-glyph" Width="44" Height="44"
+                        CornerRadius="7" BorderBrush="#E3DDCE" BorderThickness="1"
+                        Background="#FCFAF4">
+                    <TextBlock Text="{Binding Glyph}" Classes="tool-glyph-text"
+                               FontFamily="{StaticResource SerifFont}" FontSize="17"
+                               Foreground="#6E6859" HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding No}" FontFamily="{StaticResource MonoFont}"
+                                   FontSize="9" LetterSpacing="1"
+                                   Foreground="{StaticResource AccentDeepBrush}" />
+                        <TextBlock Text="{Binding Id}" FontFamily="{StaticResource MonoFont}"
+                                   FontSize="9" LetterSpacing="0.6"
+                                   Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <!-- 标题本身也明确可点：悬停加下划线、展开变陶土色，让「点标题展开」看得见 -->
+                    <TextBlock Classes="tool-card-title"
+                               Classes.expanded="{Binding IsDescriptionExpanded}"
+                               Text="{Binding Name}" FontSize="14"
+                               FontWeight="SemiBold" LetterSpacing="0.3" />
+                    <TextBlock Text="{Binding Description}" FontSize="11.5"
+                               Foreground="{StaticResource MutedBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <Button Grid.Column="2" Classes="card-open" Content="打开" Click="OnOpenClick"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{Binding Name, StringFormat='打开 {0}'}" />
+
+                <Path Grid.Column="3" Classes="tool-chevron"
+                      Classes.expanded="{Binding IsDescriptionExpanded}"
+                      Data="M 1 1 L 6 6 L 11 1"
+                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                      StrokeLineCap="Round" StrokeJoin="Round"
+                      Width="12" Height="7" VerticalAlignment="Center"
+                      IsHitTestVisible="False" />
+            </Grid>
+
+            <controls:ExpandReveal IsExpanded="{Binding IsDescriptionExpanded}"
+                                   Duration="0:0:0.26">
+                <StackPanel Margin="0,15,0,0">
+                    <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,0,0,14" />
+
+                    <views:ToolDescriptionView DataContext="{Binding Detail}" />
+
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,16,0,0">
+                        <Button Grid.Column="0" Classes="primary" Content="打开工具面板"
+                                Click="OnOpenClick" HorizontalAlignment="Left" />
+                        <Button Grid.Column="1" Classes="link" Content="收起说明"
+                                Click="OnCollapseClick" VerticalAlignment="Center"
+                                FontSize="11.5" />
+                    </Grid>
+                </StackPanel>
+            </controls:ExpandReveal>
+        </StackPanel>
+    </Border>
+</UserControl>

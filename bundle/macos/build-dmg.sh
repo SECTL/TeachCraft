@@ -17,8 +17,16 @@ fi
 
 CLEAN_VER="${VERSION#v}"
 VER_TAG="v${CLEAN_VER}"
-# CFBundleShortVersionString 只接受数字段，预览后缀不写进 Info.plist
-PLIST_VER="${CLEAN_VER%%-*}"
+# 两个版本键必须分开写：
+#   CFBundleShortVersionString —— 允许预览段，用于展示（1.17.0-preview.142）
+#   CFBundleVersion            —— Apple 要求点分整数，用于 LaunchServices 排序，必须单调
+PLIST_VER="${CLEAN_VER}"
+# 预览序号即 run number，天然单调；正式版用 0 起点加日期不及预览，直接用数字段拼接
+BUNDLE_VER="${CLEAN_VER%%-*}"
+if [ "$CLEAN_VER" != "${CLEAN_VER%%-*}" ]; then
+  PREVIEW_NO="${CLEAN_VER##*-preview.}"
+  BUNDLE_VER="${CLEAN_VER%%-*}.${PREVIEW_NO}"
+fi
 
 echo "=========================================================="
 echo "  知微 · TeachCraft - macOS 自动化打包"
@@ -30,11 +38,14 @@ PROJECT_PATH="src/TeachCraft.App/TeachCraft.App.csproj"
 
 echo "[1/4] 执行 dotnet publish..."
 # macOS 不使用 IncludeNativeLibrariesForSelfExtract（Avalonia 官方文档指出其会导致 CoreCLR 加载冲突）
+# 注入可自证的构建身份：形如 1.17.0-preview.142.sc.osx-arm64
+BUILD_IDENTITY="${CLEAN_VER}.${MODE_LABEL}.${RID}"
 dotnet publish "$PROJECT_PATH" \
     --configuration Release \
     --runtime "$RID" \
     --self-contained "$SELF_CONTAINED" \
     -p:PublishSingleFile=true \
+    -p:InformationalVersion="$BUILD_IDENTITY" \
     -o "$PUBLISH_DIR"
 
 STAGING_DIR="temp/macos-dmg-staging-${RID}-${MODE_LABEL}"
@@ -60,8 +71,10 @@ if [ -f "$MACOS_DIR/QuestPDF.Fonts.Lato.br" ]; then
     mv "$MACOS_DIR/QuestPDF.Fonts.Lato.br" "$RESOURCES_DIR/"
 fi
 
-# 写入 Info.plist（只替换版本占位符）
-sed "s/<string>1.0.0<\/string>/<string>${PLIST_VER}<\/string>/g" bundle/macos/Info.plist > "$CONTENTS_DIR/Info.plist"
+# 写入 Info.plist（两个版本键各用一个独立占位符，必须分开替换）
+sed -e "s/__SHORT_VERSION__/${PLIST_VER}/g" \
+    -e "s/__BUNDLE_VERSION__/${BUNDLE_VER}/g" \
+    bundle/macos/Info.plist > "$CONTENTS_DIR/Info.plist"
 
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
@@ -98,7 +111,11 @@ hdiutil create -volname "知微 · TeachCraft" \
 
 codesign --force --sign - "$DMG_PATH" || true
 
-ZIP_NAME="TeachCraft-${VER_TAG}-${RID}-${MODE_LABEL}.zip"
+# macOS 应用压缩包必须与 Windows/Linux 的绿色包区分开：
+# 两者原本同名（-rid-mode.zip），更新逻辑按名字挑包时会把 Mac 包装给 Windows 用户。
+# 单一所有者：C# 侧的 AssetNaming.MacZipSuffix 与这里必须保持一致。
+ZIP_SUFFIX="-mac.zip"
+ZIP_NAME="TeachCraft-${VER_TAG}-${RID}-${MODE_LABEL}${ZIP_SUFFIX}"
 ZIP_PATH="artifacts/${ZIP_NAME}"
 rm -f "$ZIP_PATH"
 ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"

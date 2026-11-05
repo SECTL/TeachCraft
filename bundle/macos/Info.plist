@@ -9,9 +9,9 @@
     <key>CFBundleIdentifier</key>
     <string>cn.teachcraft.app</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>__BUNDLE_VERSION__</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>__SHORT_VERSION__</string>
     <key>CFBundleExecutable</key>
     <string>TeachCraft</string>
     <key>CFBundleIconFile</key>

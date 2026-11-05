@@ -137,6 +137,10 @@ $isccArgs = @(
     "/DOutputDir=$fullOutputDir",
     "/DOutputBaseFilename=$outputBaseName",
     "/DArch=$arch",
+    # 安装身份记录（[Registry]）需要部署模式与完整 RID：
+    # 六个 Windows 包共用同一 AppId，靠这两项把各 SKU 写到不同子键。
+    "/DMyAppMode=$modeLabel",
+    "/DMyRid=$Rid",
     $issScript
 )
 

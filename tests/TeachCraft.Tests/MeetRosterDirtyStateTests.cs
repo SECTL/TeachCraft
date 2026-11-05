@@ -95,7 +95,8 @@ public sealed class MeetRosterDirtyStateTests : IDisposable
 
         await vm.SaveToSourceAsync();
 
-        Assert.False(vm.IsDirty);
+        // 保存失败时把状态栏原文带出来，便于定位走了哪个分支。
+        Assert.False(vm.IsDirty, vm.StatusText);
     }
 
     [Fact]
