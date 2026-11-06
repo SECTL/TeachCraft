@@ -159,6 +159,24 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private ToolItemViewModel? _selectedTool;
     [ObservableProperty] private bool _isToolPanelOpen;
     [ObservableProperty] private bool _isProjectPanelOpen;
+
+    /// <summary>更新面板是否展开。与工具／项目面板互斥，共用同一个抽屉。</summary>
+    [ObservableProperty] private bool _isUpdatePanelOpen;
+
+    /// <summary>更新面板里显示的当前构建身份（含预览序号与部署形态）。</summary>
+    [ObservableProperty] private string _installDescription = "";
+
+    /// <summary>更新面板的主状态行：未检查 / 检查中 / 已最新 / 有新版 / 失败原因。</summary>
+    [ObservableProperty] private string _updateStateText = "还没有检查过";
+
+    /// <summary>检查/下载进行中——用于禁用按钮、显示进度。</summary>
+    [ObservableProperty] private bool _isUpdateBusy;
+
+    /// <summary>下载进度百分比；仅在下载阶段有意义。</summary>
+    [ObservableProperty] private int _updateProgress;
+
+    /// <summary>上次检查时间，取自本机状态文件。</summary>
+    [ObservableProperty] private string _lastCheckedText = "从未检查";
     [ObservableProperty] private string _statusText = DefaultStatusText;
     [ObservableProperty] private IBrush _statusBrush = Moss;
 
@@ -194,7 +212,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isFileActive;
     [ObservableProperty] private bool _isProjectActive;
 
-    public bool IsPanelOpen => IsToolPanelOpen || IsProjectPanelOpen;
+    public bool IsPanelOpen => IsToolPanelOpen || IsProjectPanelOpen || IsUpdatePanelOpen;
 
     public string ImageCountLabel => VisibleImageTools.Count.ToString("00");
     public string FileCountLabel => VisibleFileTools.Count.ToString("00");
@@ -237,9 +255,65 @@ public partial class MainViewModel : ObservableObject
     {
         IsToolPanelOpen = false;
         IsProjectPanelOpen = false;
+        IsUpdatePanelOpen = false;
         IsProjectActive = false;
         SetStatus(DefaultStatusText);
         NotifyPanelChanged();
+    }
+
+    /// <summary>
+    /// 打开更新页。只负责把当前已知信息摆出来，不自动联网——
+    /// 联网必须由用户在页面里点「检查更新」触发（A3 的默认决定）。
+    /// </summary>
+    public void OpenUpdatePanel()
+    {
+        IsToolPanelOpen = false;
+        IsProjectPanelOpen = false;
+        IsProjectActive = false;
+        IsUpdatePanelOpen = true;
+
+        InstallDescription = DescribeInstall();
+        LastCheckedText = DescribeLastChecked();
+        if (!IsUpdateAvailable && !IsUpdateBusy)
+            UpdateStateText = "还没有检查过";
+
+        SetStatus("正在查看 检查更新");
+        NotifyPanelChanged();
+    }
+
+    /// <summary>当前这台机器装的是哪一支：版本 + 形态 + 架构。</summary>
+    private string DescribeInstall()
+    {
+        var kind = _installKind switch
+        {
+            InstallKind.InnoInstall => "安装包版本",
+            InstallKind.InnoInstallLegacy => "安装包版本（旧版，未记录部署方式）",
+            InstallKind.PortableZip => "绿色免安装版",
+            InstallKind.MacBundle => "macOS 应用",
+            InstallKind.MacBundlePortable => "macOS 便携应用",
+            InstallKind.LinuxPortable => "Linux 绿色版",
+            _ => "安装方式未能识别",
+        };
+
+        var rid = string.IsNullOrEmpty(_identity.Rid) ? "未知架构" : _identity.Rid;
+        var mode = _identity.Mode switch
+        {
+            "sc" => "自带运行时",
+            "fdd" => "依赖 .NET 运行时",
+            _ => null,
+        };
+
+        return mode is null
+            ? $"{kind} · {rid}"
+            : $"{kind} · {rid} · {mode}";
+    }
+
+    private string DescribeLastChecked()
+    {
+        var last = _stateStore.Load().LastCheckUtc;
+        return last is null
+            ? "从未检查"
+            : $"上次检查：{last.Value.ToLocalTime():yyyy-MM-dd HH:mm}";
     }
 
     public void SetStatus(string text, bool error = false)
@@ -260,9 +334,26 @@ public partial class MainViewModel : ObservableObject
         var service = _checkService ?? UpdateCheckService.CreateDefault();
         var planner = new UpdatePlanner(service, _identity, _installKind);
 
+        // 记下「检查过」这件事本身。失败也算检查过，否则用户会以为按钮没反应。
+        var state = _stateStore.Load();
+        _stateStore.Save(new UpdateState(DateTimeOffset.UtcNow, state.SkippedVersions));
+
         var result = await planner.PlanAsync(cancellationToken).ConfigureAwait(true);
 
         ApplyUpdatePlan(result);
+
+        // 更新页的状态行与状态栏分开：状态栏会被其它操作覆盖，
+        // 而页面上这一行必须一直留着上次检查的结论。
+        UpdateStateText = result.Status switch
+        {
+            UpdatePlanStatus.UpdateAvailable when IsUpdateAvailable
+                => $"发现新版本 {result.Proposal!.VersionText}",
+            UpdatePlanStatus.UpdateAvailable => $"新版本 {result.Proposal!.VersionText}（你已选择跳过）",
+            UpdatePlanStatus.UpToDate => "已是最新版本",
+            UpdatePlanStatus.Failed => result.Message ?? "检查失败",
+            _ => UpdateStateText,
+        };
+        LastCheckedText = DescribeLastChecked();
 
         // 被判为「有新版」但被用户跳过时，ApplyUpdatePlan 不会设 IsUpdateAvailable。
         // 此时必须给一句中性提示，否则会出现「状态栏说有新版本、却没有更新按钮」的自相矛盾。
@@ -325,6 +416,9 @@ public partial class MainViewModel : ObservableObject
         IsUpdateAvailable = true;
         UpdateBadgeText = $"新版本 {version}";
         UpdateExplanation = BuildUpdateExplanation(_identity.Version);
+        // 更新页与状态栏徽章必须同步，否则走查时页面还写着「还没有检查过」，
+        // 截出来的图不代表任何真实状态。
+        UpdateStateText = $"发现新版本 {version}";
     }
 
     /// <summary>

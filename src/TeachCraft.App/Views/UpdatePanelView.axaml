@@ -1,0 +1,118 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             x:DataType="vm:MainViewModel"
+             x:Class="TeachCraft.App.Views.UpdatePanelView">
+    <StackPanel Spacing="0">
+
+        <!-- 面板眉头：与工具／项目面板同构 -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Border Width="18" Height="1" Background="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                        Opacity="0.8" />
+                <TextBlock Text="UPDATE" FontFamily="{StaticResource MonoFont}" FontSize="10" LetterSpacing="2.4"
+                           Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="#C9C1AE" />
+                <TextBlock Text="检查更新" FontSize="10.5" LetterSpacing="0.8"
+                           Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="panel-close" Click="OnClose" VerticalAlignment="Top"
+                    ToolTip.Tip="关闭" AutomationProperties.Name="关闭">
+                <Path Width="11" Height="11" Stretch="Uniform"
+                      Data="M3,3 L11,11 M11,3 L3,11" Stroke="{Binding $parent[Button].Foreground}"
+                      StrokeThickness="1.4" StrokeLineCap="Round" />
+            </Button>
+        </Grid>
+
+        <TextBlock FontFamily="{StaticResource SerifFont}" FontSize="32" LetterSpacing="1"
+                   Foreground="{StaticResource InkBrush}">
+            <Run Text="检查更新" />
+        </TextBlock>
+        <TextBlock Text="{Binding VersionText}" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                   LetterSpacing="1.3" Foreground="{StaticResource AccentDeepBrush}" Margin="0,5,0,14" />
+
+        <!-- 01 这台机器装的是哪一支 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <TextBlock Text="01" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="当前安装" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14" Margin="0,0,0,20">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="形态" FontSize="10.5"
+                           Foreground="{StaticResource MutedBrush}" Margin="0,0,14,0" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding InstallDescription}" FontSize="10.5"
+                           TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="记录" FontSize="10.5"
+                           Foreground="{StaticResource MutedBrush}" Margin="0,9,14,0" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastCheckedText}" FontSize="10.5"
+                           Foreground="{StaticResource MutedBrush}" Margin="0,9,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- 02 检查结果与操作 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <TextBlock Text="02" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="检查结果" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14" Margin="0,0,0,12">
+            <StackPanel Spacing="12">
+                <TextBlock Text="{Binding UpdateStateText}" FontSize="12.5" LineHeight="21"
+                           TextWrapping="Wrap" Foreground="{StaticResource InkBrush}" />
+
+                <!-- 下载进度：只在忙碌时出现 -->
+                <ProgressBar Value="{Binding UpdateProgress}" Maximum="100" Height="3"
+                             IsVisible="{Binding IsUpdateBusy}"
+                             Foreground="{StaticResource AccentBrush}"
+                             Background="{StaticResource LineBrush}" />
+
+                <!-- 有新版时才出现的解释：升级路径 + 完整性信任边界 -->
+                <TextBlock Text="{Binding UpdateExplanation}" FontSize="10.5" LineHeight="18"
+                           TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                           IsVisible="{Binding IsUpdateAvailable}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button Content="检查更新" Classes="primary" Click="OnCheck"
+                            IsEnabled="{Binding !IsUpdateBusy}"
+                            AutomationProperties.Name="联网检查是否有新版本" />
+                    <Button Content="下载并安装" Classes="ghost" Click="OnInstall"
+                            IsVisible="{Binding IsUpdateAvailable}"
+                            IsEnabled="{Binding !IsUpdateBusy}"
+                            AutomationProperties.Name="下载并安装新版本" />
+                    <Button Content="跳过这版" Classes="ghost" Click="OnDismiss"
+                            IsVisible="{Binding IsUpdateAvailable}"
+                            IsEnabled="{Binding !IsUpdateBusy}"
+                            AutomationProperties.Name="跳过这个版本，不再提示" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- 03 联网与隐私：这是本应用唯一联网的地方，必须说清 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,8,0,10">
+            <TextBlock Text="03" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="联网与隐私" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14">
+            <StackPanel Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Ellipse Width="5" Height="5" Fill="{StaticResource MossBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="LOCAL ONLY" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                               LetterSpacing="1.6" Foreground="{StaticResource MossBrush}" />
+                </StackPanel>
+                <TextBlock Text="点「检查更新」时，程序只向 GitHub Releases 读取版本号，不发送任何本机信息，也没有账号与遥测。你的文件从不上传。"
+                           FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
+                           Foreground="{StaticResource InkSoftBrush}" />
+                <TextBlock Text="更新相关的少量记录（上次检查时间、已跳过的版本）与下载的安装包只留在本机的 TeachCraft\Update 目录里。"
+                           FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+        </Border>
+
+    </StackPanel>
+</UserControl>

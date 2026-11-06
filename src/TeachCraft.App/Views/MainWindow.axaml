@@ -961,6 +961,11 @@
                             <views:ProjectPanelView x:Name="ProjectPanel" IsVisible="{Binding IsProjectPanelOpen}"
                                                     CloseRequested="OnClosePanel"
                                                     LaunchRequested="OnProjectLaunch" />
+                            <views:UpdatePanelView x:Name="UpdatePanel" IsVisible="{Binding IsUpdatePanelOpen}"
+                                                   CloseRequested="OnClosePanel"
+                                                   CheckRequested="OnPanelCheckUpdate"
+                                                   InstallRequested="OnPanelInstallUpdate"
+                                                   DismissRequested="OnPanelDismissUpdate" />
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

@@ -1191,6 +1191,8 @@ public partial class App : Application
                 if (badgeIndex >= 0 && badgeIndex + 1 < args.Length)
                 {
                     window.DataContextAsMainViewModel?.ArmPreviewBadge(args[badgeIndex + 1]);
+                    // 绑定刷新与抽屉动画都需要时间；不等就会截到半透明的中间态。
+                    await Task.Delay(400);
                 }
 
                 var metricsIndex = Array.IndexOf(args, "--shot-metrics");

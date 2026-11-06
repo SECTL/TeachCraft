@@ -47,6 +47,73 @@ public sealed class UpdateWiringTests
     }
 
     [Fact]
+    public void OpenUpdatePanel_IsMutuallyExclusiveWithOtherPanels()
+    {
+        // 三个面板共用同一个抽屉；同时开两个会叠在一起。
+        var vm = new MainViewModel();
+        vm.OpenProject();
+        Assert.True(vm.IsProjectPanelOpen);
+
+        vm.OpenUpdatePanel();
+
+        Assert.True(vm.IsUpdatePanelOpen);
+        Assert.False(vm.IsProjectPanelOpen);
+        Assert.False(vm.IsToolPanelOpen);
+        Assert.True(vm.IsPanelOpen, "抽屉必须算作打开，否则整块不可见");
+    }
+
+    [Fact]
+    public void OpenUpdatePanel_DoesNotGoOnline()
+    {
+        // 打开页面只摆信息；联网必须由用户在页面里再点一次。
+        // 注入一个会抛「真实网络请求」的服务：打开面板若联网，这里就会炸。
+        var vm = new MainViewModel(
+            checkService: new ThrowingCheckService(),
+            identity: BuildIdentity.Parse("1.17.0.sc.win-x64"),
+            installInfo: new InstallInfo(InstallKind.InnoInstall, @"C:pp", "sc", "win-x64"),
+            stateStore: new MemoryStateStore());
+
+        vm.OpenUpdatePanel();
+
+        Assert.True(vm.IsUpdatePanelOpen);
+        Assert.False(vm.IsUpdateAvailable);
+    }
+
+    [Fact]
+    public void OpenUpdatePanel_DescribesWhichBuildIsInstalled()
+    {
+        var vm = new MainViewModel(
+            identity: BuildIdentity.Parse("1.17.0.fdd.win-x64"),
+            installInfo: new InstallInfo(InstallKind.InnoInstall, @"C:pp", "fdd", "win-x64"),
+            stateStore: new MemoryStateStore());
+
+        vm.OpenUpdatePanel();
+
+        // 老师要能看出自己装的是哪一支，而不用懂 sc/fdd 这些词。
+        Assert.Contains("安装包版本", vm.InstallDescription);
+        Assert.Contains("win-x64", vm.InstallDescription);
+        Assert.Contains("依赖 .NET 运行时", vm.InstallDescription);
+    }
+
+    [Fact]
+    public void ClosePanels_AlsoClosesUpdatePanel()
+    {
+        var vm = new MainViewModel();
+        vm.OpenUpdatePanel();
+
+        vm.ClosePanels();
+
+        Assert.False(vm.IsUpdatePanelOpen);
+        Assert.False(vm.IsPanelOpen);
+    }
+
+    private sealed class ThrowingCheckService : IUpdateCheckService
+    {
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("打开更新页不该联网");
+    }
+
+    [Fact]
     public void UpdateExplanation_RaisesPropertyChanged()
     {
         // 工具提示绑定在这个属性上；不发出通知的话，界面永远显示绑定时的空串，

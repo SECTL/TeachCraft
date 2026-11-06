@@ -75,21 +75,73 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 状态栏「检查更新」。这是本 App 唯一会联网的入口，
-    /// 因此失败必须说清原因（由 UpdateErrorText 给出整句），不能只说「失败了」。
+    /// 侧栏底部「检查更新」：打开更新页，不直接联网。
+    /// 联网这件事放到页面里由用户再点一次——它是本应用唯一的出站动作，
+    /// 值得先让用户看清「我装的是哪一支、上次什么时候查的」。
     /// </summary>
     private async void OnCheckUpdateClick(object? sender, RoutedEventArgs e)
     {
+        var wasOpen = ViewModel.IsPanelOpen;
+        ViewModel.OpenUpdatePanel();
+        await ShowPanelAsync(wasOpen);
+    }
+
+    /// <summary>更新页里的「检查更新」：真正联网的那一下。</summary>
+    private async void OnPanelCheckUpdate(object? sender, EventArgs e)
+    {
+        if (ViewModel.IsUpdateBusy) return;
+
         try
         {
-            ViewModel.SetStatus("正在检查更新…");
+            ViewModel.IsUpdateBusy = true;
+            ViewModel.UpdateStateText = "正在联网读取版本号…";
             await ViewModel.CheckUpdateAsync(fromUserGesture: true);
         }
         catch (Exception ex)
         {
-            // 预期内失败已在 ViewModel 里转成人话；这里只兜住真正的意外。
+            ViewModel.UpdateStateText = ErrorText.Describe(ex, "检查更新");
             ViewModel.SetStatus(ErrorText.Describe(ex, "检查更新"), error: true);
         }
+        finally
+        {
+            ViewModel.IsUpdateBusy = false;
+        }
+    }
+
+    /// <summary>更新页里的「下载并安装」。</summary>
+    private async void OnPanelInstallUpdate(object? sender, EventArgs e)
+    {
+        if (ViewModel.IsUpdateBusy) return;
+
+        try
+        {
+            ViewModel.IsUpdateBusy = true;
+            ViewModel.UpdateProgress = 0;
+
+            var progress = new Progress<int>(percent =>
+            {
+                ViewModel.UpdateProgress = percent;
+                ViewModel.UpdateStateText = $"正在下载… {percent}%";
+            });
+
+            var message = await ViewModel.DownloadAndInstallAsync(progress);
+            ViewModel.UpdateStateText = message;
+        }
+        catch (Exception ex)
+        {
+            ViewModel.UpdateStateText = ErrorText.Describe(ex, "更新");
+        }
+        finally
+        {
+            ViewModel.IsUpdateBusy = false;
+        }
+    }
+
+    /// <summary>更新页里的「跳过这版」。</summary>
+    private void OnPanelDismissUpdate(object? sender, EventArgs e)
+    {
+        ViewModel.DismissUpdate();
+        ViewModel.UpdateStateText = "已跳过这个版本，之后不再提示；要恢复提示请删除 TeachCraft\\Update\\state.json。";
     }
 
     /// <summary>把窗口渲染成 PNG，供设计走查使用（--shot 参数触发）。</summary>
@@ -110,6 +162,11 @@ public partial class MainWindow : Window
         if (target == "project")
         {
             ViewModel.OpenProject();
+        }
+        else if (target == "update")
+        {
+            // 走查更新页：沿用 --panel update，不新增参数。
+            ViewModel.OpenUpdatePanel();
         }
         else
         {
