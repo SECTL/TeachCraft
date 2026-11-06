@@ -465,11 +465,6 @@
                 </Transitions>
             </Setter>
         </Style>
-        <!-- 分晓大卡用更暖的常备底色；放在这里而不是 XAML 局部值，
-             否则局部值会压过下面的 .expanded 描边样式 -->
-        <Style Selector="Border.app-card.pinned">
-            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
-        </Style>
         <Style Selector="Border.app-card:pointerover">
             <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
         </Style>

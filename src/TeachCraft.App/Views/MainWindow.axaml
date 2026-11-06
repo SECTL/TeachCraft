@@ -326,6 +326,17 @@
                     </StackPanel>
                     <TextBlock Text="你的文件只在本机处理、从不上传；更新相关的少量记录与安装包只留在本机。检查更新需要联网读取版本号，也不发送任何本机信息。" FontSize="10.5"
                                LineHeight="17" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                    <!-- 检查更新：本应用唯一的联网入口，放在联网说明与版本号之间（原在状态栏右侧） -->
+                    <Button Classes="nav nav-action" Margin="-6,2,-6,0" Padding="6,7" HorizontalAlignment="Stretch"
+                            Click="OnCheckUpdateClick" AutomationProperties.Name="检查更新">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"
+                                  Data="M 13.5,8 A 5.5,5.5 0 1 1 12.21,4.46 M 12.21,1.9 L 12.21,4.46 L 9.65,4.46"
+                                  Stroke="{StaticResource InkSoftBrush}" StrokeThickness="1.3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" />
+                            <TextBlock Text="检查更新" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                     <TextBlock Text="{Binding VersionText}" FontFamily="{StaticResource MonoFont}" FontSize="9"
                                LetterSpacing="1.2" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
                 </StackPanel>
@@ -418,96 +429,81 @@
                                        Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
                         </Grid>
 
-                        <Border Classes="app-card pinned" Classes.expanded="{Binding GradeStripCard.IsDescriptionExpanded}"
-                                BorderThickness="1" CornerRadius="12" Padding="26,24" ClipToBounds="True"
+                        <!-- 分晓 · GradeStrip：与其他常备卡同一套行卡；原大卡上的成绩条预览与「项目详情」收进点开后的说明区 -->
+                        <Border Classes="app-card" Classes.expanded="{Binding GradeStripCard.IsDescriptionExpanded}"
+                                BorderThickness="1" CornerRadius="10" Padding="18,14"
                                 IsVisible="{Binding IsGradeStripVisible}" Focusable="True" Cursor="Hand"
                                 Tag="{Binding GradeStripCard}"
                                 PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
                                 AutomationProperties.Name="{Binding GradeStripCard.DescriptionAccessibleName}"
                                 ToolTip.Tip="{Binding GradeStripCard.DescriptionToggleLabel}">
                             <StackPanel Spacing="0">
-                            <Grid ColumnDefinitions="*,372" ColumnSpacing="34">
-                                <Border Grid.Column="0" Width="2" CornerRadius="1"
-                                        Background="{StaticResource AccentBrush}"
-                                        HorizontalAlignment="Left" VerticalAlignment="Top"
-                                        Height="44" Margin="-26,2,0,0" />
+                            <Grid ColumnDefinitions="46,*,Auto,Auto" ColumnSpacing="14">
+                                <Border Grid.Column="0" Width="44" Height="44" CornerRadius="7"
+                                        Background="#FCFAF4" BorderBrush="#E3DDCE" BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <!-- 分晓图标的缩小版：三条成绩条 + 陶土色裁切线 -->
+                                    <Canvas Width="30" Height="30">
+                                        <Rectangle Canvas.Left="2" Canvas.Top="5.5" Width="26" Height="4.5"
+                                                   RadiusX="1" RadiusY="1" Fill="#141413" />
+                                        <Rectangle Canvas.Left="2" Canvas.Top="13" Width="26" Height="6"
+                                                   RadiusX="1" RadiusY="1" Fill="#E7E3D8" />
+                                        <Rectangle Canvas.Left="3" Canvas.Top="13.75" Width="14" Height="4.5"
+                                                   RadiusX="1" RadiusY="1" Fill="#3D3B36" />
+                                        <Rectangle Canvas.Left="2" Canvas.Top="22" Width="26" Height="4.5"
+                                                   RadiusX="1" RadiusY="1" Fill="#85806F" />
+                                        <Line StartPoint="19.5,3" EndPoint="19.5,29" Stroke="#D97757"
+                                              StrokeThickness="1.4" StrokeLineCap="Round" />
+                                        <Ellipse Canvas.Left="18" Canvas.Top="1" Width="3" Height="3" Fill="#D97757" />
+                                    </Canvas>
+                                </Border>
 
-                                <StackPanel Grid.Column="0" Margin="8,0,0,0">
-                                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
-                                        <Viewbox Width="26" Height="26">
-                                            <Canvas Width="120" Height="120">
-                                                <Rectangle Canvas.Left="10" Canvas.Top="10" Width="100" Height="100"
-                                                           RadiusX="24" RadiusY="24" Fill="#FAF9F5"
-                                                           Stroke="#E7E3D8" StrokeThickness="3" />
-                                                <Rectangle Canvas.Left="26" Canvas.Top="32" Width="68" Height="12"
-                                                           RadiusX="3" RadiusY="3" Fill="#141413" />
-                                                <Rectangle Canvas.Left="26" Canvas.Top="52" Width="68" Height="16"
-                                                           RadiusX="3" RadiusY="3" Fill="#E7E3D8" />
-                                                <Rectangle Canvas.Left="28" Canvas.Top="54" Width="38" Height="12"
-                                                           RadiusX="2" RadiusY="2" Fill="#3D3B36" />
-                                                <Rectangle Canvas.Left="26" Canvas.Top="76" Width="68" Height="12"
-                                                           RadiusX="3" RadiusY="3" Fill="#85806F" />
-                                                <Line StartPoint="72,24" EndPoint="72,96" Stroke="#D97757"
-                                                      StrokeThickness="3.5" StrokeLineCap="Round" />
-                                                <Ellipse Canvas.Left="68.5" Canvas.Top="20.5" Width="7" Height="7"
-                                                         Fill="#D97757" />
-                                            </Canvas>
-                                        </Viewbox>
-                                        <TextBlock Text="GRADESTRIP / 分晓" FontFamily="{StaticResource MonoFont}"
-                                                   FontSize="9" LetterSpacing="2.2"
-                                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                                    </StackPanel>
-
+                                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="GRADESTRIP / 分晓" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                               LetterSpacing="2.2" Foreground="{StaticResource MutedBrush}" />
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="分晓" FontFamily="{StaticResource SerifFont}" FontSize="30"
-                                                   LetterSpacing="0" Foreground="{StaticResource InkBrush}" />
-                                        <TextBlock Text="· GradeStrip" FontFamily="{StaticResource SerifFont}" FontSize="18"
-                                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+                                        <TextBlock Text="分晓" FontFamily="{StaticResource SerifFont}" FontSize="21" LetterSpacing="0.2" Foreground="{StaticResource InkBrush}" />
+                                        <TextBlock Text="· GradeStrip" FontFamily="{StaticResource SerifFont}" FontSize="14"
+                                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Bottom" Margin="0,0,0,2" />
                                     </StackPanel>
-
-                                    <TextBlock Text="把智学网导出的成绩总表，变成一叠可以裁开的成绩条。多考进退、学科诊断、学生画像，都在同一张纸上。"
-                                               FontSize="12.5" LineHeight="23" TextWrapping="Wrap"
-                                               Foreground="{StaticResource InkSoftBrush}" Margin="0,8,0,14"
-                                               MaxWidth="430" HorizontalAlignment="Left" />
-
-                                    <WrapPanel Margin="0,0,0,16">
-                                        <Border Classes="chip" Margin="0,0,6,0"><TextBlock Text="成绩条导出" FontSize="10.5" Foreground="#6B6557" /></Border>
-                                        <Border Classes="chip" Margin="0,0,6,0"><TextBlock Text="多考对比" FontSize="10.5" Foreground="#6B6557" /></Border>
-                                        <Border Classes="chip" Margin="0,0,6,0"><TextBlock Text="学科诊断" FontSize="10.5" Foreground="#6B6557" /></Border>
-                                        <Border Classes="chip"><TextBlock Text="学生画像" FontSize="10.5" Foreground="#6B6557" /></Border>
-                                    </WrapPanel>
-
-                                    <Grid ColumnDefinitions="Auto,*,Auto">
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
-                                                    VerticalAlignment="Center">
-                                            <Ellipse Width="6" Height="6" Fill="{StaticResource MossBrush}"
-                                                     VerticalAlignment="Center" />
-                                            <TextBlock Text="已就绪" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
-                                                       LetterSpacing="0.8" Foreground="{StaticResource MossBrush}" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                                            <Button Classes="ghost" Content="项目详情" Click="OnOpenProject" />
-                                            <Button Classes="primary" Content="打开应用" Click="OnLaunchGradeStrip" />
-                                        </StackPanel>
-                                    </Grid>
+                                    <TextBlock Text="把智学网导出的成绩总表，变成一叠可以裁开的成绩条。"
+                                               FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+                                               TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
 
-                                <ContentControl Grid.Column="1" VerticalAlignment="Center">
-                                    <controls:StripPreview />
-                                </ContentControl>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                        <Ellipse Width="5" Height="5" Fill="{StaticResource MossBrush}" />
+                                        <TextBlock Text="已就绪" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                                   Foreground="{StaticResource MossBrush}" />
+                                    </StackPanel>
+                                    <Button Classes="primary" Content="打开应用" Click="OnLaunchGradeStrip" />
+                                </StackPanel>
+
+                                <Path Grid.Column="3" Classes="tool-chevron"
+                                      Classes.expanded="{Binding GradeStripCard.IsDescriptionExpanded}"
+                                      Data="M 1 1 L 6 6 L 11 1"
+                                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Width="12" Height="7" VerticalAlignment="Center"
+                                      IsHitTestVisible="False" />
                             </Grid>
 
-                            <!-- 说明区右侧留出与 372px 预览图同宽的空白，让展开后的正文与上面的
-                                 标题 / 简介左边界对齐，不被预览图压成窄条 -->
+                            <!-- 说明区：左边是与其他卡同源的说明（ToolDescriptionCatalog），右边是原大卡的成绩条预览 -->
                             <controls:ExpandReveal IsExpanded="{Binding GradeStripCard.IsDescriptionExpanded}"
                                                    Duration="0:0:0.26">
-                                <StackPanel Margin="8,20,406,0">
+                                <StackPanel Margin="0,15,0,0">
                                     <Border Height="1" Background="{StaticResource LineBrush}"
-                                            Margin="-8,0,0,16" />
-                                    <views:ToolDescriptionView DataContext="{Binding GradeStripCard.Detail}" />
-                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
-                                            HorizontalAlignment="Left" Margin="0,14,0,0"
-                                            Click="OnCollapseAppDescription" Tag="{Binding GradeStripCard}" />
+                                            Margin="0,0,0,14" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="28">
+                                        <views:ToolDescriptionView DataContext="{Binding GradeStripCard.Detail}" />
+                                        <controls:StripPreview Grid.Column="1" VerticalAlignment="Top" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,14,0,0">
+                                        <Button Classes="link" Content="收起说明" FontSize="11.5" VerticalAlignment="Center"
+                                                Click="OnCollapseAppDescription" Tag="{Binding GradeStripCard}" />
+                                        <Button Grid.Column="2" Classes="ghost" Content="项目详情" Click="OnOpenProject" />
+                                    </Grid>
                                 </StackPanel>
                             </controls:ExpandReveal>
                             </StackPanel>
@@ -938,9 +934,6 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
                                 VerticalAlignment="Center">
-                        <Button Content="检查更新" Classes="link"
-                                AutomationProperties.Name="检查更新"
-                                Click="OnCheckUpdateClick" />
                         <TextBlock Text="{Binding VersionLine}"
                                    FontFamily="{StaticResource MonoFont}" FontSize="9" LetterSpacing="1.2"
                                    Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
