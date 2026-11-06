@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
+using SeatGrid.App;
 using SeatGrid.Core.Export;
 using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
@@ -260,6 +261,32 @@ public sealed class SeatGridTests : IDisposable
         // 学生视角第一排在最上：向上一格绕回到最后一排。
         var studentUp = SeatChartComposer.ShiftOnScreen(seated, layout, ViewMode.Student, 0, -1);
         Assert.Equal(new SeatPosition(0, 1, 0), studentUp.Single().Key);
+    }
+
+    [Fact]
+    public void ApplyConfig_RefreshesViewButtonsAndLayoutLabels()
+    {
+        // 导入配置时座位重建被挂起，但视角按钮与滑块旁的数值必须照常收到通知，否则界面停在旧值。
+        var vm = new SeatGridViewModel();
+        var raised = new HashSet<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        var settings = new SeatChartSettings
+        {
+            View = ViewMode.Student, Groups = 3, Rows = 5, Columns = 3, CellScalePercent = 120,
+        };
+        vm.ApplyConfig(new SeatGridConfig(settings, new List<Student>(), new Dictionary<SeatPosition, Student>(), new List<string>()));
+
+        Assert.False(vm.IsTeacherView);
+        foreach (var name in new[]
+                 {
+                     nameof(SeatGridViewModel.IsTeacherView), nameof(SeatGridViewModel.GroupCountLabel),
+                     nameof(SeatGridViewModel.RowCountLabel), nameof(SeatGridViewModel.ColumnCountLabel),
+                     nameof(SeatGridViewModel.CellSizeLabel),
+                 })
+            Assert.Contains(name, raised);
+        Assert.Equal("3", vm.GroupCountLabel);
+        Assert.Equal("96 × 96px", vm.CellSizeLabel);
     }
 
     /// <summary>把文档按屏幕摆放展开成「行 × 列」的物理坐标矩阵（各组从左到右拼接）。</summary>

@@ -260,10 +260,12 @@ public partial class SeatGridViewModel : ObservableObject
         }
     }
 
+    // 派生属性的通知放在 _suppressRebuild 判断之前：导入配置时只挂起重建，
+    // 视角按钮与滑块旁的数值仍要刷新，否则界面会停在导入前的旧值。
     partial void OnGroupCountChanged(double value)
     {
-        if (_suppressRebuild) return;
         OnPropertyChanged(nameof(GroupCountLabel));
+        if (_suppressRebuild) return;
         if (_interactiveLayoutEdit)
         {
             QueueInteractiveRefresh(structure: true);
@@ -275,8 +277,8 @@ public partial class SeatGridViewModel : ObservableObject
 
     partial void OnRowCountChanged(double value)
     {
-        if (_suppressRebuild) return;
         OnPropertyChanged(nameof(RowCountLabel));
+        if (_suppressRebuild) return;
         if (_interactiveLayoutEdit)
         {
             QueueInteractiveRefresh(structure: true);
@@ -288,8 +290,8 @@ public partial class SeatGridViewModel : ObservableObject
 
     partial void OnColumnCountChanged(double value)
     {
-        if (_suppressRebuild) return;
         OnPropertyChanged(nameof(ColumnCountLabel));
+        if (_suppressRebuild) return;
         if (_interactiveLayoutEdit)
         {
             QueueInteractiveRefresh(structure: true);
@@ -301,17 +303,17 @@ public partial class SeatGridViewModel : ObservableObject
 
     partial void OnIsStudentViewChanged(bool value)
     {
-        if (_suppressRebuild) return;
         OnPropertyChanged(nameof(IsTeacherView));
         OnPropertyChanged(nameof(PodiumOnTop));
         OnPropertyChanged(nameof(PodiumOnBottom));
+        if (_suppressRebuild) return;
         BuildGrid();
     }
 
     partial void OnCellScaleChanged(double value)
     {
-        if (_suppressRebuild) return;
         OnPropertyChanged(nameof(CellSizeLabel));
+        if (_suppressRebuild) return;
         if (_interactiveLayoutEdit)
         {
             QueueInteractiveRefresh(structure: false);
