@@ -225,6 +225,53 @@ public sealed class SeatGridTests : IDisposable
     }
 
     [Fact]
+    public void Composer_StudentViewIsTeacherViewRotated180()
+    {
+        // 每组 2 列才能暴露同桌左右：只倒组序、不倒组内列序时，学生视角里同桌会左右对调。
+        var settings = new SeatChartSettings { Groups = 3, Rows = 2, Columns = 2, View = ViewMode.Teacher };
+        var empty = new Dictionary<SeatPosition, Student>();
+
+        var teacher = ScreenGrid(SeatChartComposer.Compose(settings, empty, 0));
+        settings.View = ViewMode.Student;
+        var student = ScreenGrid(SeatChartComposer.Compose(settings, empty, 0));
+
+        var rows = teacher.Count;
+        var columns = teacher[0].Count;
+        for (var r = 0; r < rows; r++)
+            for (var c = 0; c < columns; c++)
+                Assert.Equal(teacher[rows - 1 - r][columns - 1 - c], student[r][c]);
+    }
+
+    [Fact]
+    public void ShiftOnScreen_FollowsScreenDirectionInBothViews()
+    {
+        var layout = new SeatChartLayout(2, 2, 2);
+        var start = new SeatPosition(0, 0, 0);
+        var seated = new Dictionary<SeatPosition, string> { [start] = "甲" };
+
+        // 教师视角第 1 组在最左：(0,0,0) 是第一排最左的座位，向右一格是同桌 (0,0,1)。
+        var teacherRight = SeatChartComposer.ShiftOnScreen(seated, layout, ViewMode.Teacher, 1, 0);
+        Assert.Equal(new SeatPosition(0, 0, 1), teacherRight.Single().Key);
+
+        // 学生视角整体旋转 180°：同一座位落在第一排最右，向左一格才是同桌 (0,0,1)。
+        var studentLeft = SeatChartComposer.ShiftOnScreen(seated, layout, ViewMode.Student, -1, 0);
+        Assert.Equal(new SeatPosition(0, 0, 1), studentLeft.Single().Key);
+
+        // 学生视角第一排在最上：向上一格绕回到最后一排。
+        var studentUp = SeatChartComposer.ShiftOnScreen(seated, layout, ViewMode.Student, 0, -1);
+        Assert.Equal(new SeatPosition(0, 1, 0), studentUp.Single().Key);
+    }
+
+    /// <summary>把文档按屏幕摆放展开成「行 × 列」的物理坐标矩阵（各组从左到右拼接）。</summary>
+    private static List<List<SeatPosition>> ScreenGrid(SeatChartDocument document)
+    {
+        var rows = document.Groups[0].Rows.Count;
+        return Enumerable.Range(0, rows)
+            .Select(r => document.Groups.SelectMany(g => g.Rows[r].Seats.Select(s => s.Position)).ToList())
+            .ToList();
+    }
+
+    [Fact]
     public void Exports_ProducePngPdfAndExcel()
     {
         var settings = new SeatChartSettings

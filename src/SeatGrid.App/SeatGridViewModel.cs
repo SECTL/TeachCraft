@@ -181,6 +181,8 @@ public partial class SeatGridViewModel : ObservableObject
         Math.Clamp((int)Math.Round(RowCount), 1, 10),
         Math.Clamp((int)Math.Round(ColumnCount), 1, 4));
 
+    private ViewMode CurrentView => IsStudentView ? ViewMode.Student : ViewMode.Teacher;
+
     private int CellSizeValue => Math.Max(40, (int)Math.Round(SeatChartSettings.BaseCellSize * (CellScale / 100.0)));
 
     private int FontSizeValue => Math.Clamp((int)Math.Round(NameFontSize), 10, 36);
@@ -464,23 +466,18 @@ public partial class SeatGridViewModel : ObservableObject
         _seats.Clear();
         Groups.Clear();
 
-        var teacher = !IsStudentView;
-        var groupNumbers = teacher
-            ? Enumerable.Range(0, layout.Groups)
-            : Enumerable.Range(0, layout.Groups).Reverse();
+        // 摆放顺序与导出共用 SeatChartComposer：学生视角是教师视角整体旋转 180°，组内列序也要反转。
+        var columnNumbers = SeatChartComposer.ColumnOrder(layout, CurrentView);
+        var rowNumbers = SeatChartComposer.RowOrder(layout, CurrentView);
 
-        var rowNumbers = teacher
-            ? Enumerable.Range(0, layout.Rows).Reverse()
-            : Enumerable.Range(0, layout.Rows);
-
-        foreach (var group in groupNumbers)
+        foreach (var group in SeatChartComposer.GroupOrder(layout, CurrentView))
         {
             var rows = new List<RowViewModel>();
 
             foreach (var row in rowNumbers)
             {
                 var seats = new List<SeatCellViewModel>();
-                for (var column = 0; column < layout.Columns; column++)
+                foreach (var column in columnNumbers)
                 {
                     var seat = new SeatCellViewModel(new SeatPosition(group, row, column));
                     _seats[seat.Position] = seat;
@@ -491,7 +488,7 @@ public partial class SeatGridViewModel : ObservableObject
             }
 
             var columnHandles = new List<ColumnHandleViewModel>();
-            for (var column = 0; column < layout.Columns; column++)
+            foreach (var column in columnNumbers)
                 columnHandles.Add(new ColumnHandleViewModel(group, column));
 
             Groups.Add(new GroupViewModel(group + 1, $"第{group + 1}组", rows, columnHandles));
@@ -742,29 +739,8 @@ public partial class SeatGridViewModel : ObservableObject
             return;
         }
 
-        var layout = CurrentLayout;
-        var width = layout.Groups * layout.Columns;
-        var shifted = new Dictionary<SeatPosition, StudentViewModel>(_assignments.Count);
-
-        foreach (var (position, student) in _assignments)
-        {
-            // 教师视角第 1 组在最左、第一排靠下；学生视角整体旋转 180°。平移按屏幕方向换算。
-            var displayColumn = IsStudentView
-                ? (layout.Groups - 1 - position.Group) * layout.Columns + position.Column
-                : position.Group * layout.Columns + position.Column;
-            var displayRow = IsStudentView ? position.Row : layout.Rows - 1 - position.Row;
-
-            displayColumn = ((displayColumn + dx) % width + width) % width;
-            displayRow = ((displayRow + dy) % layout.Rows + layout.Rows) % layout.Rows;
-
-            var group = IsStudentView
-                ? layout.Groups - 1 - displayColumn / layout.Columns
-                : displayColumn / layout.Columns;
-            var column = displayColumn % layout.Columns;
-            var row = IsStudentView ? displayRow : layout.Rows - 1 - displayRow;
-
-            shifted[new SeatPosition(group, row, column)] = student;
-        }
+        // 方向按屏幕换算，与 BuildGrid / 导出共用同一份摆放顺序。
+        var shifted = SeatChartComposer.ShiftOnScreen(_assignments, CurrentLayout, CurrentView, dx, dy);
 
         _assignments.Clear();
         foreach (var (position, student) in shifted)
@@ -948,7 +924,7 @@ public partial class SeatGridViewModel : ObservableObject
         BoldTitle = BoldTitle,
         HeadTeacher = HeadTeacher,
         Monitor = Monitor,
-        View = IsStudentView ? ViewMode.Student : ViewMode.Teacher,
+        View = CurrentView,
         Groups = Math.Clamp((int)Math.Round(GroupCount), 1, 8),
         Rows = Math.Clamp((int)Math.Round(RowCount), 1, 10),
         Columns = Math.Clamp((int)Math.Round(ColumnCount), 1, 4),
