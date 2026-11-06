@@ -208,6 +208,7 @@ public static class RosterImporter
     private static ColumnMap MapHeader(string?[] row, int rowIndex)
     {
         var map = new ColumnMap { HeaderRow = rowIndex };
+        var indexColumn = -1;
 
         for (var column = 0; column < row.Length; column++)
         {
@@ -228,10 +229,17 @@ public static class RosterImporter
                 continue;
             }
 
-            if (map.Number < 0 && (header.Contains("学号") || header.Contains("编号") || header.Contains("考号") || header == "序号"))
+            if (map.Number < 0 && (header.Contains("学号") || header.Contains("编号") || header.Contains("考号")))
             {
                 map.Number = column;
                 map.Matched++;
+                continue;
+            }
+
+            // 「序号」只在没有学号列时兜底：很多花名册与软件导出的名单页都是序号在学号前面。
+            if (header == "序号")
+            {
+                if (indexColumn < 0) indexColumn = column;
                 continue;
             }
 
@@ -268,6 +276,12 @@ public static class RosterImporter
                 map.Group = column;
                 map.Matched++;
             }
+        }
+
+        if (map.Number < 0 && indexColumn >= 0)
+        {
+            map.Number = indexColumn;
+            map.Matched++;
         }
 
         return map;
@@ -309,18 +323,22 @@ public static class RosterImporter
         }
 
         var firstRow = sample.FirstOrDefault();
+        var indexColumn = -1;
         for (var column = 0; column < columnCount; column++)
         {
             var header = NormalizeHeader(firstRow is null ? null : Get(firstRow, column));
             if (header.Length == 0) continue;
 
-            if (map.Number < 0 && (header.Contains("学号") || header.Contains("编号") || header == "序号")) map.Number = column;
+            if (map.Number < 0 && (header.Contains("学号") || header.Contains("编号"))) map.Number = column;
+            else if (header == "序号") { if (indexColumn < 0) indexColumn = column; }
             else if (map.Height < 0 && header.Contains("身高")) map.Height = column;
             else if (map.Vision < 0 && header.Contains("视力")) map.Vision = column;
             else if (map.Score < 0 && (header.Contains("总分") || header.Contains("成绩"))) map.Score = column;
             else if (map.Notes < 0 && header.Contains("备注")) map.Notes = column;
             else if (map.Group < 0 && header.Contains("组")) map.Group = column;
         }
+
+        if (map.Number < 0) map.Number = indexColumn;
 
         return map;
     }

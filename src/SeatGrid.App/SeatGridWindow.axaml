@@ -630,6 +630,9 @@
                                 <TextBlock Text="导入 Excel / CSV 名单，软件会自动识别姓名、性别、身高与视力。"
                                            FontSize="11.5" Foreground="{StaticResource MutedBrush}"
                                            HorizontalAlignment="Center" />
+                                <TextBlock Text="之前「导出 Excel」的座位表也能直接导入，接着修改。"
+                                           FontSize="11" Foreground="{StaticResource MutedBrush}"
+                                           HorizontalAlignment="Center" Margin="0,-4,0,0" />
                                 <Button Classes="primary" Content="导入名单" Click="OnImportRoster"
                                         HorizontalAlignment="Center" />
                             </StackPanel>
@@ -902,7 +905,7 @@
                                             Click="OnImportConfig" IsEnabled="{Binding IsIdle}" />
                                 </Grid>
                                 <StackPanel Spacing="2">
-                                    <TextBlock Classes="helper" Text="配置文件包含座位设置、名单与座位位置；导入会覆盖当前状态。" />
+                                    <TextBlock Classes="helper" Text="配置文件包含座位设置、名单与座位位置；「导出 Excel」的座位表同样能导回。导入会覆盖当前状态。" />
                                     <TextBlock Classes="helper" Foreground="{StaticResource AccentDeepBrush}"
                                                Text="请勿修改导出的配置表格结构，否则可能无法导入。" />
                                 </StackPanel>

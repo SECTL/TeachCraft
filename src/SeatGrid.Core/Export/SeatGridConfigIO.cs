@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using SeatGrid.Core.Models;
 
@@ -16,11 +17,16 @@ public sealed record SeatGridConfig(
 
 /// <summary>
 /// 「导出配置 / 导入配置」使用的 xlsx：设置项 + 名单 + 座位。
-/// 第一张表固定带有 SeatGrid Config v1 标记，改结构时要同步升级标记。
+/// 「座位设置」表 A1 固定带有 SeatGrid Config v1 标记，改结构时要同步升级标记。
+/// 「导出 Excel」的座位表也附一张隐藏的「座位设置」，因此同样能导回继续修改；
+/// 没有这张表的旧版座位表，按名单页的组 / 排 / 列还原座位并推算布局。
 /// </summary>
 public static class SeatGridConfigIO
 {
     private const string Marker = "SeatGrid Config v1";
+    internal const string SettingsSheetName = "座位设置";
+    internal const string RosterSheetName = "名单";
+    internal const string ChartSheetName = "座位表";
 
     public static void Export(
         string path,
@@ -28,11 +34,23 @@ public static class SeatGridConfigIO
         IReadOnlyList<Student> students,
         IReadOnlyDictionary<SeatPosition, Student> assignments)
     {
+        using var workbook = new XLWorkbook();
+        WriteSettingsSheet(workbook, settings);
+        WriteRosterSheet(workbook, students, assignments, withIndex: false);
+
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+        workbook.SaveAs(path);
+    }
+
+    /// <summary>写「座位设置」表（A1 为版本标记）。座位表导出也调用它，并把它隐藏起来。</summary>
+    internal static IXLWorksheet WriteSettingsSheet(XLWorkbook workbook, SeatChartSettings settings)
+    {
         var source = settings.Clone();
         source.Normalize();
 
-        using var workbook = new XLWorkbook();
-        var sheet = workbook.Worksheets.Add("座位设置");
+        var sheet = workbook.Worksheets.Add(SettingsSheetName);
 
         sheet.Range(1, 1, 1, 2).Merge();
         var markerCell = sheet.Cell(1, 1);
@@ -93,12 +111,22 @@ public static class SeatGridConfigIO
 
         sheet.Column(1).Width = 26;
         sheet.Column(2).Width = 34;
+        return sheet;
+    }
 
-        var roster = workbook.Worksheets.Add("名单");
-        var headers = new[]
-        {
-            "姓名", "性别", "学号", "身高", "视力", "成绩", "原小组", "备注", "组", "排", "列",
-        };
+    /// <summary>
+    /// 写「名单」表，组 / 排 / 列为 1 基物理座位；未排座的学生这三列留空。
+    /// 座位表导出加 withIndex，在最前多一列「序号」方便打印核对。
+    /// </summary>
+    internal static void WriteRosterSheet(
+        XLWorkbook workbook,
+        IReadOnlyList<Student> students,
+        IReadOnlyDictionary<SeatPosition, Student> assignments,
+        bool withIndex)
+    {
+        var roster = workbook.Worksheets.Add(RosterSheetName);
+        var fields = new[] { "姓名", "性别", "学号", "身高", "视力", "成绩", "原小组", "备注", "组", "排", "列" };
+        var headers = withIndex ? fields.Prepend("序号").ToArray() : fields;
 
         for (var i = 0; i < headers.Length; i++)
         {
@@ -116,32 +144,31 @@ public static class SeatGridConfigIO
             .GroupBy(pair => pair.Value.Id)
             .ToDictionary(g => g.Key, g => g.First().Key);
 
+        var offset = withIndex ? 1 : 0;
         for (var index = 0; index < students.Count; index++)
         {
             var student = students[index];
             var rowIndex = index + 2;
-            seatLookup.TryGetValue(student.Id, out var seat);
+            var seated = seatLookup.TryGetValue(student.Id, out var seat);
+            void Set(int field, XLCellValue value) => roster.Cell(rowIndex, field + offset).Value = value;
 
-            roster.Cell(rowIndex, 1).Value = student.Name;
-            roster.Cell(rowIndex, 2).Value = student.GenderLabel;
-            roster.Cell(rowIndex, 3).Value = student.Number;
-            roster.Cell(rowIndex, 4).Value = student.Height is null ? string.Empty : student.Height.Value.ToString("0.#");
-            roster.Cell(rowIndex, 5).Value = student.Vision is null ? string.Empty : student.Vision.Value.ToString("0.0");
-            roster.Cell(rowIndex, 6).Value = student.Score is null ? string.Empty : student.Score.Value.ToString("0.##");
-            roster.Cell(rowIndex, 7).Value = student.OriginalGroup;
-            roster.Cell(rowIndex, 8).Value = student.Notes;
-            roster.Cell(rowIndex, 9).Value = seat.Group >= 0 ? seat.Group + 1 : string.Empty;
-            roster.Cell(rowIndex, 10).Value = seat.Row >= 0 ? seat.Row + 1 : string.Empty;
-            roster.Cell(rowIndex, 11).Value = seat.Column >= 0 ? seat.Column + 1 : string.Empty;
+            if (withIndex) roster.Cell(rowIndex, 1).Value = index + 1;
+            Set(1, student.Name);
+            Set(2, student.GenderLabel);
+            Set(3, student.Number);
+            Set(4, student.Height is null ? string.Empty : student.Height.Value.ToString("0.#"));
+            Set(5, student.Vision is null ? string.Empty : student.Vision.Value.ToString("0.0"));
+            Set(6, student.Score is null ? string.Empty : student.Score.Value.ToString("0.##"));
+            Set(7, student.OriginalGroup);
+            Set(8, student.Notes);
+            // TryGetValue 失败时 seat 是 (0,0,0)：直接写会把未排座的学生写成「1 组 1 排 1 列」。
+            Set(9, seated ? seat.Group + 1 : string.Empty);
+            Set(10, seated ? seat.Row + 1 : string.Empty);
+            Set(11, seated ? seat.Column + 1 : string.Empty);
         }
 
         roster.Columns().AdjustToContents();
         roster.SheetView.FreezeRows(1);
-
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-
-        workbook.SaveAs(path);
     }
 
     public static SeatGridConfig Import(string path)
@@ -150,16 +177,62 @@ public static class SeatGridConfigIO
             throw new SeatGridException("找不到配置文件，请重新选择。");
 
         using var workbook = new XLWorkbook(path);
-        var sheet = workbook.Worksheets.FirstOrDefault(w => w.Name == "座位设置")
+        return ReadWorkbook(workbook)
+               ?? throw new SeatGridException("这不是「归位」导出的配置文件或座位表，请选择正确的 xlsx。");
+    }
+
+    /// <summary>
+    /// 「导入名单」先用它探一下：是本软件导出的配置或座位表就整体还原（名单 + 座位 + 设置），
+    /// 否则返回 null，交给普通名单识别。打不开的文件也返回 null，由名单识别给出具体错误。
+    /// </summary>
+    public static SeatGridConfig? TryImport(string path)
+    {
+        if (!File.Exists(path) ||
+            !string.Equals(Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        XLWorkbook workbook;
+        try
+        {
+            workbook = new XLWorkbook(path);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
+        using (workbook)
+            return ReadWorkbook(workbook);
+    }
+
+    private static SeatGridConfig? ReadWorkbook(XLWorkbook workbook)
+    {
+        var sheet = workbook.Worksheets.FirstOrDefault(w => w.Name == SettingsSheetName)
                     ?? workbook.Worksheets.FirstOrDefault();
+        if (sheet is null) return null;
 
-        if (sheet is null)
-            throw new SeatGridException("配置文件里没有可读取的工作表。");
+        var warnings = new List<string>();
+        if (HasMarker(sheet))
+        {
+            var settings = ReadSettings(sheet);
+            var (students, assignments) = ReadRoster(workbook, settings.GetLayout(), warnings, accept: null);
+            return new SeatGridConfig(settings, students, assignments, warnings);
+        }
 
-        var marker = sheet.Cell(1, 1).GetFormattedString().Trim();
-        if (!string.Equals(marker, Marker, StringComparison.OrdinalIgnoreCase))
-            throw new SeatGridException("这不是「归位」导出的配置文件，请选择正确的 xlsx。");
+        if (InferLegacyChartSettings(workbook, warnings) is { } legacy)
+        {
+            var (students, assignments) = ReadRoster(workbook, legacy.Settings.GetLayout(), warnings, legacy.Accept);
+            return new SeatGridConfig(legacy.Settings, students, assignments, warnings);
+        }
 
+        return null;
+    }
+
+    private static bool HasMarker(IXLWorksheet sheet) =>
+        string.Equals(sheet.Cell(1, 1).GetFormattedString().Trim(), Marker, StringComparison.OrdinalIgnoreCase);
+
+    private static SeatChartSettings ReadSettings(IXLWorksheet sheet)
+    {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
 
@@ -201,13 +274,20 @@ public static class SeatGridConfigIO
             FemaleMark = Get(values, "FemaleMark", "#C6613F"),
         };
         settings.Normalize();
+        return settings;
+    }
 
+    /// <summary>
+    /// 读「名单」表与座位。accept 用来过滤可疑座位：旧版导出把未排座的学生写成 1 组 1 排 1 列，
+    /// 被 accept 拒掉的座位按未排座处理、不报警告。
+    /// </summary>
+    private static (List<Student> Students, Dictionary<SeatPosition, Student> Assignments) ReadRoster(
+        XLWorkbook workbook, SeatChartLayout layout, List<string> warnings, Func<string, SeatPosition, bool>? accept)
+    {
         var students = new List<Student>();
         var assignments = new Dictionary<SeatPosition, Student>();
-        var warnings = new List<string>();
-        var layout = settings.GetLayout();
 
-        var roster = workbook.Worksheets.FirstOrDefault(w => w.Name == "名单");
+        var roster = workbook.Worksheets.FirstOrDefault(w => w.Name == RosterSheetName);
         if (roster is not null)
         {
             var rosterLastRow = roster.LastRowUsed()?.RowNumber() ?? 0;
@@ -241,6 +321,7 @@ public static class SeatGridConfigIO
                 if (group is null || seatRow is null || column is null) continue;
 
                 var position = new SeatPosition((int)group.Value - 1, (int)seatRow.Value - 1, (int)column.Value - 1);
+                if (accept is not null && !accept(name, position)) continue;
                 if (!layout.Contains(position))
                 {
                     warnings.Add($"{name} 的座位（{position}）超出了当前布局，已保留为未安排。");
@@ -257,7 +338,71 @@ public static class SeatGridConfigIO
             }
         }
 
-        return new SeatGridConfig(settings, students, assignments, warnings);
+        return (students, assignments);
+    }
+
+    /// <summary>
+    /// 旧版「导出 Excel」没有「座位设置」表：认出座位表 + 带组 / 排 / 列的名单页，
+    /// 从座位表推算布局、视角、标题、班主任与班长。旧版没存配色与字号，这些用默认值并提示。
+    /// 返回的 Accept 只放行真的出现在座位表上的「1 组 1 排 1 列」，挡掉旧版把未排座写成 1/1/1 的学生。
+    /// </summary>
+    private static (SeatChartSettings Settings, Func<string, SeatPosition, bool> Accept)? InferLegacyChartSettings(
+        XLWorkbook workbook, List<string> warnings)
+    {
+        var chart = workbook.Worksheets.FirstOrDefault(w => w.Name == ChartSheetName);
+        var roster = workbook.Worksheets.FirstOrDefault(w => w.Name == RosterSheetName);
+        if (chart is null || roster is null) return null;
+
+        var columns = ReadRosterHeader(roster);
+        if (columns.Name < 0 || columns.Group < 0 || columns.Row < 0 || columns.Column < 0) return null;
+
+        var settings = new SeatChartSettings();
+        var title = chart.Cell(1, 1).GetFormattedString().Trim();
+        if (title.Length > 0) settings.Title = title;
+        settings.BoldTitle = chart.Cell(1, 1).Style.Font.Bold;
+        foreach (var part in chart.Cell(2, 1).GetFormattedString().Split('　', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (part.StartsWith("班主任：", StringComparison.Ordinal)) settings.HeadTeacher = part["班主任：".Length..].Trim();
+            else if (part.StartsWith("班长：", StringComparison.Ordinal)) settings.Monitor = part["班长：".Length..].Trim();
+        }
+
+        int? podiumRow = null;
+        var groupLabels = 0;
+        var rowLabels = 0;
+        var columnsPerGroup = 0;
+        var shown = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var cell in chart.CellsUsed().Where(c => c.Address.RowNumber >= 3))
+        {
+            var text = Normalize(cell.GetFormattedString());
+            if (text.Length == 0) continue;
+
+            if (text == "讲台") podiumRow = cell.Address.RowNumber;
+            else if (Regex.IsMatch(text, @"^第\d+组$"))
+            {
+                groupLabels++;
+                columnsPerGroup = Math.Max(columnsPerGroup, cell.IsMerged() ? cell.MergedRange().ColumnCount() : 1);
+            }
+            else if (Regex.IsMatch(text, @"^第\d+排$")) rowLabels++;
+            else shown.Add(text);
+        }
+
+        // 讲台在第 3 行（标题、信息行之后紧接着）即学生视角，否则在座位下方为教师视角。
+        settings.View = podiumRow == 3 ? ViewMode.Student : ViewMode.Teacher;
+        settings.ShowGroupRowHints = groupLabels > 0;
+
+        int Max(int column) => roster.RowsUsed().Skip(1)
+            .Select(r => (int)(Number(roster, r.RowNumber(), column) ?? 0)).DefaultIfEmpty(0).Max();
+        settings.Groups = Math.Max(groupLabels, Max(columns.Group));
+        settings.Rows = Math.Max(rowLabels, Max(columns.Row));
+        settings.Columns = Math.Max(columnsPerGroup, Max(columns.Column));
+        settings.Normalize();
+
+        warnings.Add("这是旧版导出的座位表：已按名单页还原座位；配色、字号与显示选项当时没有保存，已用默认值。");
+        if (groupLabels == 0)
+            warnings.Add("组数、排数与每组人数按名单推算：如果最后几排或最右的组原本是空座位，请在右侧面板补回。");
+
+        var origin = new SeatPosition(0, 0, 0);
+        return (settings, (name, position) => position != origin || shown.Contains(Normalize(name)));
     }
 
     private static RosterColumns ReadRosterHeader(IXLWorksheet sheet)

@@ -202,6 +202,91 @@ public sealed class SeatGridTests : IDisposable
     }
 
     [Fact]
+    public void Config_KeepsUnassignedStudentsUnseated()
+    {
+        // 未排座的学生曾被写成「1 组 1 排 1 列」：排在名单前面时会抢走真正坐在那里的同学。
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+        var waiting = new Student { Name = "王浩然", Gender = Gender.Male };
+        var seated = new Student { Name = "陈思远", Gender = Gender.Male };
+        var assignments = new Dictionary<SeatPosition, Student> { [new SeatPosition(0, 0, 0)] = seated };
+
+        var path = Path.Combine(_root, "unassigned.xlsx");
+        SeatGridConfigIO.Export(path, settings, new List<Student> { waiting, seated }, assignments);
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.Empty(imported.Warnings);
+        Assert.Equal("陈思远", Assert.Single(imported.Assignments).Value.Name);
+    }
+
+    [Fact]
+    public void RosterImporter_PrefersStudentNumberOverIndexColumn()
+    {
+        // 软件导出的名单页与很多花名册都是「序号」在「学号」前；序号只在没有学号列时兜底。
+        var both = WriteRoster("both.xlsx", new[] { "序号", "姓名", "性别", "学号" },
+            new[] { "1", "陈思远", "男", "2026001" }, new[] { "2", "李雨桐", "女", "2026002" });
+        Assert.Equal(new[] { "2026001", "2026002" }, RosterImporter.Import(both).Students.Select(s => s.Number));
+
+        var indexOnly = WriteRoster("index-only.xlsx", new[] { "序号", "姓名", "性别" },
+            new[] { "1", "陈思远", "男" }, new[] { "2", "李雨桐", "女" });
+        Assert.Equal(new[] { "1", "2" }, RosterImporter.Import(indexOnly).Students.Select(s => s.Number));
+    }
+
+    [Fact]
+    public void SeatChartExcel_ReimportsWithSettingsAndSeats()
+    {
+        // 「导出 Excel」带一张隐藏的设置表：导回后布局、配色、标题与座位都还原，未排座的同学仍未排座。
+        var (settings, students, assignments) = ChartFixture();
+        var path = Path.Combine(_root, "chart.xlsx");
+        SeatChartExcelExporter.ExportSeatChart(
+            SeatChartComposer.Compose(settings, assignments, students.Count), assignments, students, path);
+
+        using (var workbook = new XLWorkbook(path))
+        {
+            Assert.Equal("座位表", workbook.Worksheet(1).Name);
+            Assert.Equal(XLWorksheetVisibility.Hidden, workbook.Worksheet("座位设置").Visibility);
+        }
+
+        var imported = SeatGridConfigIO.Import(path);
+        Assert.Empty(imported.Warnings);
+        Assert.Equal(ViewMode.Student, imported.Settings.View);
+        Assert.Equal((4, 2, 2), (imported.Settings.Groups, imported.Settings.Rows, imported.Settings.Columns));
+        Assert.Equal("九年级六班座位表", imported.Settings.Title);
+        Assert.Equal("王老师", imported.Settings.HeadTeacher);
+        Assert.Equal("#FFF2CC", imported.Settings.SeatBackground);
+        Assert.Equal(students.Count, imported.Students.Count);
+        Assert.Equal("2026003", imported.Students[0].Number);
+        AssertSameSeats(assignments, imported);
+    }
+
+    [Fact]
+    public void SeatChartExcel_ReimportsOlderExportsFromRosterPage()
+    {
+        // 旧版导出没有隐藏设置表，未排座的同学还被写成「1 组 1 排 1 列」：按名单页的组 / 排 / 列还原座位，
+        // 布局按组 / 排标题推算，第 1 组第 1 排第 1 列只认座位表上真的出现过的那位同学。
+        var (settings, students, assignments) = ChartFixture();
+        var path = Path.Combine(_root, "legacy-chart.xlsx");
+        SeatChartExcelExporter.ExportSeatChart(
+            SeatChartComposer.Compose(settings, assignments, students.Count), assignments, students, path);
+        using (var workbook = new XLWorkbook(path))
+        {
+            workbook.Worksheet("座位设置").Delete();
+            var roster = workbook.Worksheet("名单");
+            var header = roster.Row(1).CellsUsed().ToDictionary(c => c.GetString(), c => c.Address.ColumnNumber);
+            var waiting = roster.RowsUsed().First(r => r.Cell(header["姓名"]).GetString() == "王浩然");
+            foreach (var key in new[] { "组", "排", "列" }) waiting.Cell(header[key]).Value = 1;
+            workbook.Save();
+        }
+
+        var imported = SeatGridConfigIO.Import(path);
+        Assert.Equal(ViewMode.Student, imported.Settings.View);
+        Assert.Equal((4, 2, 2), (imported.Settings.Groups, imported.Settings.Rows, imported.Settings.Columns));
+        Assert.Equal("九年级六班座位表", imported.Settings.Title);
+        Assert.Equal("王老师", imported.Settings.HeadTeacher);
+        Assert.Contains(imported.Warnings, w => w.Contains("旧版"));
+        AssertSameSeats(assignments, imported);
+    }
+
+    [Fact]
     public void Composer_StudentViewReversesGroupsAndRows()
     {
         var settings = new SeatChartSettings
@@ -287,6 +372,54 @@ public sealed class SeatGridTests : IDisposable
             Assert.Contains(name, raised);
         Assert.Equal("3", vm.GroupCountLabel);
         Assert.Equal("96 × 96px", vm.CellSizeLabel);
+    }
+
+    /// <summary>导出 / 导回用例共用：学生视角、4 组（第 4 组整组空着）、未排座的同学排在名单最前。</summary>
+    private static (SeatChartSettings Settings, List<Student> Students, Dictionary<SeatPosition, Student> Assignments) ChartFixture()
+    {
+        var settings = new SeatChartSettings
+        {
+            Title = "九年级六班座位表", HeadTeacher = "王老师", View = ViewMode.Student,
+            Groups = 4, Rows = 2, Columns = 2, SeatBackground = "#FFF2CC",
+        };
+        var students = new List<Student>
+        {
+            new() { Name = "王浩然", Gender = Gender.Male, Number = "2026003" },
+            new() { Name = "陈思远", Gender = Gender.Male, Number = "2026001" },
+            new() { Name = "李雨桐", Gender = Gender.Female, Number = "2026002" },
+            new() { Name = "张欣怡", Gender = Gender.Female, Number = "2026004" },
+            new() { Name = "刘子涵", Gender = Gender.Male, Number = "2026005" },
+        };
+        var assignments = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[1],
+            [new SeatPosition(0, 0, 1)] = students[2],
+            [new SeatPosition(1, 1, 0)] = students[3],
+            [new SeatPosition(2, 1, 1)] = students[4],
+        };
+        return (settings, students, assignments);
+    }
+
+    private static void AssertSameSeats(Dictionary<SeatPosition, Student> expected, SeatGridConfig imported)
+    {
+        static IEnumerable<(SeatPosition, string)> Ordered(IEnumerable<KeyValuePair<SeatPosition, Student>> seats) =>
+            seats.OrderBy(kv => kv.Key.Group).ThenBy(kv => kv.Key.Row).ThenBy(kv => kv.Key.Column)
+                .Select(kv => (kv.Key, kv.Value.Name));
+
+        Assert.Equal(Ordered(expected), Ordered(imported.Assignments));
+    }
+
+    private string WriteRoster(string fileName, string[] headers, params string[][] rows)
+    {
+        var path = Path.Combine(_root, fileName);
+        using var workbook = new XLWorkbook();
+        var sheet = workbook.Worksheets.Add("六班");
+        for (var c = 0; c < headers.Length; c++) sheet.Cell(1, c + 1).Value = headers[c];
+        for (var r = 0; r < rows.Length; r++)
+            for (var c = 0; c < rows[r].Length; c++)
+                sheet.Cell(r + 2, c + 1).Value = rows[r][c];
+        workbook.SaveAs(path);
+        return path;
     }
 
     /// <summary>把文档按屏幕摆放展开成「行 × 列」的物理坐标矩阵（各组从左到右拼接）。</summary>

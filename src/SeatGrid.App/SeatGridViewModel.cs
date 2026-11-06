@@ -957,7 +957,11 @@ public partial class SeatGridViewModel : ObservableObject
 
     public List<Student> GetModels() => _students.Select(s => s.Model).ToList();
 
-    public void ApplyConfig(SeatGridConfig config)
+    /// <summary>
+    /// 套用配置或导回的座位表：布局、显示、配色、名单与座位整体替换。
+    /// sourceName 为 null 时是「导入配置」；从「导入名单」导回导出的座位表时传文件名，状态栏据此说明还原了什么。
+    /// </summary>
+    public void ApplyConfig(SeatGridConfig config, string? sourceName = null)
     {
         _suppressRebuild = true;
         Title = config.Settings.Title;
@@ -1004,14 +1008,17 @@ public partial class SeatGridViewModel : ObservableObject
                 _assignments[position] = vm;
         }
 
-        ImportSource = "配置文件";
+        ImportSource = sourceName ?? "配置文件";
         RosterHint = string.Join("；", config.Warnings);
         RefreshSeatVisuals();
         RefreshStudents();
         NotifyCounts();
+        var summary = sourceName is null
+            ? "已导入配置"
+            : $"已从「{sourceName}」还原 {StudentCount} 人与 {AssignedCount} 个座位";
         SetStatus(config.Warnings.Count > 0
-            ? $"已导入配置 · {string.Join("；", config.Warnings)}"
-            : "已导入配置。");
+            ? $"{summary} · {string.Join("；", config.Warnings)}"
+            : $"{summary}。");
     }
 
     public void SetStatus(string text, bool error = false)

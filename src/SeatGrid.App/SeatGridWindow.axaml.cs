@@ -161,7 +161,7 @@ public partial class SeatGridWindow : Window
 
     private async void OnImportRoster(object? sender, RoutedEventArgs e)
     {
-        var path = await PickOpenAsync("导入名单", new FilePickerFileType("名单文件")
+        var path = await PickOpenAsync("导入名单", new FilePickerFileType("名单或导出的座位表")
         {
             Patterns = new[] { "*.xlsx", "*.xls", "*.csv" },
         });
@@ -176,8 +176,9 @@ public partial class SeatGridWindow : Window
         ViewModel.IsBusy = true;
         try
         {
-            var result = await Task.Run(() => RosterImporter.Import(path));
-            ViewModel.LoadRoster(result);
+            var (restored, roster) = await Task.Run(() => ReadRosterFile(path));
+            if (restored is not null) ViewModel.ApplyConfig(restored, Path.GetFileName(path));
+            else ViewModel.LoadRoster(roster!);
             _rosterPath = path;
         }
         catch (Exception ex)
@@ -189,6 +190,15 @@ public partial class SeatGridWindow : Window
             ViewModel.IsBusy = false;
         }
     }
+
+    /// <summary>
+    /// 本软件导出的座位表或配置：整体还原名单、座位与设置，不重新自动排座；
+    /// 其他文件按普通名单识别（导入后自动排座）。
+    /// </summary>
+    private static (SeatGridConfig? Restored, RosterImportResult? Roster) ReadRosterFile(string path) =>
+        SeatGridConfigIO.TryImport(path) is { } restored
+            ? (restored, null)
+            : (null, RosterImporter.Import(path));
 
     // ----------------------------- 排座 / 座位操作 -----------------------------
 
@@ -994,7 +1004,7 @@ public partial class SeatGridWindow : Window
 
     private async void OnImportConfig(object? sender, RoutedEventArgs e)
     {
-        var path = await PickOpenAsync("导入座位配置", new FilePickerFileType("座位配置")
+        var path = await PickOpenAsync("导入座位配置", new FilePickerFileType("座位配置或导出的座位表")
         {
             Patterns = new[] { "*.xlsx" },
         });

@@ -25,6 +25,6 @@
 - 技术栈：C# / .NET 10 + Avalonia 12.1.4，图片 SkiaSharp，PDF PDFsharp + PDFium，排版 QuestPDF，文档 OpenXml，名单 / 总表 ClosedXML / ExcelDataReader。
 - 工具数：10 件小工具（图片 4 + 格式 6）+ 5 件常备应用（分晓、归位、时序、织序、竞名）。
 - 版本基线：`1.17.0`，唯一版本源为 `Directory.Build.props`。
-- 测试：289 项工具箱 xUnit（含竞名报名/赛程端到端、工具说明展开、检查更新回归）+ 分晓 102 项 + 织序 115 项（`GradeWeave.Tests`）。
+- 测试：293 项工具箱 xUnit（含竞名报名/赛程端到端、工具说明展开、检查更新回归）+ 分晓 102 项 + 织序 115 项（`GradeWeave.Tests`）。
 - 仓库：`https://github.com/Evan0148/TeachCraft`。
 - 隐私：文件 100% 本机处理，从不上传；仅「检查更新」会联网读取版本号（不发送任何本机信息），更新记录与安装包只留在本机。

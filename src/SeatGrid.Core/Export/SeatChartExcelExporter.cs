@@ -19,7 +19,7 @@ public static class SeatChartExcelExporter
     {
         var settings = document.Settings;
         using var workbook = new XLWorkbook();
-        var sheet = workbook.Worksheets.Add("座位表");
+        var sheet = workbook.Worksheets.Add(SeatGridConfigIO.ChartSheetName);
 
         var hints = settings.ShowGroupRowHints;
         var firstSeatColumn = hints ? 2 : 1;
@@ -159,51 +159,10 @@ public static class SeatChartExcelExporter
             cursor++;
         }
 
-        // 名单页
-        var roster = workbook.Worksheets.Add("名单");
-        var headers = new[]
-        {
-            "序号", "姓名", "性别", "学号", "身高", "视力", "成绩", "原小组", "备注", "组", "排", "列",
-        };
-
-        for (var i = 0; i < headers.Length; i++)
-        {
-            var cell = roster.Cell(1, i + 1);
-            cell.Value = headers[i];
-            cell.Style.Font.FontName = "Microsoft YaHei";
-            cell.Style.Font.Bold = true;
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F2EC");
-            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            cell.Style.Border.OutsideBorderColor = XLColor.FromHtml("#E7E3D8");
-            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        }
-
-        var seatLookup = assignments
-            .GroupBy(pair => pair.Value.Id)
-            .ToDictionary(g => g.Key, g => g.First().Key);
-
-        for (var index = 0; index < students.Count; index++)
-        {
-            var student = students[index];
-            var row = index + 2;
-            seatLookup.TryGetValue(student.Id, out var seat);
-
-            roster.Cell(row, 1).Value = index + 1;
-            roster.Cell(row, 2).Value = student.Name;
-            roster.Cell(row, 3).Value = student.GenderLabel;
-            roster.Cell(row, 4).Value = student.Number;
-            roster.Cell(row, 5).Value = student.Height is null ? string.Empty : student.Height.Value.ToString("0.#");
-            roster.Cell(row, 6).Value = student.Vision is null ? string.Empty : student.Vision.Value.ToString("0.0");
-            roster.Cell(row, 7).Value = student.Score is null ? string.Empty : student.Score.Value.ToString("0.##");
-            roster.Cell(row, 8).Value = student.OriginalGroup;
-            roster.Cell(row, 9).Value = student.Notes;
-            roster.Cell(row, 10).Value = seat.Group >= 0 ? seat.Group + 1 : string.Empty;
-            roster.Cell(row, 11).Value = seat.Row >= 0 ? seat.Row + 1 : string.Empty;
-            roster.Cell(row, 12).Value = seat.Column >= 0 ? seat.Column + 1 : string.Empty;
-        }
-
-        roster.Columns().AdjustToContents();
-        roster.SheetView.FreezeRows(1);
+        // 名单页与配置共用写法；再附一张隐藏的「座位设置」，导回时布局、配色与座位都能还原。
+        // 隐藏表放在最后，打开文件时停在座位表上。
+        SeatGridConfigIO.WriteRosterSheet(workbook, students, assignments, withIndex: true);
+        SeatGridConfigIO.WriteSettingsSheet(workbook, settings).Hide();
 
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
