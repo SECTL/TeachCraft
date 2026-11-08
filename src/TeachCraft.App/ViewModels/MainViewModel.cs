@@ -28,6 +28,13 @@ public partial class MainViewModel : ObservableObject
     private readonly BuildIdentity _identity;
     private readonly IUpdateCheckService? _checkService;
     private readonly InstallKind _installKind;
+    private readonly Func<UpdateSource, IUpdateCheckService> _checkServiceFactory;
+
+    /// <summary>
+    /// 用户选定的更新源。GitHub 为默认；选镜像时不再自动回退——
+    /// 他明确要的是镜像，替他回退反而违背选择。
+    /// </summary>
+    private UpdateSource _updateSource;
 
     /// <summary>
     /// 界面版本号取自可自证的构建身份，必须包含预览序号，
@@ -93,12 +100,14 @@ public partial class MainViewModel : ObservableObject
         BuildIdentity? identity = null,
         InstallInfo? installInfo = null,
         IUpdateStateStore? stateStore = null,
-        Func<UpdateDownloader>? downloaderFactory = null)
+        Func<UpdateDownloader>? downloaderFactory = null,
+        Func<UpdateSource, IUpdateCheckService>? checkServiceFactory = null)
     {
         _identity = identity ?? BuildIdentity.Current(typeof(MainViewModel));
         _checkService = checkService;
         _stateStore = stateStore ?? new UpdateStateStore();
         _downloaderFactory = downloaderFactory ?? (() => new UpdateDownloader(SharedHandlers.Default));
+        _checkServiceFactory = checkServiceFactory ?? CreateDefaultCheckService;
 
         // 安装形态必须来自真实探测：注册表身份记录 → 路径推断。
         // 写死成 Unknown 会让「自动分配安装包」永远走不到，用户只会看到「暂未提供」。
@@ -110,6 +119,9 @@ public partial class MainViewModel : ObservableObject
         if (_identity.Rid is null && info.Rid is not null) _identity = _identity.WithRid(info.Rid);
 
         VersionText = $"V{_identity.Describe()}";
+
+        // 上次手动选过的更新源要恢复，否则每次重启都回到默认，用户的选择形同虚设。
+        _updateSource = _stateStore.Load().PreferredSource ?? UpdateSource.GitHub;
 
         _appCards = CreateAppCards();
         _visibleAppCardCount = _appCards.Length;
@@ -177,6 +189,29 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>上次检查时间，取自本机状态文件。</summary>
     [ObservableProperty] private string _lastCheckedText = "从未检查";
+
+    /// <summary>当前选定的更新源；界面上的两个单选按钮绑它。</summary>
+    [ObservableProperty] private UpdateSource _selectedSource = UpdateSource.GitHub;
+
+    /// <summary>上次检查实际用了哪个源（回退后与所选不同），用于「已改用镜像」提示。</summary>
+    [ObservableProperty] private string _sourceNoteText = "";
+
+    /// <summary>是否显示「GitHub 连不上，已自动改用镜像」这类提示。</summary>
+    [ObservableProperty] private bool _hasSourceNote;
+
+    /// <summary>GitHub 单选按钮状态（Avalonia 单选组绑 bool 比绑枚举直接）。</summary>
+    public bool IsGitHubSource
+    {
+        get => SelectedSource == UpdateSource.GitHub;
+        set { if (value) ChangeSource(UpdateSource.GitHub); }
+    }
+
+    /// <summary>SECTL 镜像单选按钮状态。</summary>
+    public bool IsMirrorSource
+    {
+        get => SelectedSource == UpdateSource.SectlMirror;
+        set { if (value) ChangeSource(UpdateSource.SectlMirror); }
+    }
     [ObservableProperty] private string _statusText = DefaultStatusText;
     [ObservableProperty] private IBrush _statusBrush = Moss;
 
@@ -316,6 +351,44 @@ public partial class MainViewModel : ObservableObject
             : $"上次检查：{last.Value.ToLocalTime():yyyy-MM-dd HH:mm}";
     }
 
+    /// <summary>
+    /// 切换更新源。选择立即持久化——用户不该因为重启就丢掉刚做的选择。
+    /// </summary>
+    public void ChangeSource(UpdateSource source)
+    {
+        if (_updateSource == source) return;
+
+        _updateSource = source;
+        SelectedSource = source;
+
+        // 单选按钮靠这两个通知刷新选中态；漏了就会「点了没反应」。
+        OnPropertyChanged(nameof(IsGitHubSource));
+        OnPropertyChanged(nameof(IsMirrorSource));
+
+        // 换源之后上一次的结论不再适用，清掉免得误导。
+        HasSourceNote = false;
+        SourceNoteText = "";
+        if (!IsUpdateAvailable) UpdateStateText = "还没有检查过";
+
+        var state = _stateStore.Load();
+        _stateStore.Save(new UpdateState(state.LastCheckUtc, state.SkippedVersions, source));
+
+        SetStatus($"更新源已切换为 {UpdateSourceText.DisplayName(source)}");
+    }
+
+    /// <summary>
+    /// 生产环境的检查服务：GitHub 为主，SECTL 镜像兜底。
+    /// 两个服务共用进程内唯一的 handler，不额外建 HttpClient。
+    /// </summary>
+    private static IUpdateCheckService CreateDefaultCheckService(UpdateSource source)
+    {
+        var github = UpdateCheckService.CreateDefault();
+        var mirror = new SectlMirrorCheckService(SharedHandlers.Default);
+
+        // 选了镜像就只用镜像；默认（GitHub）才允许自动回退。
+        return new MirroringUpdateCheckService(github, mirror, source, allowFallback: source == UpdateSource.GitHub);
+    }
+
     public void SetStatus(string text, bool error = false)
     {
         StatusText = text;
@@ -331,16 +404,33 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public async Task CheckUpdateAsync(bool fromUserGesture = true, CancellationToken cancellationToken = default)
     {
-        var service = _checkService ?? UpdateCheckService.CreateDefault();
+        // 注入的 checkService 优先（测试与走查走这条路，保证不真联网）；
+        // 否则按用户选定的源建一个带镜像回退的服务。
+        var mirroring = _checkService is null ? _checkServiceFactory(_updateSource) as MirroringUpdateCheckService : null;
+        var service = _checkService ?? mirroring ?? _checkServiceFactory(_updateSource);
         var planner = new UpdatePlanner(service, _identity, _installKind);
 
         // 记下「检查过」这件事本身。失败也算检查过，否则用户会以为按钮没反应。
         var state = _stateStore.Load();
-        _stateStore.Save(new UpdateState(DateTimeOffset.UtcNow, state.SkippedVersions));
+        _stateStore.Save(new UpdateState(DateTimeOffset.UtcNow, state.SkippedVersions, state.PreferredSource));
 
         var result = await planner.PlanAsync(cancellationToken).ConfigureAwait(true);
 
         ApplyUpdatePlan(result);
+
+        // 回退提示：实际用的源与用户选的不同时必须说清楚，
+        // 否则他以为在查 GitHub，其实数据来自镜像，出问题时无从排查。
+        if (mirroring is not null && mirroring.DidFallBack)
+        {
+            HasSourceNote = true;
+            SourceNoteText =
+                $"{UpdateSourceText.DisplayName(mirroring.Preference)} 连不上，已改用{UpdateSourceText.DisplayName(mirroring.UsedSource)}。";
+        }
+        else
+        {
+            HasSourceNote = false;
+            SourceNoteText = "";
+        }
 
         // 更新页的状态行与状态栏分开：状态栏会被其它操作覆盖，
         // 而页面上这一行必须一直留着上次检查的结论。
@@ -370,6 +460,32 @@ public partial class MainViewModel : ObservableObject
             SetStatus(result.Message ?? "已是最新版本");
         else if (result.Status == UpdatePlanStatus.UpdateAvailable)
             SetStatus($"发现新版本 {result.Proposal!.VersionText}");
+    }
+
+    /// <summary>
+    /// 按资产来源取校验清单。
+    ///
+    /// 判断依据是下载地址而不是「用户选了哪个源」：自动回退之后，
+    /// 用户选的仍是 GitHub，但资产实际来自镜像——这时必须按地址走，
+    /// 否则会去 GitHub 拉清单来校验镜像下的包，两边的发布未必同时可用。
+    /// </summary>
+    private static async Task<UpdateDownloader.FetchResult> FetchChecksumsAsync(
+        UpdateDownloader downloader,
+        UpdateProposal proposal,
+        CancellationToken cancellationToken)
+    {
+        var fromMirror = proposal.Asset.DownloadUrl.Contains("sectl.cn", StringComparison.OrdinalIgnoreCase);
+
+        if (!fromMirror)
+            return await downloader.FetchChecksumsAsync(
+                UpdateCheckService.DefaultFeedUrl, proposal.Release.TagName, cancellationToken).ConfigureAwait(false);
+
+        // 镜像的版本记录不带 sha256，只能取它托管的 SHA256SUMS 文件。
+        var sumsUrl = SectlMirrorFeed.FindChecksumsUrl(proposal.Release.Assets);
+        if (sumsUrl is null)
+            return UpdateDownloader.FetchResult.Ok(null);
+
+        return await downloader.FetchChecksumsFromUrlAsync(sumsUrl, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>把规划结果落到界面状态。纯函数式的赋值，不触发网络。</summary>
@@ -500,8 +616,11 @@ public partial class MainViewModel : ObservableObject
 
             // 校验清单必须拿到，否则失败关闭——绝不降级成「只校验长度」。
             // 但要区分「取不到」（网络问题）与「发布没提供」（版本问题），否则会把校园网拦截误报成发布缺陷。
-            var checksumResult = await downloader.FetchChecksumsAsync(
-                UpdateCheckService.DefaultFeedUrl, proposal.Release.TagName, cancellationToken).ConfigureAwait(true);
+            //
+            // 清单跟着资产走：镜像源的包从 stk.sectl.cn 下载，清单也从镜像取——
+            // 两边的文件是同一次发布同步过去的，交叉取源会引入不一致风险。
+            var checksumResult = await FetchChecksumsAsync(
+                downloader, proposal, cancellationToken).ConfigureAwait(true);
 
             if (!checksumResult.IsSuccess)
             {

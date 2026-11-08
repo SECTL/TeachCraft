@@ -1,7 +1,13 @@
 namespace TeachCraft.Core.Updating;
 
 /// <summary>本机更新状态。只存与本机有关的东西，不上传。</summary>
-public sealed record UpdateState(DateTimeOffset? LastCheckUtc, IReadOnlyList<string> SkippedVersions)
+/// <param name="LastCheckUtc">上次检查时间。</param>
+/// <param name="SkippedVersions">用户点过「跳过」的版本。</param>
+/// <param name="PreferredSource">用户手动选定的更新源；null 表示用默认（GitHub + 自动回退）。</param>
+public sealed record UpdateState(
+    DateTimeOffset? LastCheckUtc,
+    IReadOnlyList<string> SkippedVersions,
+    UpdateSource? PreferredSource = null)
 {
     public static UpdateState Empty { get; } = new(null, Array.Empty<string>());
 }
@@ -71,7 +77,17 @@ public sealed class UpdateStateStore : IUpdateStateStore
                 }
             }
 
-            return new UpdateState(lastCheck, skipped);
+            UpdateSource? preferred = null;
+            if (root.TryGetProperty("PreferredSource", out var sourceElement)
+                && sourceElement.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var raw = sourceElement.GetString();
+                // 只有明确写过才认；空串或未知值当作「没选过」，回落到默认行为。
+                if (!string.IsNullOrWhiteSpace(raw) && raw is "github" or "sectl")
+                    preferred = UpdateSourceText.Parse(raw);
+            }
+
+            return new UpdateState(lastCheck, skipped, preferred);
         }
         catch (Exception)
         {
@@ -93,6 +109,10 @@ public sealed class UpdateStateStore : IUpdateStateStore
             {
                 LastCheckUtc = state.LastCheckUtc?.ToString("O"),
                 SkippedVersions = state.SkippedVersions,
+                // null 表示「没手动选过」，JSON 里写成 null，读取时按默认行为处理。
+                PreferredSource = state.PreferredSource is { } source
+                    ? UpdateSourceText.ToStorageValue(source)
+                    : null,
             };
 
             var json = System.Text.Json.JsonSerializer.Serialize(payload, new System.Text.Json.JsonSerializerOptions

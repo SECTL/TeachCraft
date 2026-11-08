@@ -900,7 +900,6 @@ public partial class App : Application
             }
 
             var source = args[index + 1];
-            var json = source == "-" ? Console.In.ReadToEnd() : File.ReadAllText(source);
 
             // 默认形态必须来自生产检测结果，不能写死 PortableZip——
             // 否则 CLI 与 GUI 会给出不同结论，「有更新」也可能伴随 AssetName=null。
@@ -908,7 +907,41 @@ public partial class App : Application
                 ? ParseKind(args[kindIndex + 1])
                 : detected.Kind;
 
-            var entries = UpdateFeed.Parse(json).ToList();
+            List<ReleaseEntry> entries;
+            var usedSource = "fixture";
+
+            // `--check-update mirror`：真实打 SECTL 镜像。这条路径存在的意义是
+            // 让镜像接入能在真实网络下取证，而不是只靠注入的 handler 自证。
+            if (string.Equals(source, "mirror", StringComparison.OrdinalIgnoreCase))
+            {
+                var mirror = new SectlMirrorCheckService(SharedHandlers.Default);
+                var check = mirror.CheckAsync(identity).GetAwaiter().GetResult();
+                if (!check.IsSuccess)
+                {
+                    var failPayload = new
+                    {
+                        Identity = identity.Describe(),
+                        IsUpdateAvailable = false,
+                        Version = (string?)null,
+                        AssetName = (string?)null,
+                        Reason = check.Failure,
+                        Status = "Failed",
+                        Source = "sectl",
+                    };
+                    WriteResult(outIndex, args, failPayload);
+                    Environment.Exit(2);
+                    return true;
+                }
+
+                entries = check.Candidates.ToList();
+                usedSource = "sectl";
+            }
+            else
+            {
+                var json = source == "-" ? Console.In.ReadToEnd() : File.ReadAllText(source);
+                entries = UpdateFeed.Parse(json).ToList();
+            }
+
             var candidates = UpdateFeed.SelectCandidates(entries, identity);
             var best = candidates.FirstOrDefault();
             var asset = best is null ? null : UpdateAssetSelector.Select(best.Assets, identity, kind);
@@ -927,6 +960,7 @@ public partial class App : Application
                 AssetName = asset?.Name,
                 Reason = reason,
                 Status = failed ? "Failed" : best is null ? "UpToDate" : "UpdateAvailable",
+                Source = usedSource,
             };
 
             WriteResult(outIndex, args, payload);

@@ -222,6 +222,31 @@ public sealed class UpdateDownloader
         public static FetchResult Fail(string reason) => new(false, null, reason);
     }
 
+    /// <summary>
+    /// 从一个已知的清单地址取校验和。
+    ///
+    /// 与 <see cref="FetchChecksumsAsync"/> 的区别：那个从 Releases API 里**找**清单，
+    /// 这个直接下载给定地址——镜像源没有 Releases API，但同样托管了清单文件。
+    ///
+    /// 解析结果为空时返回 Ok(null)（清单存在但内容不可用），
+    /// 网络失败返回 Fail——调用方据此区分「发布缺陷」与「网络问题」。
+    /// </summary>
+    public async Task<FetchResult> FetchChecksumsFromUrlAsync(
+        string checksumsUrl,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var body = await _client.GetStringAsync(checksumsUrl, cancellationToken).ConfigureAwait(false);
+            var map = Checksums.Parse(body);
+            return map.Count == 0 ? FetchResult.Ok(null) : FetchResult.Ok(map);
+        }
+        catch (Exception ex)
+        {
+            return FetchResult.Fail(UpdateErrorText.DescribeForUi(ex, "下载更新"));
+        }
+    }
+
     private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
     {
         await using var stream = File.OpenRead(path);

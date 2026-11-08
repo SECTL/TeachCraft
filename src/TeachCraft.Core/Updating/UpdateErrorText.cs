@@ -18,16 +18,19 @@ namespace TeachCraft.Core.Updating;
 public static class UpdateErrorText
 {
     public const string NoNetwork = "这台电脑现在连不上网，请检查网络后重试。";
-    public const string Timeout = "连接 GitHub 超时，可能是网络不稳定或被拦截，请稍后重试。";
-    public const string TlsIntercepted = "网络连接被中间设备拦截，无法安全访问 GitHub；请让网管信任代理根证书，或改用手机热点。";
+    public const string Timeout = "连接更新服务器超时，可能是网络不稳定或被拦截，请稍后重试。";
+    public const string TlsIntercepted = "网络连接被中间设备拦截，无法安全访问更新服务器；请让网管信任代理根证书，或改用手机热点。";
     public const string ProxyNeedsLogin = "需要先登录学校的上网认证，请用浏览器打开任意网页完成登录后重试。";
     public const string RateLimited = "请求过于频繁，请几分钟后再试。";
     public const string NotFound = "读取版本信息失败，可能是发布页暂时不可用，请稍后再试。";
-    public const string BlockedByPortal = "网络被拦截或需要登录代理，请先用浏览器打开 github.com 确认能正常访问。";
+    public const string BlockedByPortal = "网络被拦截或需要登录代理，请先用浏览器打开更新源地址确认能正常访问。";
     public const string ChecksumsMissing = "这次更新缺少完整性校验清单，为保证安全已中止下载。";
     public const string AssetNotInChecksums = "这个安装包暂时没有出现在校验清单里，可能发布还在进行中，请稍后再试。";
     public const string DownloadFailed = "安装包没有下载完整，已清理残留文件，请重试。";
     public const string ChecksumMismatch = "安装包校验失败，可能下载过程中出错，已删除，请重试。";
+
+    /// <summary>镜像上还没有这个软件的任何版本——通常是镜像尚未同步，不代表出错。</summary>
+    public const string MirrorHasNoProject = "SECTL 镜像上暂时没有这个软件的版本记录，可能还在同步，请稍后重试或改用 GitHub。";
 
     /// <summary>把异常归一化为一句中文原因；认不出的异常交给调用方的通用话术。</summary>
     public static string? Classify(Exception ex)
@@ -65,35 +68,46 @@ public static class UpdateErrorText
     /// <summary>
     /// 界面直接用的入口：认得出就给整句，认不出就套通用兜底。
     /// 兜底句与 src/Shared/ErrorText.cs 的措辞保持一致，避免同一个 App 里两种口气。
+    ///
+    /// <paramref name="sourceLabel"/> 只在兜底句里出现——它是「不知道具体原因」时的最后一句，
+    /// 说清是哪一路失败，用户反馈时能直接看出问题出在 GitHub 还是镜像。
     /// </summary>
-    public static string DescribeForUi(Exception ex, string action)
-        => Classify(ex) ?? $"{action}失败：请检查网络后重试；若反复出现，请反馈给我们。";
+    public static string DescribeForUi(Exception ex, string action, string? sourceLabel = null)
+        => Classify(ex) ?? (sourceLabel is null
+            ? $"{action}失败：请检查网络后重试；若反复出现，请反馈给我们。"
+            : $"{sourceLabel}{action}失败：请检查网络后重试；若反复出现，请反馈给我们。");
 
     /// <summary>
     /// 把 HTTP 状态码翻译成人话。
     ///
     /// action 决定措辞的语境：检查更新时说「读取版本信息」，
     /// 下载安装包时必须说「下载」，否则用户会以为版本信息出了问题。
+    /// sourceLabel 区分「GitHub / 镜像」，两边的 403 含义不同（GitHub 是限流，镜像通常不是）。
     /// </summary>
-    public static string ForStatus(HttpStatusCode status, string action)
+    public static string ForStatus(HttpStatusCode status, string action, string? sourceLabel = null)
     {
         var isDownload = action.Contains("下载", StringComparison.Ordinal);
+        var where = sourceLabel is null ? "" : sourceLabel;
 
         return status switch
         {
             HttpStatusCode.ProxyAuthenticationRequired => ProxyNeedsLogin,
-            (HttpStatusCode)403 => RateLimited,
+            // GitHub 的 403 是限流；镜像的 403 更可能是鉴权或维护，不能说成「请求过于频繁」。
+            (HttpStatusCode)403 => sourceLabel is null ? RateLimited : $"{where}拒绝了这个请求（HTTP 403），请稍后再试或改用另一个更新源。",
             HttpStatusCode.NotFound => isDownload
-                ? "这个安装包在发布页上找不到了，可能正在重新发布，请稍后再试。"
+                ? $"这个安装包在{where}上找不到了，可能正在重新发布，请稍后再试。"
                 : NotFound,
             _ => isDownload
-                ? $"下载安装包失败（HTTP {(int)status}），请稍后再试。"
-                : $"读取版本信息失败（HTTP {(int)status}），请稍后再试。",
+                ? $"{where}下载安装包失败（HTTP {(int)status}），请稍后再试。"
+                : $"{where}读取版本信息失败（HTTP {(int)status}），请稍后再试。",
         };
     }
 
     /// <summary>服务器返回 200 但内容不是 JSON —— 典型的校园网/门禁登录页。</summary>
-    public static string ForNonJsonBody(string action) => BlockedByPortal;
+    public static string ForNonJsonBody(string action, string? sourceLabel = null)
+        => sourceLabel is null
+            ? BlockedByPortal
+            : $"{sourceLabel}返回的不是版本数据，可能被校园网登录页拦截；请先用浏览器打开该地址确认能正常访问。";
 
     public static string ForMissingChecksums(string action) => ChecksumsMissing;
 
