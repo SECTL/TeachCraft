@@ -45,9 +45,9 @@ AppName=知微 · TeachCraft
 AppVersion={#MyAppVersion}
 AppVerName=知微 · TeachCraft {#MyAppVersion}
 AppPublisher=Evan0148
-AppPublisherURL=https://github.com/Evan0148/TeachCraft
-AppSupportURL=https://github.com/Evan0148/TeachCraft/issues
-AppUpdatesURL=https://github.com/Evan0148/TeachCraft/releases
+AppPublisherURL=https://github.com/SECTL/TeachCraft
+AppSupportURL=https://github.com/SECTL/TeachCraft/issues
+AppUpdatesURL=https://github.com/SECTL/TeachCraft/releases
 
 DefaultDirName={autopf}\TeachCraft
 DefaultGroupName=知微

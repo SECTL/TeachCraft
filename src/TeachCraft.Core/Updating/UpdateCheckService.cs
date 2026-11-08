@@ -29,7 +29,7 @@ public interface IUpdateCheckService
 /// </summary>
 public sealed class UpdateCheckService : IUpdateCheckService
 {
-    public const string DefaultFeedUrl = "https://api.github.com/repos/Evan0148/TeachCraft/releases?per_page=30";
+    public const string DefaultFeedUrl = "https://api.github.com/repos/SECTL/TeachCraft/releases?per_page=30";
 
     private static readonly Lazy<HttpClient> SharedClient = new(() =>
     {

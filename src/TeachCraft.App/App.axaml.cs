@@ -671,7 +671,14 @@ public partial class App : Application
                 await Task.Delay(500);
                 var viewModel = new GradeStrip.App.ViewModels.MainViewModel();
                 var window = new GradeStrip.App.Views.MainWindow { DataContext = viewModel };
-                if (paths.Count > 0) window.Height = 860;
+                // 走查截图默认停在表格底部（滚到底才看得到分析报表入口）；
+                // README 之类要的是表头，用 --gradestrip-height 调矮窗口即可露出。
+                var shotHeightIndex = Array.IndexOf(args, "--gradestrip-height");
+                var shotHeight = shotHeightIndex >= 0 && shotHeightIndex + 1 < args.Length &&
+                                 int.TryParse(args[shotHeightIndex + 1], out var parsedShotHeight)
+                    ? parsedShotHeight
+                    : 860;
+                if (paths.Count > 0) window.Height = shotHeight;
                 window.Show();
 
                 if (paths.Count > 0)
@@ -681,7 +688,12 @@ public partial class App : Application
 
                     viewModel.Section = 0;
                     window.UpdateLayout();
-                    if (window.FindControl<ScrollViewer>("OverviewScrollViewer") is { } overview)
+
+                    // 默认滚到表格底部，是为了走查时能看到最下面的「分析报表」入口。
+                    // README 之类要的是标题与表头，用 --gradestrip-top 停在顶部。
+                    var stayAtTop = args.Contains("--gradestrip-top");
+                    if (!stayAtTop &&
+                        window.FindControl<ScrollViewer>("OverviewScrollViewer") is { } overview)
                     {
                         overview.UpdateLayout();
                         overview.Offset = new Vector(0, overview.Extent.Height);
