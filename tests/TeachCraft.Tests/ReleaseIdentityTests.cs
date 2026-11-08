@@ -8,13 +8,8 @@ namespace TeachCraft.Tests;
 public sealed class ReleaseIdentityTests
 {
     // ---------- todo 17：版本基线 ----------
-
-    [Fact]
-    public void Version_IsUpgradedTo1170()
-    {
-        var props = RepoRoot.Read("Directory.Build.props");
-        Assert.Contains("<Version>1.17.0</Version>", props);
-    }
+    // 版本号断言统一放在 VersionBaselineTests：那里从 Directory.Build.props 读，
+    // 不写死版本，晋级时无需改测试。这里只保留身份串相关的契约。
 
     [Fact]
     public void Version_SourceRevisionIsNotAppendedToInformationalVersion()
@@ -29,14 +24,6 @@ public sealed class ReleaseIdentityTests
     {
         Assert.DoesNotContain("1.17.0", RepoRoot.Read(".github/workflows/release-draft.yml"));
         Assert.DoesNotContain("1.17.0", RepoRoot.Read("build-installer.ps1"));
-    }
-
-    [Fact]
-    public void Version_DocBaselinesAgree()
-    {
-        Assert.Contains("1.17.0", RepoRoot.Read(".memory/README.md"));
-        Assert.Contains("1.17.0", RepoRoot.Read(".memory/08-待办与后续.md"));
-        Assert.Contains("1.17.0", RepoRoot.Read(".memory/05-构建发布与版本号.md"));
     }
 
     // ---------- todo 2：构建身份注入 ----------
