@@ -152,13 +152,19 @@ public static class SectlMirrorFeed
             }
         }
 
+        // 保留「有版本记录但包还没同步」的条目——镜像同步是分步的：
+        // 版本先登记，包后到位（实测 v1.18.0 发布后 versions 表已有记录，
+        // packages 表仍是空的）。
+        //
+        // 不能在这里静默丢掉它们：上游 SelectCandidates 会因此得出「没有新版」，
+        // 用户选了镜像就会被告知「已是最新」，而实际上有新版只是还没同步完。
+        // 让它们带着空资产列表上去，由 UpdatePlanner 如实报告「镜像还没同步好」。
         return versions
             .Select(kv => new ReleaseEntry(
                 kv.Key,
                 kv.Value.Version,
                 kv.Value.Prerelease,
                 assets.TryGetValue(kv.Key, out var list) ? list : new List<ReleaseAsset>()))
-            .Where(e => e.Assets.Count > 0)
             .ToList();
     }
 

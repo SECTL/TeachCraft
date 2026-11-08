@@ -140,7 +140,49 @@ public sealed class SectlMirrorTests
         // 镜像没托管文件的包，在镜像语境下下载不到；留着会让用户点了却失败。
         var entries = SectlMirrorFeed.Parse(SampleDistribution(includeServerSource: false), Slug);
 
-        Assert.Empty(entries);
+        // 版本记录仍在（只是没有可用资产）——见下一条测试。
+        Assert.All(entries, e => Assert.Empty(e.Assets));
+    }
+
+    /// <summary>
+    /// 镜像同步是分步的：版本先登记，包后到位。
+    /// 2026-11-08 实测 v1.18.0 发布后，versions 表已有记录但 packages 表仍是空的。
+    /// 这时若静默丢掉这个版本，用户会被告知「已是最新」——谎报。
+    /// </summary>
+    private static string DistributionWithVersionButNoPackages() => """
+    {
+      "projects": [{ "$id": "tc-id", "slug": "知微 · TeachCraft" }],
+      "versions": [
+        { "project_id": "tc-id", "tag": "v1.19.0", "prerelease": false, "enabled": true, "package_count": 25 }
+      ],
+      "packages": []
+    }
+    """;
+
+    [Fact]
+    public void Parse_KeepsVersionWhosePackagesHaveNotSyncedYet()
+    {
+        var entries = SectlMirrorFeed.Parse(DistributionWithVersionButNoPackages(), Slug);
+
+        Assert.Single(entries);
+        Assert.Equal("v1.19.0", entries[0].TagName);
+        Assert.Empty(entries[0].Assets);
+    }
+
+    [Fact]
+    public async Task Planner_ReportsUnsyncedVersionInsteadOfUpToDate()
+    {
+        // 最关键的一条：包还没同步时，绝不能说「已是最新」。
+        var handler = new GuardedHttpHandler()
+            .Respond(DistributionUrl, HttpStatusCode.OK, DistributionWithVersionButNoPackages());
+        var mirror = new SectlMirrorCheckService(handler);
+        var planner = new UpdatePlanner(mirror, BuildIdentity.Parse("1.18.0.sc.win-x64"), InstallKind.InnoInstall);
+
+        var result = await planner.PlanAsync();
+
+        Assert.Equal(UpdatePlanStatus.Failed, result.Status);
+        Assert.Contains("同步", result.Message);
+        Assert.DoesNotContain("已是最新", result.Message);
     }
 
     [Fact]

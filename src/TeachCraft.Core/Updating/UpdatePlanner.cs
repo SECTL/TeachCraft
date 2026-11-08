@@ -46,6 +46,14 @@ public sealed class UpdatePlanner
         var asset = UpdateAssetSelector.Select(check.Best.Assets, _identity, _kind);
         if (asset is null)
         {
+            // 版本一个资产都没有：镜像同步是分步的（版本先登记、包后到位），
+            // 这时说「暂未提供适合当前安装方式」会误导——不是没有这一支，是整个版本还没同步完。
+            if (check.Best.Assets.Count == 0)
+            {
+                return UpdatePlanResult.Fail(
+                    $"新版本 {check.Best.Version} 已在镜像上登记，但安装包还没同步完成，请稍后再试。");
+            }
+
             return UpdatePlanResult.Fail(
                 $"新版本 {check.Best.Version} 暂未提供适合当前安装方式的安装包（{DescribeKind(_kind)}），请稍后再试或到发布页手动选择。");
         }
