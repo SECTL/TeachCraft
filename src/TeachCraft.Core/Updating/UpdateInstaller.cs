@@ -5,6 +5,15 @@ public enum InstallerAction
     /// <summary>运行安装包（静默、关闭占用、装完重启）。仅 Windows 安装包形态。</summary>
     RunSetup,
 
+    /// <summary>
+    /// 解压覆盖当前程序目录并重启。仅 Windows 绿色版。
+    ///
+    /// 绿色版此前只给一句「请解压到另一个文件夹再手动替换」——那是把机械活推给老师。
+    /// 运行中的映像确实不能自我替换，但可以让独立助手进程在本进程退出后做：
+    /// 单文件发布下只有 exe 被占用，助手等它释放后覆盖即可。
+    /// </summary>
+    ReplacePortable,
+
     /// <summary>不做任何自动动作，只把可执行的步骤告诉用户。</summary>
     ShowGuidance,
 }
@@ -20,10 +29,15 @@ public sealed record InstallerPlan(
 /// <summary>
 /// 把「安装形态 + 已下载的包」翻译成一次可执行的动作。
 ///
-/// 分级原则：只有 Windows 的 Inno 安装包能真正自动完成；
-/// 绿色版、macOS、Linux 一律给指引——微软文档明确运行中的映像不能自我替换，
-/// 而在 macOS 上替换 .app 还会牵涉 Gatekeeper。给确定可行的步骤，
-/// 好过一个「有时成功」的替换器。
+/// 分级原则：
+///   - Windows 安装包（Inno）与 Windows 绿色版都能真正自动完成——
+///     前者运行静默安装包，后者由独立助手进程在退出后解压覆盖；
+///   - macOS / Linux 给指引：替换 .app 会牵涉 Gatekeeper，
+///     Linux 压缩包无法保留可执行权限，都必须人工确认。
+///
+/// 绿色版之所以能做自动替换：单文件发布下运行中的只有 exe 本身，
+/// 助手等本进程退出后覆盖即可。**不能**由本进程自己覆盖——运行中的映像
+/// 不能自我替换，这是 Windows 的硬限制。
 /// </summary>
 public static class UpdateInstaller
 {
@@ -43,12 +57,11 @@ public static class UpdateInstaller
                     : null),
 
             InstallKind.PortableZip => new InstallerPlan(
-                InstallerAction.ShowGuidance,
+                InstallerAction.ReplacePortable,
                 null,
-                WaitForPreviousProcessExit: false,
-                RestartAfterwards: false,
-                Guidance: "已把新版本下载到：" + Line(downloadedPath) +
-                          "请解压到另一个文件夹，试运行确认没问题后，再关掉当前程序替换旧文件。"),
+                WaitForPreviousProcessExit: true,
+                RestartAfterwards: true,
+                Guidance: null),
 
             InstallKind.MacBundle => new InstallerPlan(
                 InstallerAction.ShowGuidance,

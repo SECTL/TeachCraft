@@ -24,7 +24,7 @@
 - 产品名：**知微 · TeachCraft**；常备应用：**分晓 · GradeStrip**、**归位 · SeatGrid**、**时序 · ClassBlock**、**织序 · GradeWeave** 与 **竞名 · MeetRoster**。
 - 技术栈：C# / .NET 10 + Avalonia 12.1.4，图片 SkiaSharp，PDF PDFsharp + PDFium，排版 QuestPDF，文档 OpenXml，名单 / 总表 ClosedXML / ExcelDataReader。
 - 工具数：10 件小工具（图片 4 + 格式 6）+ 5 件常备应用（分晓、归位、时序、织序、竞名）。
-- 版本基线：`1.18.1`，唯一版本源为 `Directory.Build.props`。
-- 测试：326 项工具箱 xUnit（含竞名报名/赛程端到端、工具说明展开、检查更新页与 SECTL 镜像回退、发布身份与版本脚本回归） + 分晓 102 项 + 织序 115 项（`GradeWeave.Tests`），合计 543 项。
+- 版本基线：`1.19.0`，唯一版本源为 `Directory.Build.props`。
+- 测试：336 项工具箱 xUnit（含竞名报名/赛程端到端、工具说明展开、检查更新页与 SECTL 镜像回退、发布身份与版本脚本回归） + 分晓 102 项 + 织序 115 项（`GradeWeave.Tests`），合计 553 项。
 - 仓库：`https://github.com/SECTL/TeachCraft`（2026-11-08 从 `Evan0148/TeachCraft` 迁来；老地址 301 但 API 跟随行为不可靠，代码里的地址必须写新仓库）。
 - 隐私：文件 100% 本机处理，从不上传；仅「检查更新」会联网读取版本号——GitHub Releases 或用户选定的 SECTL 镜像，两者都不发送任何本机信息；更新记录与安装包只留在本机。

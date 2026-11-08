@@ -37,13 +37,17 @@ public sealed class UpdateInstallerTests
     }
 
     [Fact]
-    public void PortableZip_OnlyGuidesUser_NoSelfReplacement()
+    public void PortableZip_ReplacesInPlaceAndRestarts()
     {
+        // 绿色版以前只给一句「请解压到另一个文件夹再手动替换」——那是把机械活推给老师。
+        // 现在由独立助手进程在本进程退出后解压覆盖（运行中的映像不能自我替换，
+        // 但助手是另一个进程，不受这个限制）。
         var plan = UpdateInstaller.BuildPlan(Proposal(InstallKind.PortableZip), @"D:\dl\x.zip");
 
-        Assert.Equal(InstallerAction.ShowGuidance, plan.Action);
-        Assert.False(plan.RestartAfterwards);
-        Assert.Contains("解压", plan.Guidance);
+        Assert.Equal(InstallerAction.ReplacePortable, plan.Action);
+        Assert.True(plan.WaitForPreviousProcessExit, "必须等旧进程退出，否则 exe 还被占用");
+        Assert.True(plan.RestartAfterwards, "替换完要把新版本拉起来");
+        Assert.Null(plan.Arguments);
     }
 
     [Fact]

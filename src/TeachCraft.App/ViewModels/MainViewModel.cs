@@ -655,14 +655,20 @@ public partial class MainViewModel : ObservableObject
 
             var plan = UpdateInstaller.BuildPlan(proposal, download.Path!);
 
-            if (plan.Action == InstallerAction.RunSetup)
+            // RunSetup 与 ReplacePortable 都需要 App 层介入（进程与生命周期控制）；
+            // 其余形态只给指引。
+            if (plan.Action is InstallerAction.RunSetup or InstallerAction.ReplacePortable)
             {
-                SetStatus("正在安装，安装完成后会自动重新打开…");
+                SetStatus(plan.Action == InstallerAction.ReplacePortable
+                    ? "正在替换为新版本，完成后会自动重新打开…"
+                    : "正在安装，安装完成后会自动重新打开…");
                 // 交由 App 层执行（那里才有进程与生命周期控制）。
                 var handlerDelegate = InstallerRequested;
                 if (handlerDelegate is null)
                 {
-                    var noHandler = "已下载完成，但当前无法自动安装，请手动运行下载的安装包。";
+                    var noHandler = plan.Action == InstallerAction.ReplacePortable
+                        ? "已下载完成，但当前无法自动替换，请手动解压更新包覆盖旧文件。"
+                        : "已下载完成，但当前无法自动安装，请手动运行下载的安装包。";
                     SetStatus(noHandler);
                     return noHandler;
                 }

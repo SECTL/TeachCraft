@@ -65,8 +65,10 @@ public partial class App : Application
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
 
-            // 真正启动安装包只能由 App 层做：它决定何时关窗、何时退出、何时重启。
-            viewModel.InstallerRequested += (path, plan) => this.RunInstallerAsync(desktop, path, plan);
+            // 真正启动安装包 / 替换文件只能由 App 层做：它决定何时关窗、何时退出、何时重启。
+            viewModel.InstallerRequested += (path, plan) => plan.Action == InstallerAction.ReplacePortable
+                ? Task.FromResult(this.RunPortableReplace(desktop, path, plan))
+                : this.RunInstallerAsync(desktop, path, plan);
 
             // 启动时清掉上次被强杀留下的半截下载（进程被杀时 finally 不会执行）。
             // 这一步不联网、不碰状态文件，失败也不影响启动。
@@ -74,6 +76,10 @@ public partial class App : Application
             {
                 try { new UpdateDownloader(SharedHandlers.Default).CleanupStaleParts(); }
                 catch (Exception) { /* 清理失败不该拦住启动 */ }
+
+                // 上一次绿色版自替换的结果。失败时用户刚经历「程序关了又开回来还是旧的」，
+                // 不说清楚他会以为更新没生效，反复点。
+                ReportLastPortableReplace(viewModel);
             }
 
             if (!CaptureGradeStripIfRequested(desktop) && !CaptureSeatGridIfRequested(desktop) &&
@@ -787,6 +793,101 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// 绿色版自替换：启动一个独立助手，等本进程退出后解压覆盖，再拉起新版本。
+    ///
+    /// 为什么不能自己干：运行中的映像不能自我替换（Windows 硬限制）。
+    /// 助手是独立进程，不受这个限制；它等的就是本进程的 PID。
+    ///
+    /// 失败处理：助手把结果写进一个标记文件，新版本启动时读它并提示用户。
+    /// 没有这一步，替换失败会表现成「点了更新，程序关了再没回来」。
+    /// </summary>
+    private string RunPortableReplace(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        string archivePath,
+        InstallerPlan plan)
+    {
+        if (Environment.ProcessPath is not { } exe)
+            return "认不出当前程序的路径，无法自动替换，请手动解压更新包。";
+
+        var targetDir = Path.GetDirectoryName(exe);
+        if (string.IsNullOrEmpty(targetDir))
+            return "认不出当前程序所在的文件夹，无法自动替换，请手动解压更新包。";
+
+        try
+        {
+            StartPortableReplaceHelper(archivePath, targetDir, exe, Environment.ProcessId);
+
+            // 与安装包路径同理：必须先释放单实例锁，否则重启的新版本 TryAcquire 失败会直接退出。
+            ReleaseSingleInstance();
+            desktop.Shutdown();
+
+            return plan.Guidance ?? "正在替换为新版本，完成后会自动重新打开。";
+        }
+        catch (Exception ex)
+        {
+            return UpdateErrorText.DescribeForUi(ex, "替换更新");
+        }
+    }
+
+    /// <summary>
+    /// 启动「等退出 → 解压覆盖 → 重启」的助手进程。
+    ///
+    /// 用 PowerShell 的理由与 <see cref="StartRestartHelper"/> 一致：不引入新依赖。
+    /// 脚本内联在 -EncodedCommand 里，路径含空格或中文都不会被拆坏。
+    /// </summary>
+    private static void StartPortableReplaceHelper(string archivePath, string targetDir, string exePath, int currentPid)
+    {
+        static string Ps(string s) => s.Replace("'", "''");
+
+        var resultFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TeachCraft", "Update", "last-replace.txt");
+
+        // 助手脚本：
+        //   1. 等本进程退出（exe 被占用，必须等）
+        //   2. 解压到临时目录
+        //   3. 备份 → 覆盖 → 失败回滚
+        //   4. 写结果标记，然后拉起新版本
+        var script =
+            $"Wait-Process -Id {currentPid} -ErrorAction SilentlyContinue; " +
+            $"$staging = Join-Path $env:TEMP ('TeachCraft-Replace-' + [guid]::NewGuid().ToString('N').Substring(0,12)); " +
+            $"$backup = $staging + '-bak'; " +
+            $"$result = '{Ps(resultFile)}'; " +
+            $"New-Item -ItemType Directory -Force -Path (Split-Path $result) | Out-Null; " +
+            "try { " +
+            $"  Expand-Archive -LiteralPath '{Ps(archivePath)}' -DestinationPath $staging -Force; " +
+            $"  New-Item -ItemType Directory -Force -Path $backup | Out-Null; " +
+            $"  Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object {{ " +
+            $"    $rel = [System.IO.Path]::GetRelativePath($staging, $_.FullName); " +
+            $"    $dst = Join-Path '{Ps(targetDir)}' $rel; " +
+            $"    if (Test-Path -LiteralPath $dst) {{ $bak = Join-Path $backup $rel; " +
+            "      New-Item -ItemType Directory -Force -Path (Split-Path $bak) | Out-Null; " +
+            "      Copy-Item -LiteralPath $dst -Destination $bak -Force } " +
+            "    New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null; " +
+            "    Copy-Item -LiteralPath $_.FullName -Destination $dst -Force }; " +
+            "  'OK' | Set-Content -LiteralPath $result -Encoding UTF8 " +
+            "} catch { " +
+            "  if (Test-Path -LiteralPath $backup) { " +
+            $"    Get-ChildItem -LiteralPath $backup -Recurse -File | ForEach-Object {{ " +
+            $"      $rel = [System.IO.Path]::GetRelativePath($backup, $_.FullName); " +
+            $"      Copy-Item -LiteralPath $_.FullName -Destination (Join-Path '{Ps(targetDir)}' $rel) -Force }} }}; " +
+            "  ('FAIL ' + $_.Exception.Message) | Set-Content -LiteralPath $result -Encoding UTF8 } " +
+            "finally { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue; " +
+            "  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue }; " +
+            $"Start-Process -FilePath '{Ps(exePath)}'";
+
+        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = $"-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand {encoded}",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+    }
+
+    /// <summary>
     /// 启动一个独立的等待/重启帮手。
     ///
     /// 用 PowerShell 而不是额外进程：不引入新依赖，且 .bat/.ps1 在 Windows 上到处都有。
@@ -818,6 +919,42 @@ public partial class App : Application
             // 帮手起不来（企业策略禁用 PowerShell 等）时，安装仍会完成，
             // 但程序不会自动回来——必须留下痕迹，否则用户只会以为「装坏了」。
             WriteRestartFailure(ex);
+        }
+    }
+
+    /// <summary>
+    /// 读取上一次绿色版自替换的结果并显示给用户。
+    ///
+    /// 助手进程写 `last-replace.txt`：`OK` 或 `FAIL <原因>`。
+    /// 成功时悄悄删掉，不打扰；失败时必须说出来——用户刚经历「程序关了又开回来」，
+    /// 不说清楚他会以为更新没生效，反复点「下载并安装」。
+    /// </summary>
+    private static void ReportLastPortableReplace(MainViewModel viewModel)
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TeachCraft", "Update", "last-replace.txt");
+
+            if (!File.Exists(path)) return;
+
+            var content = File.ReadAllText(path).Trim();
+            File.Delete(path);
+
+            if (content.StartsWith("FAIL", StringComparison.Ordinal))
+            {
+                var reason = content.Length > 5 ? content[5..].Trim() : "未知原因";
+                viewModel.SetStatus($"上次自动替换没有成功：{reason}。请手动解压更新包覆盖旧文件。", error: true);
+            }
+            else if (content == "OK")
+            {
+                viewModel.SetStatus("已更新到新版本。");
+            }
+        }
+        catch (Exception)
+        {
+            // 读不到就算了，不能因为一条提示拦住启动。
         }
     }
 
