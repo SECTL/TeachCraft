@@ -183,6 +183,80 @@ public partial class MeetRosterWindow : Window
         }
     }
 
+    /// <summary>导入秩序册：一份工作簿同时带来全校名单、竞赛日程与分组表。</summary>
+    private async void OnImportOrderBook(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "导入秩序册",
+                AllowMultiple = false,
+                FileTypeFilter = [ExcelFilter],
+            });
+
+            var path = files.FirstOrDefault()?.TryGetLocalPath();
+            if (string.IsNullOrWhiteSpace(path)) return;
+
+            if (ViewModel.HasAnyData && !await ConfirmDialog.ShowAsync(
+                    this, "用秩序册替换当前数据？",
+                    "导入秩序册会整体替换当前的班级名单与赛程"
+                    + $"（现有 {ViewModel.AllClasses.Count} 个班）。未保存的报名表修改不会保留。",
+                    "导入秩序册", "取消", danger: true))
+                return;
+
+            await ViewModel.ImportOrderBookAsync(path);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus(ErrorText.Describe(ex, "导入秩序册"), true);
+        }
+    }
+
+    /// <summary>导出参赛手册：先选设置，再选保存位置。</summary>
+    private async void OnExportHandBook(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (ViewModel.AllClasses.Count == 0)
+            {
+                ViewModel.SetStatus("还没有导入任何班级，无法导出。", true);
+                return;
+            }
+
+            var dialog = new MeetExportOptionsWindow(
+                ViewModel.Project, ViewModel.SelectedClass?.Name ?? ViewModel.ScheduleHighlightClass?.Name);
+            var request = await dialog.ShowDialog<MeetExportRequest?>(this);
+            if (request is null) return;
+
+            var extension = request.Format == MeetExportFormat.Pdf ? "pdf" : "xlsx";
+            var typeName = request.Format == MeetExportFormat.Pdf ? "PDF 参赛手册" : "Excel 工作簿";
+            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "导出参赛手册",
+                SuggestedFileName = request.FileName,
+                DefaultExtension = extension,
+                ShowOverwritePrompt = true,
+                FileTypeChoices = [new FilePickerFileType(typeName) { Patterns = [$"*.{extension}"] }],
+            });
+
+            var path = file?.TryGetLocalPath();
+            if (string.IsNullOrWhiteSpace(path)) return;
+
+            if (ViewModel.IsExportPathBlocked(path))
+            {
+                ViewModel.SetStatus("导出文件不能覆盖导入的原文件，请换一个文件名或位置。", true);
+                return;
+            }
+
+            await ViewModel.ExportHandBookAsync(request, path);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus(ErrorText.Describe(ex, "导出参赛手册"), true);
+        }
+    }
+
     private async void OnImportSchedule(object? sender, RoutedEventArgs e)
     {
         try
@@ -271,6 +345,13 @@ public partial class MeetRosterWindow : Window
         await ViewModel.ImportRegistrationFilesAsync([path]);
     }
 
+    /// <summary>走查用：直接导入一份秩序册（名单 + 赛程 + 分组表）。</summary>
+    public async Task LoadOrderBookForCaptureAsync(string path)
+    {
+        _closeConfirmed = true;
+        await ViewModel.ImportOrderBookAsync(path);
+    }
+
     public async Task LoadScheduleForCaptureAsync(string path)
     {
         _closeConfirmed = true;
@@ -307,12 +388,18 @@ public partial class MeetRosterWindow : Window
         return new EventEditorWindow(meetClass, row, slotKey);
     }
 
+    /// <summary>
+    /// 走查用：切到赛程页并选日。dayIndex 沿用「1 = 第一天」的旧语义，
+    /// 传 0 才选合成的「全部」（这样既有捕获脚本的行为不变）。
+    /// </summary>
     public void ShowScheduleForCapture(int dayIndex = 1, string? categoryKey = null, string? highlightClass = null)
     {
         ViewModel.SelectSection("schedule");
 
-        if (dayIndex >= 1 && dayIndex <= ViewModel.ScheduleDays.Count)
-            ViewModel.SelectDay(ViewModel.ScheduleDays[dayIndex - 1]);
+        var day = dayIndex <= 0
+            ? ViewModel.ScheduleDays.FirstOrDefault(d => d.IsAllDays)
+            : ViewModel.ScheduleDays.Where(d => !d.IsAllDays).ElementAtOrDefault(dayIndex - 1);
+        if (day is not null) ViewModel.SelectDay(day);
 
         if (!string.IsNullOrWhiteSpace(categoryKey))
         {
@@ -328,6 +415,17 @@ public partial class MeetRosterWindow : Window
                   ?? ViewModel.AllClasses.FirstOrDefault();
         }
     }
+
+    /// <summary>走查用：勾上「仅显示该班选手」，核对赛程只留一个班的条目。</summary>
+    public void ShowOnlyClassForCapture(bool enabled) =>
+        ViewModel.OnlyHighlightedClassEntries = enabled;
+
+    /// <summary>走查用：打开导出设置弹窗（不真正导出）。</summary>
+    public MeetExportOptionsWindow? OpenExportDialogForCapture() =>
+        ViewModel.AllClasses.Count == 0
+            ? null
+            : new MeetExportOptionsWindow(
+                ViewModel.Project, ViewModel.SelectedClass?.Name ?? ViewModel.ScheduleHighlightClass?.Name);
 
     /// <summary>导入学生名单：之后「添加运动员」改为从名单挑选。</summary>
     /// <summary>打开文件选择器并导入名单；被顶栏按钮与「添加运动员」引导共用。</summary>

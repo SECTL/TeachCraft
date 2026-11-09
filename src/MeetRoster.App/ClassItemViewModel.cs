@@ -87,6 +87,26 @@ public sealed partial class ClassItemViewModel : ObservableObject
     public string MetaLine => $"男 {_maleCount} · 女 {_femaleCount} · {EntryTotal} 项次";
     public string CountLabel => AthleteCount.ToString("00");
 
+    /// <summary>班级层面的团体项目（秩序册按班登记，不点名队员）。</summary>
+    public string TeamEventSummary => _source.TeamEvents.Count == 0
+        ? string.Empty
+        : string.Join("、", _source.TeamEvents);
+
+    public bool HasTeamEvents => _source.TeamEvents.Count > 0;
+
+    /// <summary>工作人员（秩序册「代表队名单」里的随队工作人员）。</summary>
+    public string Staff
+    {
+        get => _source.Staff;
+        set
+        {
+            if (_source.Staff == value) return;
+            _source.Staff = value;
+            OnPropertyChanged();
+            _changed?.Invoke(this);
+        }
+    }
+
     public int CountFor(string gender, string eventName) => Athletes.Count(a =>
         !string.IsNullOrWhiteSpace(a.Name) &&
         a.Gender == gender &&

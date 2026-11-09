@@ -81,6 +81,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     public bool CanExport => !IsBusy && AllClasses.Any(c =>
         !string.IsNullOrWhiteSpace(c.Source.SourcePath));
 
+    /// <summary>导出参赛手册：有班级就能导出（秩序册导入的工程没有逐班原文件，但名单齐全）。</summary>
+    public bool CanExportHandBook => !IsBusy && AllClasses.Count > 0;
+
     /// <summary>是否有未保存的改动（任何名单/单位信息编辑都会置位）。</summary>
     [ObservableProperty] private bool _isDirty;
 
@@ -117,6 +120,13 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
     public string ScheduleTotalDaysLabel => _project.Days.Count.ToString("00");
     public string ScheduleTotalSlotsLabel => _project.Days.Sum(d => d.Slots.Count).ToString("00");
+
+    /// <summary>左侧「赛程日期」徽标：只数真实比赛日，不含合成的「全部」项。</summary>
+    public string ScheduleDayCountLabel => _project.Days.Count.ToString("00");
+
+    /// <summary>右侧分类统计标题：单日说「今日项目」，「全部」说「全部项目」。</summary>
+    public string ScheduleBreakdownTitle =>
+        SelectedDay?.IsAllDays == true ? "全部项目" : "今日项目";
     public string ScheduleTotalEntriesLabel => _project.Days.Sum(d => d.Slots.Sum(s => s.Entries.Count)).ToString();
     public string ScheduleClassCountLabel => AllClasses.Count.ToString("00");
     public string ClassCountText => AllClasses.Count.ToString();
@@ -160,6 +170,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     [ObservableProperty] private string _scheduleHighlightSummary = "未选择高亮班级";
     [ObservableProperty] private bool _hasScheduleHighlight;
 
+    /// <summary>赛程只看该班：勾上后隐藏其他班级的条目，只留选中班级的选手。</summary>
+    [ObservableProperty] private bool _onlyHighlightedClassEntries;
+
     public bool IsScheduleView => !IsRegistrationView;
 
     public MeetRosterViewModel()
@@ -200,6 +213,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(CanSave));
+        OnPropertyChanged(nameof(CanExportHandBook));
     }
 
     partial void OnIsDirtyChanged(bool value) => OnPropertyChanged(nameof(CanSave));
@@ -235,14 +249,27 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
         RefreshScheduleCategories();
         RefreshSchedule();
+        RefreshScheduleSummary();
+        OnPropertyChanged(nameof(ScheduleBreakdownTitle));
     }
 
     partial void OnScheduleHighlightClassChanged(ClassItemViewModel? value)
     {
         HasScheduleHighlight = value is not null;
+        if (value is null) OnlyHighlightedClassEntries = false;
+        OnPropertyChanged(nameof(CanOnlyShowClass));
         RefreshHighlightSummary();
         RefreshSchedule();
     }
+
+    partial void OnOnlyHighlightedClassEntriesChanged(bool value)
+    {
+        RefreshHighlightSummary();
+        RefreshSchedule();
+    }
+
+    /// <summary>只有选中了班级才谈得上「仅显示该班」。</summary>
+    public bool CanOnlyShowClass => ScheduleHighlightClass is not null;
 
     public void SelectSection(string section)
     {
@@ -271,7 +298,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     public void SelectDay(ScheduleDayItemViewModel day)
     {
         SelectedDay = day;
-        SetStatus($"{day.Name} · {day.DateText} 的赛程");
+        SetStatus(day.IsAllDays
+            ? $"全部比赛日 · {day.Source.Slots.Count} 个项目"
+            : $"{day.Name} · {day.DateText} 的赛程");
     }
 
     public void SelectScheduleCategory(ScheduleCategoryItemViewModel category)
@@ -431,6 +460,8 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             preferredClassName: imported[0].Class.Name);
         if (project.Days.Count == 0) _scheduleImported = false;
 
+        // 报名表导入接管了工程：秩序册来源不再代表当前数据，导出时也就不该再拿它挡路径。
+        _orderBookSources.Clear();
         IsDirty = false;
         var issueCount = imported.Sum(r => r.Issues.Count(i => i.IsError));
         var message = $"已导入 {imported.Count} 个班 · {imported.Sum(r => r.Class.Athletes.Count)} 名运动员";
@@ -442,6 +473,122 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             ? string.Join(Environment.NewLine, errors)
             : string.Empty;
         SetStatus(message, errors.Count > 0, detail, success: errors.Count == 0);
+    }
+
+    /// <summary>
+    /// 导入秩序册（一份工作簿里同时有代表队名单、竞赛日程与项目分组表）。
+    /// 与逐班导入报名表互斥：秩序册自带全校名单，直接整体替换当前工程。
+    /// </summary>
+    public async Task ImportOrderBookAsync(string path)
+    {
+        IsBusy = true;
+        SetStatus("正在读取秩序册…");
+
+        OrderBookImportResult result;
+        try
+        {
+            result = await Task.Run(() => OrderBookImporter.Import(path));
+        }
+        catch (InvalidDataException ex)
+        {
+            IsBusy = false;
+            SetStatus(ex.Message, true);
+            return;
+        }
+        catch (Exception ex)
+        {
+            IsBusy = false;
+            SetStatus(ErrorText.Describe(ex, "读取秩序册"), true);
+            return;
+        }
+
+        IsBusy = false;
+        _importIssues.Clear();
+        foreach (var meetClass in result.Project.Classes)
+        {
+            var issues = result.Issues
+                .Where(i => i.Message.Contains(meetClass.Name, StringComparison.Ordinal))
+                .ToList();
+            if (issues.Count > 0) _importIssues[meetClass.Name] = issues;
+        }
+
+        _orderBookSources.Add(result.SourcePath!);
+        ScheduleSourceName = result.HasSchedule
+            ? DisplayFileName(path)
+            : "未导入赛程";
+        LoadProject(result.Project, isDemo: false, scheduleImported: result.HasSchedule,
+            preferredClassName: SelectedClass?.Name);
+
+        IsDirty = false;
+        var message = $"已导入秩序册 · {result.Project.Classes.Count} 个班 · {result.AthleteCount} 名运动员"
+                      + (result.HasSchedule
+                          ? $" · {result.Project.Days.Count} 天赛程"
+                          : " · 没有找到竞赛日程");
+        var notices = result.Issues.Count(i => !i.IsError);
+        if (notices > 0) message += $" · {notices} 条提醒";
+        SetStatus(message, success: true,
+            detail: string.Join(Environment.NewLine, result.Issues.Select(i => i.Message)));
+    }
+
+    /// <summary>导入过的秩序册来源：导出时用来拒绝覆盖原件。</summary>
+    private readonly List<string> _orderBookSources = [];
+
+    /// <summary>当前工程来自秩序册：这类工程不能按模板回写报名表（没有逐班原文件）。</summary>
+    public bool IsFromOrderBook => _orderBookSources.Count > 0;
+
+    public string OrderBookHint => IsFromOrderBook
+        ? $"名单与赛程来自秩序册：{Path.GetFileName(_orderBookSources[^1])}"
+        : string.Empty;
+
+    /// <summary>
+    /// 导出参赛手册（Excel 或 PDF）到指定路径。写入在后台线程完成，成功后把路径写进状态栏。
+    /// </summary>
+    public async Task ExportHandBookAsync(MeetExportRequest request, string path)
+    {
+        if (AllClasses.Count == 0)
+        {
+            SetStatus("还没有导入任何班级，无法导出。", true);
+            return;
+        }
+
+        IsBusy = true;
+        SetStatus(request.Format == MeetExportFormat.Pdf ? "正在导出 PDF…" : "正在导出 Excel…");
+        try
+        {
+            var project = _project;
+            var options = request.Options;
+            await Task.Run(() => request.Format == MeetExportFormat.Pdf
+                ? MeetPdfExporter.Export(project, options, path)
+                : MeetWorkbookExporter.Export(project, options, path));
+
+            IsBusy = false;
+            SetStatus($"已导出 {Path.GetFileName(path)}", success: true, detail: path);
+        }
+        catch (Exception ex)
+        {
+            IsBusy = false;
+            SetStatus(ex is InvalidOperationException
+                ? ex.Message
+                : ErrorText.Describe(ex, "导出参赛手册"), true);
+        }
+    }
+
+    /// <summary>导出路径不得覆盖任何一份导入来源（报名表或秩序册）。</summary>
+    public bool IsExportPathBlocked(string path) =>
+        _orderBookSources.Any(source => SamePath(path, source)) ||
+        AllClasses.Any(c => !string.IsNullOrWhiteSpace(c.Source.SourcePath) &&
+                            SamePath(path, c.Source.SourcePath!));
+
+    private static bool SamePath(string a, string b)
+    {
+        try
+        {
+            return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task ImportScheduleFileAsync(string path)
@@ -828,6 +975,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             AllClasses.Add(new ClassItemViewModel(meetClass, OnClassChanged));
 
         ScheduleDays.Clear();
+        // 「全部」固定排在第一个：先看整本秩序册，再按天细看。
+        if (project.Days.Count > 0)
+            ScheduleDays.Add(ScheduleDayItemViewModel.CreateAllDays(project.Days));
         foreach (var day in project.Days)
             ScheduleDays.Add(new ScheduleDayItemViewModel(day));
 
@@ -882,6 +1032,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         OnPropertyChanged(nameof(ScheduleClassCountLabel));
         OnPropertyChanged(nameof(ClassCountText));
         OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(CanExportHandBook));
+        OnPropertyChanged(nameof(IsFromOrderBook));
+        OnPropertyChanged(nameof(OrderBookHint));
     }
 
     private void ApplyClassFilter(bool autoSelect = true)
@@ -1006,6 +1159,10 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             "仪式", slots.Count(s => s.Category == MeetEventCategory.Ceremony), ScheduleCategoryStatItem.CeremonyBrush));
     }
 
+    /// <summary>「全部」视图把每天各自分成上午 / 下午，所以分组单元是（比赛日, 时段）。</summary>
+    private sealed record ScheduleGroupUnit(
+        MeetDay Day, string Period, IReadOnlyList<MeetSlot> Slots, bool ShowDayLabel);
+
     private void RefreshSchedule()
     {
         ScheduleGroups.Clear();
@@ -1021,29 +1178,112 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        var day = SelectedDay.Source;
-        var filtered = day.Slots.Where(MatchesScheduleFilter).ToList();
+        var allDays = SelectedDay.IsAllDays;
+        var units = allDays ? BuildAllDaysUnits() : BuildSingleDayUnits(SelectedDay.Source);
         var highlightName = ScheduleHighlightClass?.Name;
+        var onlyClass = OnlyHighlightedClassEntries && highlightName is not null;
 
-        foreach (var group in filtered
-                     .GroupBy(s => s.Period)
-                     .OrderBy(g => g.Key == "上午" ? 0 : 1))
+        var visibleCount = 0;
+        var visibleEntries = 0;
+        // 「全部」视图里统计真正显示出内容的天数：整天都被筛掉的不算。
+        var visibleDays = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var unit in units)
         {
-            var slots = group.ToList();
+            // 「仅显示该班」：把别的班的条目从每个时段里摘掉；整段没有该班选手的时段直接不显示，
+            // 免得老师翻一屏全是空行。项目本身仍按日程保留时段信息。
+            var slots = new List<MeetSlot>();
+            foreach (var slot in unit.Slots.Where(MatchesScheduleFilter))
+            {
+                if (!onlyClass)
+                {
+                    slots.Add(slot);
+                    continue;
+                }
+
+                var entries = slot.Entries
+                    .Where(e => string.Equals(e.ClassName, highlightName, StringComparison.Ordinal))
+                    .ToList();
+                if (entries.Count == 0) continue;
+
+                slots.Add(new MeetSlot
+                {
+                    Time = slot.Time,
+                    Period = slot.Period,
+                    EventName = slot.EventName,
+                    Grade = slot.Grade,
+                    Gender = slot.Gender,
+                    Category = slot.Category,
+                    Venue = slot.Venue,
+                    Stage = slot.Stage,
+                    GroupCount = slot.GroupCount,
+                    AdvanceCount = slot.AdvanceCount,
+                    EntryCountText = slot.EntryCountText,
+                    Entries = entries,
+                });
+            }
+
+            if (slots.Count == 0) continue;
+            visibleCount += slots.Count;
+            visibleEntries += slots.Sum(s => s.Entries.Count);
+            visibleDays.Add(unit.Day.Name + "|" + unit.Day.DateText);
+
             ScheduleGroups.Add(new ScheduleGroupViewModel
             {
-                Label = group.Key,
-                English = group.Key == "上午" ? "MORNING" : "AFTERNOON",
+                Label = unit.Period,
+                English = unit.Period == "上午" ? "MORNING" : "AFTERNOON",
                 TimeRange = slots.Count == 1 ? slots[0].Time : $"{slots[0].Time} – {slots[^1].Time}",
                 Slots = slots.Select(s => new ScheduleSlotViewModel(s, highlightName)).ToList(),
+                DayLabel = unit.ShowDayLabel ? $"{unit.Day.Name} · {unit.Day.DateText}" : string.Empty,
             });
         }
 
-        ScheduleDayTitle = $"{day.Name} · {day.DateText}";
-        ScheduleDaySummary = $"{filtered.Count} 个项目 · {filtered.Sum(s => s.Entries.Count)} 人次";
+        if (allDays)
+        {
+            ScheduleDayTitle = "全部比赛日";
+            ScheduleDaySummary = $"{visibleDays.Count} 天 · {visibleCount} 个项目 · {visibleEntries} 人次";
+        }
+        else
+        {
+            var day = SelectedDay.Source;
+            ScheduleDayTitle = $"{day.Name} · {day.DateText}";
+            ScheduleDaySummary = $"{visibleCount} 个项目 · {visibleEntries} 人次";
+        }
+
         HasScheduleSlots = ScheduleGroups.Count > 0;
-        ScheduleEmptyText = "当前筛选下没有项目。";
+        ScheduleEmptyText = onlyClass
+            ? allDays
+                ? $"{highlightName} 在所有比赛日都没有参赛项目。"
+                : $"今天没有 {highlightName} 的参赛项目。"
+            : allDays
+                ? "当前筛选下所有比赛日都没有项目。"
+                : "当前筛选下没有项目。";
     }
+
+    /// <summary>「全部」：每天各自一组，日期标题在每天第一组上方出现一次。</summary>
+    private List<ScheduleGroupUnit> BuildAllDaysUnits()
+    {
+        var units = new List<ScheduleGroupUnit>();
+        foreach (var day in _project.Days)
+        {
+            var first = true;
+            foreach (var group in day.Slots
+                         .GroupBy(s => s.Period)
+                         .OrderBy(g => g.Key == "上午" ? 0 : 1))
+            {
+                units.Add(new ScheduleGroupUnit(day, group.Key, group.ToList(), ShowDayLabel: first));
+                first = false;
+            }
+        }
+
+        return units;
+    }
+
+    private static List<ScheduleGroupUnit> BuildSingleDayUnits(MeetDay day) =>
+        day.Slots
+            .GroupBy(s => s.Period)
+            .OrderBy(g => g.Key == "上午" ? 0 : 1)
+            .Select(g => new ScheduleGroupUnit(day, g.Key, g.ToList(), ShowDayLabel: false))
+            .ToList();
 
     private bool MatchesScheduleFilter(MeetSlot slot) => _scheduleFilterKey switch
     {
@@ -1060,6 +1300,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         OnPropertyChanged(nameof(ScheduleTabMeta));
         OnPropertyChanged(nameof(ScheduleTotalDaysLabel));
         OnPropertyChanged(nameof(ScheduleTotalSlotsLabel));
+        OnPropertyChanged(nameof(ScheduleDayCountLabel));
         OnPropertyChanged(nameof(ScheduleTotalEntriesLabel));
         OnPropertyChanged(nameof(ScheduleClassCountLabel));
         OnPropertyChanged(nameof(ClassCountText));
@@ -1077,7 +1318,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             .SelectMany(d => d.Slots)
             .SelectMany(s => s.Entries)
             .Count(e => e.ClassName == ScheduleHighlightClass.Name);
-        ScheduleHighlightSummary = $"{ScheduleHighlightClass.Name} · {count} 条参赛记录";
+        ScheduleHighlightSummary = OnlyHighlightedClassEntries
+            ? $"{ScheduleHighlightClass.Name} · 仅显示 {count} 条参赛记录"
+            : $"{ScheduleHighlightClass.Name} · {count} 条参赛记录";
     }
 
     private void RebuildEventStats()

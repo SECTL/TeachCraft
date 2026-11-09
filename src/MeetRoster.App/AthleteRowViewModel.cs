@@ -60,6 +60,22 @@ public sealed partial class AthleteRowViewModel : ObservableObject
     [ObservableProperty] private string _name;
     [ObservableProperty] private string _gender;
 
+    /// <summary>号码布（秩序册导入才有；报名表模板没有这一列，所以只展示、不回写）。</summary>
+    public string Bib
+    {
+        get => _source.Bib;
+        set
+        {
+            if (_source.Bib == value) return;
+            _source.Bib = value ?? string.Empty;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasBib));
+            _changed?.Invoke();
+        }
+    }
+
+    public bool HasBib => !string.IsNullOrWhiteSpace(_source.Bib);
+
     public int Number
     {
         get => _number;

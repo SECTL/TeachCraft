@@ -38,7 +38,14 @@ public sealed class MeetClass
     public string Code { get; set; } = "（不填）";
     public string LeaderContact { get; set; } = string.Empty;
     public string Coach { get; set; } = string.Empty;
+    /// <summary>工作人员（秩序册「代表队名单」里的随队工作人员）。</summary>
+    public string Staff { get; set; } = string.Empty;
     public string Note { get; set; } = string.Empty;
+    /// <summary>
+    /// 班级层面的团体项目报名。秩序册按班列团体项目（「第 1 组：10班 5班 …」），
+    /// 不落到具体队员，因此单独记在班级上，不伪造到个人行。
+    /// </summary>
+    public List<string> TeamEvents { get; } = [];
     /// <summary>导入来源文件；用于按班回写时保留原模板样式。</summary>
     public string? SourcePath { get; set; }
     public List<Athlete> Athletes { get; } = [];
@@ -48,6 +55,8 @@ public sealed class MeetClass
 public sealed class Athlete
 {
     public string Name { get; set; } = string.Empty;
+    /// <summary>号码布；秩序册按号码编排，报名表模板没有这一列，手工录入时留空。</summary>
+    public string Bib { get; set; } = string.Empty;
     public string Gender { get; set; } = "男子";
     public string TeamEvent1 { get; set; } = string.Empty;
     public string TeamEvent2 { get; set; } = string.Empty;
@@ -80,7 +89,8 @@ public sealed class MeetSlot
     public string GroupCount { get; init; } = string.Empty;
     public string AdvanceCount { get; init; } = string.Empty;
     public string EntryCountText { get; init; } = string.Empty;
-    public List<MeetEntry> Entries { get; } = [];
+    /// <summary>参赛记录；赛程页「仅显示该班」会按班级生成只含该班条目的副本。</summary>
+    public List<MeetEntry> Entries { get; init; } = [];
 }
 
 /// <summary>赛程中的一条参赛记录。</summary>

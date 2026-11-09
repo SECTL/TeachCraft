@@ -444,6 +444,10 @@ public partial class App : Application
         var schedulePath = scheduleIndex >= 0 && scheduleIndex + 1 < args.Length
             ? args[scheduleIndex + 1]
             : null;
+        var orderBookIndex = Array.IndexOf(args, "--meetroster-orderbook");
+        var orderBookPath = orderBookIndex >= 0 && orderBookIndex + 1 < args.Length
+            ? args[orderBookIndex + 1]
+            : null;
         var showDemo = args.Contains("--meetroster-demo");
         var showEventDialog = args.Contains("--meetroster-dialog");
         var scaleIndex = Array.IndexOf(args, "--meetroster-scale");
@@ -496,6 +500,12 @@ public partial class App : Application
                     await Task.Delay(600);
                 }
 
+                if (!string.IsNullOrWhiteSpace(orderBookPath))
+                {
+                    await window.LoadOrderBookForCaptureAsync(orderBookPath);
+                    await Task.Delay(800);
+                }
+
                 var removeIndex = Array.IndexOf(args, "--meetroster-remove");
                 if (removeIndex >= 0 && removeIndex + 1 < args.Length)
                 {
@@ -507,6 +517,22 @@ public partial class App : Application
                 {
                     var dayIndex = int.TryParse(dayText, out var parsedDay) ? parsedDay : 1;
                     window.ShowScheduleForCapture(dayIndex, category, highlightClass);
+                    window.ShowOnlyClassForCapture(args.Contains("--meetroster-only-class"));
+                }
+
+                if (args.Contains("--meetroster-export-dialog"))
+                {
+                    var dialog = window.OpenExportDialogForCapture();
+                    if (dialog is null)
+                        throw new InvalidOperationException("导出弹窗走查需要先注入报名表或秩序册。");
+
+                    dialog.Show();
+                    await Task.Delay(900);
+                    dialog.UpdateLayout();
+                    dialog.CaptureTo(target);
+                    dialog.Close();
+                    window.Close();
+                    return;
                 }
 
                 if (showEventDialog)

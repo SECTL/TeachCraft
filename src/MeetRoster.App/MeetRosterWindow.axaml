@@ -320,6 +320,11 @@
         <Style Selector="Border.entry-chip.highlight TextBlock.muted">
             <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
         </Style>
+        <Style Selector="CheckBox.filter-toggle">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Foreground" Value="{StaticResource InkSoftBrush}" />
+        </Style>
         <Style Selector="Border.category-badge">
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="4" />
@@ -374,6 +379,10 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="ghost top" Content="导入秩序册" Click="OnImportOrderBook"
+                            IsEnabled="{Binding !IsBusy}"
+                            ToolTip.Tip="一份秩序册同时带来全校名单、竞赛日程与项目分组表"
+                            AutomationProperties.Name="导入秩序册" />
                     <Button Classes="ghost top" Content="导入报名表" Click="OnImportRoster"
                             IsEnabled="{Binding !IsBusy}"
                             ToolTip.Tip="一次选择多个班级的 Excel 报名表"
@@ -387,7 +396,11 @@
                             ToolTip.Tip="导入往届“竞赛日程 + 项目分组表”工作簿"
                             AutomationProperties.Name="导入赛程" />
                     <Border Width="1" Height="22" Background="{StaticResource LineBrush}" Margin="3,0" />
-                    <Button Classes="primary top" Content="保存" Click="OnSaveRoster"
+                    <Button Classes="primary top" Content="导出…" Click="OnExportHandBook"
+                            IsEnabled="{Binding CanExportHandBook}"
+                            ToolTip.Tip="导出参赛手册：Excel 或 PDF，可选全部班级或某一个班"
+                            AutomationProperties.Name="导出参赛手册" />
+                    <Button Classes="ghost top" Content="保存" Click="OnSaveRoster"
                             IsEnabled="{Binding CanSave}"
                             ToolTip.Tip="写回各自的原始报名表（先备份为 .bak）；快捷键 Ctrl+S"
                             AutomationProperties.Name="保存报名表" />
@@ -557,7 +570,7 @@
                     <!-- 单位信息 -->
                     <Border Grid.Row="1" Background="{StaticResource PaperBrush}"
                             BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1">
-                        <Grid ColumnDefinitions="1.1*,1.5*,1*" ColumnSpacing="12" Margin="18,10">
+                        <Grid ColumnDefinitions="1.1*,1.5*,1*,1*" ColumnSpacing="12" Margin="18,10">
                             <StackPanel Spacing="3">
                                 <TextBlock Text="参赛单位编码" Classes="field-label" />
                                 <TextBox Classes="info-field" Text="{Binding SelectedClass.Code, Mode=TwoWay}"
@@ -572,6 +585,11 @@
                                 <TextBlock Text="任课体育老师" Classes="field-label" />
                                 <TextBox Classes="info-field" Text="{Binding SelectedClass.Coach, Mode=TwoWay}"
                                          AutomationProperties.Name="任课体育老师" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Spacing="3">
+                                <TextBlock Text="工作人员" Classes="field-label" />
+                                <TextBox Classes="info-field" Text="{Binding SelectedClass.Staff, Mode=TwoWay}"
+                                         AutomationProperties.Name="工作人员" />
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -602,12 +620,13 @@
                         <Border Grid.Row="0" Background="{StaticResource PinnedBrush}"
                                 BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
                                 CornerRadius="6,6,0,0" Padding="6,0">
-                            <Grid ColumnDefinitions="30,106,74,1.6*,0.85*,28" ColumnSpacing="4" Height="32">
+                            <Grid ColumnDefinitions="30,64,106,74,1.6*,0.85*,28" ColumnSpacing="4" Height="32">
                                 <TextBlock Grid.Column="0" Classes="table-head" HorizontalAlignment="Center" Text="#" />
-                                <TextBlock Grid.Column="1" Classes="table-head" Text="姓名" />
-                                <TextBlock Grid.Column="2" Classes="table-head" Text="性别" />
-                                <TextBlock Grid.Column="3" Classes="table-head" Text="团体项目" />
-                                <TextBlock Grid.Column="4" Classes="table-head" Text="比赛项目" />
+                                <TextBlock Grid.Column="1" Classes="table-head" Text="号码" />
+                                <TextBlock Grid.Column="2" Classes="table-head" Text="姓名" />
+                                <TextBlock Grid.Column="3" Classes="table-head" Text="性别" />
+                                <TextBlock Grid.Column="4" Classes="table-head" Text="团体项目" />
+                                <TextBlock Grid.Column="5" Classes="table-head" Text="比赛项目" />
                             </Grid>
                         </Border>
 
@@ -618,23 +637,29 @@
                                     <DataTemplate x:DataType="app:AthleteRowViewModel">
                                         <Border Classes="athlete-row" BorderBrush="{StaticResource LineBrush}"
                                                 BorderThickness="0,0,0,1">
-                                            <Grid ColumnDefinitions="30,106,74,1.6*,0.85*,28" ColumnSpacing="4"
+                                            <Grid ColumnDefinitions="30,64,106,74,1.6*,0.85*,28" ColumnSpacing="4"
                                                   MinHeight="40" Margin="6,0">
                                                 <TextBlock Grid.Column="0" Text="{Binding NumberLabel}"
                                                            FontFamily="{StaticResource MonoFont}" FontSize="10"
                                                            Foreground="{StaticResource MutedBrush}"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <TextBox Grid.Column="1" Classes="cell" Text="{Binding Name, Mode=TwoWay}"
+                                                <TextBlock Grid.Column="1" Text="{Binding Bib}"
+                                                           FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                           Foreground="{StaticResource InkSoftBrush}"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip.Tip="号码布（秩序册导入）" />
+                                                <TextBox Grid.Column="2" Classes="cell" Text="{Binding Name, Mode=TwoWay}"
                                                          PlaceholderText="输入姓名"
                                                          LostFocus="OnNameLostFocus"
                                                          AutomationProperties.Name="姓名" />
-                                                <ComboBox Grid.Column="2" Classes="cell"
+                                                <ComboBox Grid.Column="3" Classes="cell"
                                                           ItemsSource="{Binding GenderOptions}"
                                                           SelectedItem="{Binding Gender, Mode=TwoWay}"
                                                           SelectionChanged="OnGenderAdjusted"
                                                           AutomationProperties.Name="性别" />
 
-                                                <Grid Grid.Column="3">
+                                                <Grid Grid.Column="4">
                                                     <ItemsControl ItemsSource="{Binding TeamChips}"
                                                                   IsVisible="{Binding HasTeamChips}"
                                                                   VerticalAlignment="Center">
@@ -668,7 +693,7 @@
                                                     </Button>
                                                 </Grid>
 
-                                                <Grid Grid.Column="4">
+                                                <Grid Grid.Column="5">
                                                     <ItemsControl ItemsSource="{Binding IndividualChips}"
                                                                   IsVisible="{Binding HasIndividualChips}"
                                                                   VerticalAlignment="Center">
@@ -702,7 +727,7 @@
                                                     </Button>
                                                 </Grid>
 
-                                                <Button Grid.Column="5" Classes="mini" Content="×"
+                                                <Button Grid.Column="6" Classes="mini" Content="×"
                                                         Click="OnRemoveAthlete" Tag="{Binding}"
                                                         ToolTip.Tip="删除这一行"
                                                         AutomationProperties.Name="删除这一行" />
@@ -965,7 +990,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="7">
                                 <TextBlock Text="赛程日期" Classes="section-title" />
                                 <Border Classes="mini-badge" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding ScheduleDays.Count}"
+                                    <TextBlock Text="{Binding ScheduleDayCountLabel}"
                                                FontFamily="{StaticResource MonoFont}" FontSize="10"
                                                Foreground="{StaticResource MutedBrush}" />
                                 </Border>
@@ -1070,6 +1095,11 @@
                                         IsVisible="{Binding HasScheduleHighlight}"
                                         IsEnabled="{Binding !IsBusy}" />
                             </Grid>
+                            <CheckBox Classes="filter-toggle" Content="仅显示该班选手"
+                                      IsChecked="{Binding OnlyHighlightedClassEntries, Mode=TwoWay}"
+                                      IsEnabled="{Binding CanOnlyShowClass}"
+                                      ToolTip.Tip="隐藏其他班级的条目，只留选中班级的参赛记录"
+                                      AutomationProperties.Name="仅显示该班选手" />
                             <TextBlock Text="选择后，日程里的项目和分组条目会同时着色。"
                                        Classes="helper" />
                         </StackPanel>
@@ -1130,6 +1160,18 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="app:ScheduleGroupViewModel">
                                             <StackPanel Spacing="5" Margin="0,6,0,4">
+                                                <!-- 「全部」视图：日期换了才画一行小标题 -->
+                                                <Border IsVisible="{Binding ShowDayLabel}" Background="{StaticResource PinnedBrush}"
+                                                        BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"
+                                                        Padding="2,4,2,5" Margin="0,6,0,2">
+                                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                                        <Ellipse Width="5" Height="5" Fill="{StaticResource AccentBrush}"
+                                                                 VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding DayLabel}"
+                                                                   FontFamily="{StaticResource SerifFont}" FontSize="13"
+                                                                   Foreground="{StaticResource AccentDeepBrush}" />
+                                                    </StackPanel>
+                                                </Border>
                                                 <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
                                                     <TextBlock Text="{Binding Label}"
                                                                FontFamily="{StaticResource SerifFont}" FontSize="14"
@@ -1352,7 +1394,7 @@
                         <Border Classes="panel-card" IsVisible="{Binding HasScheduleDays}">
                             <StackPanel Spacing="8">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Text="今日项目" Classes="section-title" />
+                                    <TextBlock Text="{Binding ScheduleBreakdownTitle}" Classes="section-title" />
                                     <TextBlock Grid.Column="1" Text="BY CATEGORY"
                                                FontFamily="{StaticResource MonoFont}" FontSize="9"
                                                LetterSpacing="1.2"

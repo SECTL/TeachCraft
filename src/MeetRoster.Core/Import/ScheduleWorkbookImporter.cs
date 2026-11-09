@@ -213,8 +213,8 @@ public static class ScheduleWorkbookImporter
                     if (!teamEvent)
                     {
                         // 此刻 r 指向号码布行；姓名/班级行在其后两行（ReadIndividualGroup 契约）。
-                        ReadIndividualGroup(sheet, r, currentGroup, laneNumbers, grade, slot);
-                        r = FindIndividualBlockEnd(sheet, r + 2, lastRow);
+                        // 一组跨页时（每页 8 道）续页会重新给一行道次，必须继续读，不能当作块结束。
+                        r = ReadIndividualGroupPages(sheet, r, currentGroup, laneNumbers, grade, slot, lastRow);
                     }
                     continue;
                 }
@@ -263,6 +263,49 @@ public static class ScheduleWorkbookImporter
             if (TryReadBlockHeader(sheet, r, out _, out _, out _, out _)) break;
             if (first.Contains("组", StringComparison.Ordinal) && TryParseGroupNumber(first, out _)) break;
             if (ParseSection(first) is not null) break;
+        }
+
+        return r;
+    }
+
+    /// <summary>
+    /// 个人项目一组可能跨页：排版软件按每页 8 道拆页后，续页会重新给一行道次（第 9 道…），
+    /// 之后才是新的号码布 / 姓名 / 班级三行。旧实现只读第一页，续页的参赛者被静默丢弃
+    /// （真实秩序册里 34 人的 800 米只读到 16 人）。这里循环读到块结束为止。
+    /// </summary>
+    private static int ReadIndividualGroupPages(
+        IXLWorksheet sheet,
+        int firstRow,
+        string group,
+        IReadOnlyDictionary<int, int> laneNumbers,
+        string grade,
+        MeetSlot slot,
+        int lastRow)
+    {
+        var r = firstRow;
+        while (r <= lastRow)
+        {
+            ReadIndividualGroup(sheet, r, group, laneNumbers, grade, slot);
+            var next = FindIndividualBlockEnd(sheet, r + 2, lastRow);
+
+            // 续页形态：一行只有道次、A 列为空，紧接着仍是「号码布 / 姓名 / 班级」三行。
+            // 组号行本身带道次与「第 N 组」，不会被误判为续页。
+            if (next + 3 <= lastRow &&
+                Clean(sheet.Cell(next, 1).GetString()).Length == 0 &&
+                !TryReadBlockHeader(sheet, next, out _, out _, out _, out _) &&
+                !HasClassCells(sheet, next + 1) &&
+                HasClassCells(sheet, next + 3))
+            {
+                var continuationLanes = ReadLaneNumbers(sheet, next);
+                if (continuationLanes.Count > 0)
+                {
+                    laneNumbers = continuationLanes;
+                    r = next + 1;
+                    continue;
+                }
+            }
+
+            return next;
         }
 
         return r;

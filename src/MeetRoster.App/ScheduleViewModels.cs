@@ -12,7 +12,28 @@ public sealed partial class ScheduleDayItemViewModel : ObservableObject
         Source = source;
     }
 
+    /// <summary>
+    /// 合成「全部」项：把每一天的时段按顺序并进来，只用于展示与计数。
+    /// 它不进入 <see cref="MeetRoster.Core.Models.MeetProject.Days"/>，所以导出的赛程仍按真实比赛日分节。
+    /// </summary>
+    public static ScheduleDayItemViewModel CreateAllDays(IReadOnlyList<MeetDay> days)
+    {
+        var all = new MeetDay
+        {
+            Name = "全部",
+            DateText = days.Count == 1 ? "1 个比赛日" : $"{days.Count} 个比赛日",
+        };
+        foreach (var day in days)
+            all.Slots.AddRange(day.Slots);
+
+        return new ScheduleDayItemViewModel(all) { IsAllDays = true };
+    }
+
     public MeetDay Source { get; }
+
+    /// <summary>这是合成的「全部比赛日」项，不是真实比赛日。</summary>
+    public bool IsAllDays { get; private init; }
+
     public string Name => Source.Name;
     public string DateText => Source.DateText;
     public string MetaLabel => $"{Source.Slots.Count} 个项目 · {Source.Slots.Sum(s => s.Entries.Count)} 人次";
@@ -41,13 +62,20 @@ public sealed partial class ScheduleCategoryItemViewModel : ObservableObject
     [ObservableProperty] private bool _isActive;
 }
 
-/// <summary>上午 / 下午分组。</summary>
+/// <summary>上午 / 下午分组；「全部」视图下再带一行比赛日小标题。</summary>
 public sealed class ScheduleGroupViewModel
 {
     public required string Label { get; init; }
     public required string English { get; init; }
     public required string TimeRange { get; init; }
     public required IReadOnlyList<ScheduleSlotViewModel> Slots { get; init; }
+
+    /// <summary>「全部」视图里的日期标签（如「第一天 · 11 月 11 日」）；单日视图为空。</summary>
+    public string DayLabel { get; init; } = string.Empty;
+
+    /// <summary>是否在这一组上方画日期标题：只有「全部」视图、且日期换了才画。</summary>
+    public bool ShowDayLabel => DayLabel.Length > 0;
+
     public string CountLabel => $"{Slots.Count} 项";
 }
 
