@@ -18,7 +18,7 @@ public sealed class MirrorFallbackTests
 
         public StubCheck(UpdateCheckResult result) => _result = result;
 
-        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
         {
             Calls++;
             return Task.FromResult(_result);

@@ -109,8 +109,9 @@ public sealed class UpdateFeedTests
     public void PreviewInstall_SeesHigherPreviewAndHigherRelease()
     {
         var entries = UpdateFeed.Parse(Json).ToList();
-        // 当前装在 preview.1，应能看到 preview.142（更高预览）与 1.17.0（更高正式版）。
-        var candidates = UpdateFeed.SelectCandidates(entries, Preview(1));
+        // 当前装在 preview.1，预览通道下应能看到 preview.142（更高预览）与 1.17.0（更高正式版）。
+        // 通道现在是显式参数：默认 Stable 只给正式版，预览行为要明确选 Preview。
+        var candidates = UpdateFeed.SelectCandidates(entries, Preview(1), UpdateChannel.Preview);
 
         var tags = candidates.Select(c => c.TagName).ToList();
         Assert.Contains("v1.17.0-preview.142", tags);

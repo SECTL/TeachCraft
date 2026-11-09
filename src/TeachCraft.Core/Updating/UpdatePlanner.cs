@@ -12,12 +12,18 @@ public sealed class UpdatePlanner
     private readonly IUpdateCheckService _checkService;
     private readonly BuildIdentity _identity;
     private readonly InstallKind _kind;
+    private readonly UpdateChannel _channel;
 
-    public UpdatePlanner(IUpdateCheckService checkService, BuildIdentity identity, InstallKind kind)
+    public UpdatePlanner(
+        IUpdateCheckService checkService,
+        BuildIdentity identity,
+        InstallKind kind,
+        UpdateChannel channel = UpdateChannel.Stable)
     {
         _checkService = checkService;
         _identity = identity;
         _kind = kind;
+        _channel = channel;
     }
 
     public BuildIdentity Identity => _identity;
@@ -31,7 +37,7 @@ public sealed class UpdatePlanner
             return UpdatePlanResult.Fail("认不出这台电脑上装的是哪一支（缺少运行标识），暂时无法自动选择更新包。");
         }
 
-        var check = await _checkService.CheckAsync(_identity, cancellationToken).ConfigureAwait(false);
+        var check = await _checkService.CheckAsync(_identity, _channel, cancellationToken).ConfigureAwait(false);
         if (!check.IsSuccess)
         {
             // 空字符串表示用户主动取消，此时不该弹任何错误。

@@ -7,7 +7,8 @@ namespace TeachCraft.Core.Updating;
 public sealed record UpdateState(
     DateTimeOffset? LastCheckUtc,
     IReadOnlyList<string> SkippedVersions,
-    UpdateSource? PreferredSource = null)
+    UpdateSource? PreferredSource = null,
+    UpdateChannel? PreferredChannel = null)
 {
     public static UpdateState Empty { get; } = new(null, Array.Empty<string>());
 }
@@ -87,7 +88,16 @@ public sealed class UpdateStateStore : IUpdateStateStore
                     preferred = UpdateSourceText.Parse(raw);
             }
 
-            return new UpdateState(lastCheck, skipped, preferred);
+            UpdateChannel? channel = null;
+            if (root.TryGetProperty("PreferredChannel", out var channelElement)
+                && channelElement.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var raw = channelElement.GetString();
+                if (!string.IsNullOrWhiteSpace(raw) && raw is "stable" or "preview")
+                    channel = UpdateChannelText.Parse(raw);
+            }
+
+            return new UpdateState(lastCheck, skipped, preferred, channel);
         }
         catch (Exception)
         {
@@ -112,6 +122,9 @@ public sealed class UpdateStateStore : IUpdateStateStore
                 // null 表示「没手动选过」，JSON 里写成 null，读取时按默认行为处理。
                 PreferredSource = state.PreferredSource is { } source
                     ? UpdateSourceText.ToStorageValue(source)
+                    : null,
+                PreferredChannel = state.PreferredChannel is { } channel
+                    ? UpdateChannelText.ToStorageValue(channel)
                     : null,
             };
 

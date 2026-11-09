@@ -15,7 +15,7 @@ public sealed class UpdatePlannerTests
 
         public StubCheckService(UpdateCheckResult result) => _result = result;
 
-        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
             => Task.FromResult(_result);
     }
 
@@ -216,7 +216,7 @@ public sealed class MainViewModelUpdateTests
 
     private sealed class FailingCheckService : IUpdateCheckService
     {
-        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
             => Task.FromResult(UpdateCheckResult.Fail(UpdateErrorText.NoNetwork));
     }
 }

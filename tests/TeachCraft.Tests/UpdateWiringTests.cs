@@ -15,7 +15,7 @@ public sealed class UpdateWiringTests
     {
         private readonly UpdateCheckResult _result;
         public FeedStub(UpdateCheckResult result) => _result = result;
-        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
             => Task.FromResult(_result);
     }
 
@@ -109,7 +109,7 @@ public sealed class UpdateWiringTests
 
     private sealed class ThrowingCheckService : IUpdateCheckService
     {
-        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("打开更新页不该联网");
     }
 
@@ -177,7 +177,7 @@ public sealed class UpdateWiringTests
 
     private sealed class FailingStub : IUpdateCheckService
     {
-        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+        public Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
             => Task.FromResult(UpdateCheckResult.Fail(UpdateErrorText.NoNetwork));
     }
 

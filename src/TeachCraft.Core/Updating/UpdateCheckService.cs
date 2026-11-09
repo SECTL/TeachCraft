@@ -15,7 +15,16 @@ public sealed record UpdateCheckResult(bool IsSuccess, ReleaseEntry? Best, IRead
 
 public interface IUpdateCheckService
 {
-    Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 读取版本列表并挑出候选。
+    ///
+    /// channel 决定「哪些版本算候选」：稳定通道只给正式版，
+    /// 预览通道预览与正式都算。默认值让既有调用方无需改动。
+    /// </summary>
+    Task<UpdateCheckResult> CheckAsync(
+        BuildIdentity current,
+        UpdateChannel channel = UpdateChannel.Stable,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -63,7 +72,7 @@ public sealed class UpdateCheckService : IUpdateCheckService
     public static UpdateCheckService CreateDefault()
         => new(SharedClient.Value, null, "检查更新");
 
-    public async Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -86,7 +95,7 @@ public sealed class UpdateCheckService : IUpdateCheckService
                 return UpdateCheckResult.Fail(UpdateErrorText.ForNonJsonBody(_action));
             }
 
-            var candidates = UpdateFeed.SelectCandidates(entries, current);
+            var candidates = UpdateFeed.SelectCandidates(entries, current, channel);
             return UpdateCheckResult.Ok(candidates.FirstOrDefault(), candidates);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

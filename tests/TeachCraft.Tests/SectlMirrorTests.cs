@@ -249,7 +249,8 @@ public sealed class SectlMirrorTests
             .Respond(DistributionUrl, HttpStatusCode.OK, SampleDistribution());
         var service = new SectlMirrorCheckService(handler);
 
-        var result = await service.CheckAsync(Identity("1.17.0-preview.1.sc.win-x64"));
+        // 预览通道下预览版用户能看到更高的预览；默认 Stable 只会给正式版。
+        var result = await service.CheckAsync(Identity("1.17.0-preview.1.sc.win-x64"), UpdateChannel.Preview);
 
         Assert.True(result.IsSuccess, result.Failure);
         Assert.Equal("1.18.0-preview.9", result.Best!.Version.ToString());

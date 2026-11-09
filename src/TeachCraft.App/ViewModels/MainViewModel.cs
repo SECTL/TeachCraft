@@ -37,6 +37,12 @@ public partial class MainViewModel : ObservableObject
     private UpdateSource _updateSource;
 
     /// <summary>
+    /// 用户选定的更新通道。没手动选过时跟随安装形态：
+    /// 正式版用户看正式版，预览版用户继续看预览——那是他们当初的选择。
+    /// </summary>
+    private UpdateChannel _updateChannel;
+
+    /// <summary>
     /// 界面版本号取自可自证的构建身份，必须包含预览序号，
     /// 否则 v1.17.0-preview.141 与 -preview.142 在界面上完全同形。
     /// AssemblyVersion 仍是三段，保持不变。
@@ -122,6 +128,8 @@ public partial class MainViewModel : ObservableObject
 
         // 上次手动选过的更新源要恢复，否则每次重启都回到默认，用户的选择形同虚设。
         _updateSource = _stateStore.Load().PreferredSource ?? UpdateSource.GitHub;
+        _updateChannel = _stateStore.Load().PreferredChannel
+                         ?? UpdateChannelText.DefaultFor(_identity.Version);
 
         _appCards = CreateAppCards();
         _visibleAppCardCount = _appCards.Length;
@@ -211,6 +219,23 @@ public partial class MainViewModel : ObservableObject
     {
         get => SelectedSource == UpdateSource.SectlMirror;
         set { if (value) ChangeSource(UpdateSource.SectlMirror); }
+    }
+
+    /// <summary>当前选定的更新通道；界面上的两个单选按钮绑它。</summary>
+    [ObservableProperty] private UpdateChannel _selectedChannel = UpdateChannel.Stable;
+
+    /// <summary>稳定通道单选按钮状态。</summary>
+    public bool IsStableChannel
+    {
+        get => SelectedChannel == UpdateChannel.Stable;
+        set { if (value) ChangeChannel(UpdateChannel.Stable); }
+    }
+
+    /// <summary>预览通道单选按钮状态。</summary>
+    public bool IsPreviewChannel
+    {
+        get => SelectedChannel == UpdateChannel.Preview;
+        set { if (value) ChangeChannel(UpdateChannel.Preview); }
     }
     [ObservableProperty] private string _statusText = DefaultStatusText;
     [ObservableProperty] private IBrush _statusBrush = Moss;
@@ -377,6 +402,31 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// 切换更新通道。选择立即持久化——用户不该因为重启就丢掉刚做的选择。
+    /// </summary>
+    public void ChangeChannel(UpdateChannel channel)
+    {
+        if (_updateChannel == channel) return;
+
+        _updateChannel = channel;
+        SelectedChannel = channel;
+
+        // 单选按钮靠这两个通知刷新选中态；漏了就会「点了没反应」。
+        OnPropertyChanged(nameof(IsStableChannel));
+        OnPropertyChanged(nameof(IsPreviewChannel));
+
+        // 换通道之后上一次的结论不再适用，清掉免得误导。
+        HasSourceNote = false;
+        SourceNoteText = "";
+        if (!IsUpdateAvailable) UpdateStateText = "还没有检查过";
+
+        var state = _stateStore.Load();
+        _stateStore.Save(new UpdateState(state.LastCheckUtc, state.SkippedVersions, state.PreferredSource, channel));
+
+        SetStatus($"更新通道已切换为 {UpdateChannelText.DisplayName(channel)}");
+    }
+
+    /// <summary>
     /// 生产环境的检查服务：GitHub 为主，SECTL 镜像兜底。
     /// 两个服务共用进程内唯一的 handler，不额外建 HttpClient。
     /// </summary>
@@ -408,11 +458,11 @@ public partial class MainViewModel : ObservableObject
         // 否则按用户选定的源建一个带镜像回退的服务。
         var mirroring = _checkService is null ? _checkServiceFactory(_updateSource) as MirroringUpdateCheckService : null;
         var service = _checkService ?? mirroring ?? _checkServiceFactory(_updateSource);
-        var planner = new UpdatePlanner(service, _identity, _installKind);
+        var planner = new UpdatePlanner(service, _identity, _installKind, _updateChannel);
 
         // 记下「检查过」这件事本身。失败也算检查过，否则用户会以为按钮没反应。
         var state = _stateStore.Load();
-        _stateStore.Save(new UpdateState(DateTimeOffset.UtcNow, state.SkippedVersions, state.PreferredSource));
+        _stateStore.Save(new UpdateState(DateTimeOffset.UtcNow, state.SkippedVersions, state.PreferredSource, state.PreferredChannel));
 
         var result = await planner.PlanAsync(cancellationToken).ConfigureAwait(true);
 

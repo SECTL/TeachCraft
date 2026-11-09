@@ -72,25 +72,50 @@ public static class UpdateFeed
         => entries.OrderByDescending(e => e.Version);
 
     /// <summary>
-    /// 给定当前安装的构建，返回「比它更高」且用户本该看到的候选版本，从新到旧。
-    /// 正式版安装：只看正式版。
-    /// 预览版安装：看更高的预览 + 更高的正式版。
+    /// 给定当前安装的构建与用户选定的通道，返回可选版本，从新到旧。
+    ///
+    /// 稳定通道：只给正式版。
+    ///   正式版用户 → 严格更高的正式版。
+    ///   预览版用户 → **不要求更高**。他切到稳定通道就是要回到正式版，
+    ///   而正式版（1.18.0）的版本号本来就低于同号预览（1.18.0-preview.15），
+    ///   按「必须更高」筛会把唯一该给他的版本筛掉。
+    ///
+    /// 预览通道：预览版与正式版都算，取版本号最高的。
+    ///   正式版用户 → 更高即可（同号预览低于正式版，自然被排除）。
+    ///   预览版用户 → 更高的预览，或更高的正式版。
     /// </summary>
-    public static IReadOnlyList<ReleaseEntry> SelectCandidates(IEnumerable<ReleaseEntry> entries, BuildIdentity current)
+    public static IReadOnlyList<ReleaseEntry> SelectCandidates(
+        IEnumerable<ReleaseEntry> entries,
+        BuildIdentity current,
+        UpdateChannel channel = UpdateChannel.Stable)
     {
         var currentVersion = current.Version;
+        var all = entries.ToList();
 
-        var candidates = entries.Where(e =>
+        if (channel == UpdateChannel.Stable)
         {
-            if (e.Version <= currentVersion) return false;
-            if (!current.Version.IsPreview) return !e.IsPrerelease;
-            return true;
-        });
+            var stable = all.Where(e => !e.IsPrerelease).ToList();
 
-        return OrderNewestFirst(candidates).ToList();
+            // 预览版用户切稳定通道：允许降级，但**只给最高的那个正式版**。
+            // 把所有更低的正式版都列出来，用户会看到「1.18.0 和 1.17.0 都能选」——
+            // 那不是选择，是噪音；他要的是「回到正式版」，不是版本考古。
+            if (currentVersion.IsPreview)
+            {
+                var best = OrderNewestFirst(stable).FirstOrDefault();
+                return best is null ? Array.Empty<ReleaseEntry>() : new[] { best };
+            }
+
+            return OrderNewestFirst(stable.Where(e => e.Version > currentVersion)).ToList();
+        }
+
+        // 预览通道：预览与正式都算，取严格更高的。
+        return OrderNewestFirst(all.Where(e => e.Version > currentVersion)).ToList();
     }
 
     /// <summary>最高候选；没有可升级的版本时返回 null。</summary>
-    public static ReleaseEntry? BestCandidate(IEnumerable<ReleaseEntry> entries, BuildIdentity current)
-        => SelectCandidates(entries, current).FirstOrDefault();
+    public static ReleaseEntry? BestCandidate(
+        IEnumerable<ReleaseEntry> entries,
+        BuildIdentity current,
+        UpdateChannel channel = UpdateChannel.Stable)
+        => SelectCandidates(entries, current, channel).FirstOrDefault();
 }

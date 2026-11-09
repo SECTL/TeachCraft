@@ -39,7 +39,7 @@
                        VerticalAlignment="Center" />
         </StackPanel>
         <Border Classes="card" Padding="16,14" Margin="0,0,0,20">
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="形态" FontSize="10.5"
                            Foreground="{StaticResource MutedBrush}" Margin="0,0,14,0" />
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding InstallDescription}" FontSize="10.5"
@@ -62,6 +62,25 @@
                                  IsChecked="{Binding IsMirrorSource}"
                                  IsEnabled="{Binding !IsUpdateBusy}"
                                  AutomationProperties.Name="从 SECTL 镜像检查更新" />
+                </StackPanel>
+
+                <!-- 更新通道：默认跟随当前安装形态，用户可改 -->
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="更新通道" FontSize="10.5"
+                           Foreground="{StaticResource MutedBrush}" Margin="0,9,14,0" />
+                <StackPanel Grid.Row="3" Grid.Column="1" Spacing="3" Margin="0,7,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <RadioButton GroupName="UpdateChannel" Content="正式版" FontSize="10.5"
+                                     IsChecked="{Binding IsStableChannel}"
+                                     IsEnabled="{Binding !IsUpdateBusy}"
+                                     AutomationProperties.Name="只看正式版" />
+                        <RadioButton GroupName="UpdateChannel" Content="预览版" FontSize="10.5"
+                                     IsChecked="{Binding IsPreviewChannel}"
+                                     IsEnabled="{Binding !IsUpdateBusy}"
+                                     AutomationProperties.Name="也看预览版" />
+                    </StackPanel>
+                    <TextBlock Text="正式版更稳；预览版更新快，可能有未修完的问题。"
+                               FontSize="9.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource MutedBrush}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -131,7 +150,7 @@
                 <TextBlock Text="GitHub 在部分校园网里连不上，此时可改用 SECTL 镜像：它是同一批发布资产的副本，校验清单一致，只换下载地址。"
                            FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
                            Foreground="{StaticResource InkSoftBrush}" />
-                <TextBlock Text="更新相关的少量记录（上次检查时间、已跳过的版本、所选更新源）与下载的安装包只留在本机的 TeachCraft\Update 目录里。"
+                <TextBlock Text="更新相关的少量记录（上次检查时间、已跳过的版本、所选更新源与通道）与下载的安装包只留在本机的 TeachCraft\Update 目录里。"
                            FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
                            Foreground="{StaticResource MutedBrush}" />
             </StackPanel>

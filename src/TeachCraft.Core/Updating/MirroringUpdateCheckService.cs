@@ -42,14 +42,14 @@ public sealed class MirroringUpdateCheckService : IUpdateCheckService
     /// <summary>是否发生了回退——界面据此提示「GitHub 连不上，已改用镜像」。</summary>
     public bool DidFallBack { get; private set; }
 
-    public async Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
     {
         UsedSource = _preference;
         PrimaryFailure = null;
         DidFallBack = false;
 
         var primary = _preference == UpdateSource.SectlMirror ? _mirror : _github;
-        var result = await primary.CheckAsync(current, cancellationToken).ConfigureAwait(false);
+        var result = await primary.CheckAsync(current, channel, cancellationToken).ConfigureAwait(false);
 
         // 用户主动取消：不该再打另一个源。
         if (result.IsSuccess || !_allowFallback || string.IsNullOrEmpty(result.Failure))
@@ -60,7 +60,7 @@ public sealed class MirroringUpdateCheckService : IUpdateCheckService
         DidFallBack = true;
 
         var secondary = UsedSource == UpdateSource.SectlMirror ? _mirror : _github;
-        var fallback = await secondary.CheckAsync(current, cancellationToken).ConfigureAwait(false);
+        var fallback = await secondary.CheckAsync(current, channel, cancellationToken).ConfigureAwait(false);
 
         if (fallback.IsSuccess) return fallback;
 
@@ -108,7 +108,7 @@ public sealed class SectlMirrorCheckService : IUpdateCheckService
         _action = action;
     }
 
-    public async Task<UpdateCheckResult> CheckAsync(BuildIdentity current, CancellationToken cancellationToken = default)
+    public async Task<UpdateCheckResult> CheckAsync(BuildIdentity current, UpdateChannel channel = UpdateChannel.Stable, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -135,7 +135,7 @@ public sealed class SectlMirrorCheckService : IUpdateCheckService
             if (entries.Count == 0)
                 return UpdateCheckResult.Fail(UpdateErrorText.MirrorHasNoProject);
 
-            var candidates = UpdateFeed.SelectCandidates(entries, current);
+            var candidates = UpdateFeed.SelectCandidates(entries, current, channel);
             return UpdateCheckResult.Ok(candidates.FirstOrDefault(), candidates);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
