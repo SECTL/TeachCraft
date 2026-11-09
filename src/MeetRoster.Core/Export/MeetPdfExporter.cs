@@ -13,9 +13,9 @@ namespace MeetRoster.Core.Export;
 /// </summary>
 public static class MeetPdfExporter
 {
-    private const float PageWidth = 1000f;
+    public const float PageWidth = 1000f;
     /// <summary>固定页高：每页画布尺寸一致，铺进 A4 时缩放比才一致（否则各页字号会忽大忽小）。</summary>
-    private const float PageHeight = 1380f;
+    public const float PageHeight = 1380f;
     private const float Pad = 54f;
     private const float ContentWidth = PageWidth - Pad * 2;
     private const float FooterHeight = 46f;
@@ -45,16 +45,16 @@ public static class MeetPdfExporter
             throw new InvalidOperationException("还没有导入任何班级，无法导出。");
 
         var summaries = MeetExportBuilder.Build(project, options);
-        var pages = BuildPages(project, summaries, options);
 
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-        var images = pages
-            .Select(page => RenderPage(page, project, summaries, options, pages.Count))
-            .ToList();
-
         QuestPDF.Settings.License = LicenseType.Community;
+
+        // 卡片版式：每个比赛日装箱到 A4，卡片不会从中间被劈开；表格版式走原来的分页器。
+        var images = options.Layout == MeetPdfLayout.Card
+            ? BuildCardPages(project, summaries, options)
+            : RenderTablePages(project, summaries, options);
 
         Document.Create(container =>
         {
@@ -72,6 +72,110 @@ public static class MeetPdfExporter
         }).GeneratePdf(path);
 
         return Path.GetFullPath(path);
+    }
+
+    /// <summary>只渲染前若干页（预览用），不落盘、不生成 PDF。</summary>
+    public static List<byte[]> RenderPreviewPages(
+        MeetProject project, IReadOnlyList<ClassExportSummary> summaries,
+        MeetExportOptions options, int pageCount)
+    {
+        var pages = BuildPages(project, summaries, options).Take(pageCount).ToList();
+        return pages
+            .Select(page => RenderPage(page, project, summaries, options, pages.Count))
+            .ToList();
+    }
+
+    // ----------------------------- 卡片版式分页 -----------------------------
+
+    private static List<byte[]> RenderTablePages(
+        MeetProject project, IReadOnlyList<ClassExportSummary> summaries, MeetExportOptions options)
+    {
+        var pages = BuildPages(project, summaries, options);
+        return pages
+            .Select(page => RenderPage(page, project, summaries, options, pages.Count))
+            .ToList();
+    }
+
+    /// <summary>卡片版式的 A4 画布高：与表格版式同一常量，铺进 A4 的缩放比才一致。</summary>
+    private const float CardPageHeight = PageHeight;
+
+    private static List<byte[]> BuildCardPages(
+        MeetProject project, IReadOnlyList<ClassExportSummary> summaries, MeetExportOptions options)
+    {
+        var document = MeetCardBuilder.Build(project, summaries, options);
+        var footerLeft = $"{project.Title} · {document.Scope} · 本机生成，文件未上传";
+        var usable = CardPageHeight - Pad - FooterHeight - 40f;
+
+        // 按「时段」装箱而不是整天：一天塞不下时把下午挪到下一页，卡片本身仍不被切断。
+        // 日期标题只在当天第一次落位时占一次高度，不能按时段重复计算（否则每页会空掉大半）。
+        const float dayHeaderHeight = 34f;
+
+        var pages = new List<List<MeetCardSection>>();
+        var current = new List<MeetCardSection>();
+        var carried = new List<MeetCardPeriod>();
+        var used = MeetCardRenderer.HeaderHeight(document);
+        MeetCardSection? currentDay = null;
+
+        void FlushSection()
+        {
+            if (carried.Count == 0) return;
+            var day = currentDay!;
+            current.Add(new MeetCardSection
+            {
+                DayLabel = day.DayLabel,
+                DateText = day.DateText,
+                Periods = carried.ToList(),
+            });
+            carried.Clear();
+        }
+
+        void FlushPage()
+        {
+            FlushSection();
+            if (current.Count == 0) return;
+            pages.Add(current);
+            current = [];
+            used = 0f;
+        }
+
+        foreach (var section in document.Sections)
+        {
+            if (currentDay is not null && !ReferenceEquals(currentDay, section))
+            {
+                // 换天：先把上一天没落位完的时段收口。
+                FlushSection();
+                used += 4f;
+            }
+
+            currentDay = section;
+            foreach (var period in section.Periods)
+            {
+                var periodHeight = MeetCardRenderer.PeriodHeight(period);
+                var need = periodHeight + (carried.Count == 0 ? dayHeaderHeight : 0f);
+
+                if (used + need > usable && current.Count + carried.Count > 0)
+                {
+                    FlushPage();
+                    need = periodHeight + dayHeaderHeight;
+                }
+
+                carried.Add(period);
+                used += need;
+            }
+        }
+
+        FlushPage();
+        if (pages.Count == 0) pages.Add([]);
+
+        return pages
+            .Select((sections, index) => MeetCardRenderer.Render(
+                document,
+                sections,
+                includeHeader: index == 0,
+                footerLeft,
+                $"共 {pages.Count} 页 · 第 {index + 1} 页",
+                CardPageHeight))
+            .ToList();
     }
 
     // ----------------------------- 分页 -----------------------------
@@ -444,7 +548,7 @@ public static class MeetPdfExporter
                     }
 
                     rows.Add([
-                        line.Time, line.EventName, line.Stage, line.AthleteName, line.Lane,
+                        line.Time, line.EventName, line.Stage, line.AthleteLabel, line.Lane,
                     ]);
                     highlights.Add(options.HighlightClass && !options.IsAllClasses);
                 }

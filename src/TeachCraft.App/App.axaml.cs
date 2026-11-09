@@ -506,6 +506,13 @@ public partial class App : Application
                     await Task.Delay(800);
                 }
 
+                var teamRegIndex = Array.IndexOf(args, "--meetroster-team-registration");
+                if (teamRegIndex >= 0 && teamRegIndex + 1 < args.Length)
+                {
+                    await window.LoadRegistrationForTeamCaptureAsync(args[teamRegIndex + 1]);
+                    await Task.Delay(600);
+                }
+
                 var removeIndex = Array.IndexOf(args, "--meetroster-remove");
                 if (removeIndex >= 0 && removeIndex + 1 < args.Length)
                 {
@@ -522,7 +529,15 @@ public partial class App : Application
 
                 if (args.Contains("--meetroster-export-dialog"))
                 {
-                    var dialog = window.OpenExportDialogForCapture();
+                    var layoutIndex = Array.IndexOf(args, "--meetroster-export-layout");
+                    var layout = layoutIndex >= 0 && layoutIndex + 1 < args.Length
+                        ? args[layoutIndex + 1]
+                        : null;
+                    var styleIndex = Array.IndexOf(args, "--meetroster-export-style");
+                    var style = styleIndex >= 0 && styleIndex + 1 < args.Length
+                        ? args[styleIndex + 1]
+                        : null;
+                    var dialog = window.OpenExportDialogForCapture(layout, style);
                     if (dialog is null)
                         throw new InvalidOperationException("导出弹窗走查需要先注入报名表或秩序册。");
 
@@ -549,6 +564,9 @@ public partial class App : Application
                     window.Close();
                     return;
                 }
+
+                if (args.Contains("--meetroster-busy"))
+                    window.ShowBusyForCapture();
 
                 await Task.Delay(1000);
                 window.UpdateLayout();

@@ -309,6 +309,10 @@
             <Setter Property="Padding" Value="6,2" />
             <Setter Property="Margin" Value="0,0,5,5" />
         </Style>
+        <!-- 团体项目的 chip 带一长串队员名：占满整行，靠 TextWrapping 折行 -->
+        <Style Selector="Border.entry-chip.team">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
         <Style Selector="Border.entry-chip.highlight">
             <Setter Property="Background" Value="{StaticResource AccentWashBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
@@ -333,7 +337,7 @@
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
         <!-- ==================== 顶栏 ==================== -->
         <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="18,10">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
@@ -381,7 +385,7 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Classes="ghost top" Content="导入秩序册" Click="OnImportOrderBook"
                             IsEnabled="{Binding !IsBusy}"
-                            ToolTip.Tip="一份秩序册同时带来全校名单、竞赛日程与项目分组表"
+                            ToolTip.Tip="秩序册（含代表队名单）或往届赛程（只有竞赛日程 + 项目分组表）都从这里导入，程序自动分辨"
                             AutomationProperties.Name="导入秩序册" />
                     <Button Classes="ghost top" Content="导入报名表" Click="OnImportRoster"
                             IsEnabled="{Binding !IsBusy}"
@@ -391,10 +395,6 @@
                             IsEnabled="{Binding !IsBusy}"
                             ToolTip.Tip="{Binding RosterStatusHint}"
                             AutomationProperties.Name="导入名单" />
-                    <Button Classes="ghost top" Content="导入赛程" Click="OnImportSchedule"
-                            IsEnabled="{Binding !IsBusy}"
-                            ToolTip.Tip="导入往届“竞赛日程 + 项目分组表”工作簿"
-                            AutomationProperties.Name="导入赛程" />
                     <Border Width="1" Height="22" Background="{StaticResource LineBrush}" Margin="3,0" />
                     <Button Classes="primary top" Content="导出…" Click="OnExportHandBook"
                             IsEnabled="{Binding CanExportHandBook}"
@@ -1032,12 +1032,12 @@
                             <StackPanel Spacing="6">
                                 <TextBlock Text="尚未导入赛程" FontFamily="{StaticResource SerifFont}"
                                            FontSize="13" Foreground="{StaticResource InkBrush}" />
-                                <TextBlock Text="导入含“竞赛日程 + 项目分组表”的工作簿后，这里会显示日期与筛选。"
+                                <TextBlock Text="导入秩序册或含“竞赛日程 + 项目分组表”的工作簿后，这里会显示日期与筛选。"
                                            FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                                <Button Classes="ghost" Content="导入赛程" Click="OnImportSchedule"
+                                <Button Classes="ghost" Content="导入秩序册" Click="OnImportOrderBook"
                                         HorizontalAlignment="Left" Padding="10,4" FontSize="10.5"
                                         IsEnabled="{Binding !IsBusy}"
-                                        AutomationProperties.Name="导入赛程（空态）" />
+                                        AutomationProperties.Name="导入秩序册（空态）" />
                             </StackPanel>
                         </Border>
 
@@ -1258,21 +1258,28 @@
                                                                                 <DataTemplate x:DataType="app:ScheduleEntryViewModel">
                                                                                     <Border Classes="entry-chip"
                                                                                             Classes.highlight="{Binding IsHighlighted}"
-                                                                                            Opacity="{Binding Opacity}">
-                                                                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                                            Classes.team="{Binding TeamMembersFromRegistration}"
+                                                                                            Opacity="{Binding Opacity}"
+                                                                                            ToolTip.Tip="{Binding EntryToolTip}">
+                                                                                        <!-- 团体项目可能一次列十来个队员，必须允许换行；
+                                                                                             横向 StackPanel 不会折行，长名单会溢出到卡片外。 -->
+                                                                                        <StackPanel Spacing="1">
                                                                                             <TextBlock Text="{Binding ClassName}"
                                                                                                        FontSize="10"
                                                                                                        Foreground="{StaticResource InkSoftBrush}" />
-                                                                                            <TextBlock Text="·" FontSize="10"
-                                                                                                       Foreground="{StaticResource MutedBrush}" />
+                                                                                            <TextBlock Text="{Binding TeamMembers}"
+                                                                                                       IsVisible="{Binding TeamMembersFromRegistration}"
+                                                                                                       FontSize="10"
+                                                                                                       Foreground="{StaticResource InkSoftBrush}"
+                                                                                                       TextWrapping="Wrap" />
                                                                                             <TextBlock Text="{Binding AthleteName}"
+                                                                                                       IsVisible="{Binding !TeamMembersFromRegistration}"
                                                                                                        FontSize="10"
                                                                                                        Foreground="{StaticResource InkSoftBrush}" />
                                                                                             <TextBlock Text="{Binding Lane}"
                                                                                                        FontFamily="{StaticResource MonoFont}"
                                                                                                        FontSize="9"
-                                                                                                       Foreground="{StaticResource MutedBrush}"
-                                                                                                       VerticalAlignment="Center" />
+                                                                                                       Foreground="{StaticResource MutedBrush}" />
                                                                                         </StackPanel>
                                                                                     </Border>
                                                                                 </DataTemplate>
@@ -1459,6 +1466,34 @@
                                Foreground="{Binding StatusBrush}" VerticalAlignment="Center" />
                 </StackPanel>
             </Grid>
+        </Border>
+
+        <!-- ==================== 忙碌遮罩 ====================
+             整本秩序册解析 / 全年级导出要持续几秒到十几秒。没有可见反馈时，
+             老师会以为程序卡死并强关（强关会丢掉正在写的文件）。 -->
+        <Border Grid.Row="0" Grid.RowSpan="5" IsVisible="{Binding ShowBusyOverlay}"
+                Background="#B3FAF9F5" ZIndex="60">
+            <Border Background="{StaticResource CardBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="30,24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MaxWidth="420">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="{Binding BusyTitle}" FontFamily="{StaticResource SerifFont}"
+                               FontSize="17" Foreground="{StaticResource InkBrush}"
+                               TextWrapping="Wrap" HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Width="240" Height="3" />
+                    <TextBlock Text="{Binding BusyDetail}" FontSize="10" LineHeight="16"
+                               Foreground="{StaticResource MutedBrush}"
+                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="340"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="处理期间请勿关闭窗口" FontFamily="{StaticResource MonoFont}"
+                               FontSize="9" LetterSpacing="0.8"
+                               Foreground="{StaticResource LineStrongBrush}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </Window>

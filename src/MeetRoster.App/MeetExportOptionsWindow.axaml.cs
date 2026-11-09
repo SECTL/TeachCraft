@@ -19,7 +19,12 @@ public partial class MeetExportOptionsWindow : Window
         InitializeComponent();
         _viewModel = new MeetExportOptionsViewModel(project, currentClass);
         DataContext = _viewModel;
-        Opened += (_, _) => WindowFit.Clamp(this);
+        Opened += (_, _) =>
+        {
+            WindowFit.Clamp(this);
+            // 打开即画第一版预览，用户不用先动设置才看得到东西。
+            _viewModel.RequestPreview();
+        };
     }
 
     private void OnExport(object? sender, RoutedEventArgs e)

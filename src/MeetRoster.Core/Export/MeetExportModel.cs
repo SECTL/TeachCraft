@@ -2,11 +2,37 @@ using MeetRoster.Core.Models;
 
 namespace MeetRoster.Core.Export;
 
+/// <summary>PDF 版式：表格手册（原版）或赛程卡（照搬软件内「仅显示该班选手」的观感）。</summary>
+public enum MeetPdfLayout
+{
+    /// <summary>纸墨表格：概览 → 名单 → 单项 → 日程，适合归档与打印。</summary>
+    Handbook,
+
+    /// <summary>赛程卡：每个时段一张卡，左侧时间、彩色分类徽标、选手 chip，适合发群与张贴。</summary>
+    Card,
+}
+
+/// <summary>Excel 样式：软件整理的四页工作簿，或在导入的原表上直接加底色。</summary>
+public enum MeetExcelStyle
+{
+    /// <summary>软件整理：班级报名 / 单项名单 / 赛程 / 班级汇总四页。</summary>
+    Workbook,
+
+    /// <summary>原表高亮：复制导入的原工作簿，只在「代表队名单 / 项目分组表」里给该班条目涂底色。</summary>
+    OriginalHighlight,
+}
+
 /// <summary>导出对象：某个班、或整份秩序册。</summary>
 public sealed class MeetExportOptions
 {
     /// <summary>要导出的班级名；为空表示全部班级。</summary>
     public string? ClassName { get; init; }
+
+    /// <summary>Excel 样式；PDF 不使用。</summary>
+    public MeetExcelStyle ExcelStyle { get; init; } = MeetExcelStyle.Workbook;
+
+    /// <summary>PDF 版式；Excel 不使用。</summary>
+    public MeetPdfLayout Layout { get; init; } = MeetPdfLayout.Handbook;
 
     /// <summary>赛程里只列该班选手（勾选班级时生效）。</summary>
     public bool OnlyClassEntries { get; init; } = true;
@@ -48,6 +74,8 @@ public static class MeetExportNaming
 /// <summary>一个班在赛程里的某一条参赛记录，按日期与时间排好序。</summary>
 public sealed class ClassEntryLine
 {
+    /// <summary>参赛班级全名（如「九年级6班」）；卡片版式的 chip 要显示它。</summary>
+    public required string ClassName { get; init; }
     public required string DayName { get; init; }
     public required string DateText { get; init; }
     public required string Period { get; init; }
@@ -61,6 +89,20 @@ public sealed class ClassEntryLine
     public string Lane { get; init; } = string.Empty;
     public string Bib { get; init; } = string.Empty;
     public string GroupCount { get; init; } = string.Empty;
+    public string AdvanceCount { get; init; } = string.Empty;
+    public string EntryCountText { get; init; } = string.Empty;
+    /// <summary>是否团体项目（接力 / 跳绳）：卡片版式据此把「人次」写成「支队伍」。</summary>
+    public bool IsTeamEvent { get; init; }
+    /// <summary>团体项目该班的报名队员（来自报名表）；空表示只知道「某班有队」。</summary>
+    public string TeamMembers { get; init; } = string.Empty;
+    public bool TeamMembersFromRegistration { get; init; }
+
+    /// <summary>
+    /// 参赛人那一栏该显示什么：团体项目拿到报名表队员就显示队员，
+    /// 否则退回秩序册的占位标签（「4x100 接力队」）。
+    /// </summary>
+    public string AthleteLabel =>
+        TeamMembersFromRegistration && TeamMembers.Length > 0 ? TeamMembers : AthleteName;
 }
 
 /// <summary>导出用的班级汇总：人数、项次与报名项目清单。</summary>
@@ -140,6 +182,7 @@ public static class MeetExportBuilder
                     if (!string.Equals(entry.ClassName, meetClass.Name, StringComparison.Ordinal)) continue;
                     lines.Add(new ClassEntryLine
                     {
+                        ClassName = meetClass.Name,
                         DayName = day.Name,
                         DateText = day.DateText,
                         Period = slot.Period,
@@ -153,6 +196,11 @@ public static class MeetExportBuilder
                         Lane = entry.Lane,
                         Bib = entry.Bib,
                         GroupCount = slot.GroupCount,
+                        AdvanceCount = slot.AdvanceCount,
+                        EntryCountText = slot.EntryCountText,
+                        IsTeamEvent = IsTeamEvent(slot.EventName),
+                        TeamMembers = entry.TeamMembers,
+                        TeamMembersFromRegistration = entry.TeamMembersFromRegistration,
                     });
                 }
             }
@@ -192,4 +240,8 @@ public static class MeetExportBuilder
         MeetEventCategory.Ceremony => "仪式",
         _ => "其他",
     };
+
+    public static bool IsTeamEvent(string eventName) =>
+        eventName.Contains("接力", StringComparison.Ordinal) ||
+        eventName.Contains("跳绳", StringComparison.Ordinal);
 }

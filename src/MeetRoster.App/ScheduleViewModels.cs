@@ -157,6 +157,8 @@ public sealed class ScheduleEntryViewModel
         Lane = source.Lane;
         Bib = source.Bib;
         Group = source.Group;
+        TeamMembers = source.TeamMembers;
+        TeamMembersFromRegistration = source.TeamMembersFromRegistration;
         IsHighlighted = highlightClass is not null &&
                         string.Equals(source.ClassName, highlightClass, StringComparison.Ordinal);
         Opacity = highlightClass is null || IsHighlighted ? 1 : 0.7;
@@ -167,6 +169,19 @@ public sealed class ScheduleEntryViewModel
     public string Lane { get; }
     public string Bib { get; }
     public string Group { get; }
+    /// <summary>团体项目的报名队员（来自报名表）；空表示只知道「某班有队」。</summary>
+    public string TeamMembers { get; }
+    public bool TeamMembersFromRegistration { get; }
+
+    /// <summary>chip 的悬浮提示：团体项目给完整队员名单，单项给本人姓名。</summary>
+    public string EntryToolTip => TeamMembersFromRegistration
+        ? $"团体队员（{TeamMemberCount} 人）：{TeamMembers}"
+        : AthleteName;
+
+    private int TeamMemberCount => TeamMembers.Length == 0
+        ? 0
+        : TeamMembers.Split('、', StringSplitOptions.RemoveEmptyEntries).Length;
+
     public bool IsHighlighted { get; }
     public double Opacity { get; }
     public string Display => $"{ClassName} · {AthleteName}";

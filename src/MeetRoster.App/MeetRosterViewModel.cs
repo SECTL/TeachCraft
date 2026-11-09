@@ -154,6 +154,52 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     [ObservableProperty] private IBrush _statusBrush = NeutralBrush;
     [ObservableProperty] private bool _isBusy;
 
+    /// <summary>
+    /// 忙碌提示的标题 / 副标题。长任务（整本秩序册、全年级导出）会持续几秒，
+    /// 没有可见反馈时老师会以为程序卡死并强关；遮罩要写清在做什么、大概要多久。
+    /// </summary>
+    [ObservableProperty] private string _busyTitle = "正在处理…";
+    [ObservableProperty] private string _busyDetail = "文件只在本机解析，不会上传。";
+
+    /// <summary>超过这个时长才弹遮罩：几百毫秒的小文件不该闪一下。</summary>
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+
+    private CancellationTokenSource? _busyCts;
+
+    [ObservableProperty] private bool _showBusyOverlay;
+
+    /// <summary>
+    /// 开始一段可能较长的操作：先占住 IsBusy，400ms 后仍未结束才把遮罩亮出来。
+    /// 返回的令牌交给 <see cref="EndBusy"/> 收尾。
+    /// </summary>
+    private void BeginBusy(string title, string detail)
+    {
+        BusyTitle = title;
+        BusyDetail = detail;
+        IsBusy = true;
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void EndBusy()
+    {
+        _busyCts?.Cancel();
+        _busyCts = null;
+        ShowBusyOverlay = false;
+        IsBusy = false;
+    }
+
     [ObservableProperty] private bool _isRegistrationView = true;
 
     /// <summary>窄窗口下收起右侧概览，把宽度让给报名表（1120 最小尺寸时尤其重要）。</summary>
@@ -356,7 +402,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     {
         if (paths.Count == 0) return;
 
-        IsBusy = true;
+        BeginBusy($"正在导入 {paths.Count} 份报名表…", "逐个读取 Excel 模板，文件只在本机解析。");
         SetStatus($"正在导入 {paths.Count} 份报名表…");
 
         var errors = new List<string>();
@@ -386,7 +432,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             errors.AddRange(errorBag.OrderBy(t => t.Index).Select(t => t.Error));
         });
 
-        IsBusy = false;
+        EndBusy();
         if (results.Count == 0)
         {
             SetStatus("报名表导入失败：" + (errors.FirstOrDefault() ?? "没有可读取的文件"), true);
@@ -417,6 +463,8 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             Note = _isDemo
                 ? "每班每个单项最多男女各报 2 人，每人限报 2 个单项；团体项目最多报 3 项。"
                 : _project.Note,
+            // 报名表工程没有单一原工作簿，「原表高亮」会如实提示改用软件整理样式。
+            SourcePath = _isDemo ? null : _project.SourcePath,
         };
 
         // 合并导入：同名班整体替换、旧班原样保留、新班按导入顺序追加。
@@ -460,13 +508,26 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             preferredClassName: imported[0].Class.Name);
         if (project.Days.Count == 0) _scheduleImported = false;
 
-        // 报名表导入接管了工程：秩序册来源不再代表当前数据，导出时也就不该再拿它挡路径。
+        // 报名表接管了工程：秩序册来源不再代表当前数据，导出时也就不该再拿它挡路径。
         _orderBookSources.Clear();
+
+        // 报名表里有团体项目勾选，赛程里那些「4x100 接力队」占位可以换成真实队员。
+        // 只补团体条目，不整表重算——秩序册带来的组次 / 道次必须保留。
+        var refreshedTeams = 0;
+        if (_project.Days.Count > 0)
+        {
+            refreshedTeams = MeetScheduleBuilder.ApplyTeamMembers(_project);
+            foreach (var day in ScheduleDays)
+                day.RefreshMeta();
+            RefreshSchedule();
+        }
+
         IsDirty = false;
         var issueCount = imported.Sum(r => r.Issues.Count(i => i.IsError));
         var message = $"已导入 {imported.Count} 个班 · {imported.Sum(r => r.Class.Athletes.Count)} 名运动员";
         if (issueCount > 0) message += $" · {issueCount} 项违规";
         if (duplicates.Count > 0) message += $" · {duplicates.Count} 个同名班（取最后一份）";
+        if (refreshedTeams > 0) message += $" · 赛程已补上 {refreshedTeams} 条团体队员";
         if (errors.Count > 0) message += $" · {errors.Count} 份失败";
 
         var detail = errors.Count > 0
@@ -481,7 +542,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     /// </summary>
     public async Task ImportOrderBookAsync(string path)
     {
-        IsBusy = true;
+        BeginBusy("正在读取秩序册…", "整本秩序册要解析名单、日程与分组表，通常几秒；文件只在本机处理。");
         SetStatus("正在读取秩序册…");
 
         OrderBookImportResult result;
@@ -491,18 +552,18 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
         catch (InvalidDataException ex)
         {
-            IsBusy = false;
+            EndBusy();
             SetStatus(ex.Message, true);
             return;
         }
         catch (Exception ex)
         {
-            IsBusy = false;
+            EndBusy();
             SetStatus(ErrorText.Describe(ex, "读取秩序册"), true);
             return;
         }
 
-        IsBusy = false;
+        EndBusy();
         _importIssues.Clear();
         foreach (var meetClass in result.Project.Classes)
         {
@@ -516,19 +577,80 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         ScheduleSourceName = result.HasSchedule
             ? DisplayFileName(path)
             : "未导入赛程";
+
+        // 秩序册不点名团体项目队员。如果这份工程之前导入过报名表，就把那些勾选带过来，
+        // 让赛程里显示真实上场的人，而不是「4x100 接力队」这种占位。
+        var carried = CarryOverTeamMembers(result.Project);
+
         LoadProject(result.Project, isDemo: false, scheduleImported: result.HasSchedule,
             preferredClassName: SelectedClass?.Name);
+
+        // 沿用过来的团体勾选要落到赛程条目上，否则界面上还是「4x100 接力队」占位。
+        if (carried > 0 && _project.Days.Count > 0)
+        {
+            MeetScheduleBuilder.ApplyTeamMembers(_project);
+            RefreshSchedule();
+        }
 
         IsDirty = false;
         var message = $"已导入秩序册 · {result.Project.Classes.Count} 个班 · {result.AthleteCount} 名运动员"
                       + (result.HasSchedule
                           ? $" · {result.Project.Days.Count} 天赛程"
                           : " · 没有找到竞赛日程");
+        if (carried > 0) message += $" · 沿用报名表的 {carried} 条团体报名";
         var notices = result.Issues.Count(i => !i.IsError);
         if (notices > 0) message += $" · {notices} 条提醒";
         SetStatus(message, success: true,
             detail: string.Join(Environment.NewLine, result.Issues.Select(i => i.Message)));
     }
+
+    /// <summary>
+    /// 把旧工程里（来自报名表的）团体项目勾选搬到新导入的班级上。
+    /// 只按姓名匹配，匹配不到就跳过——宁可少认，也不把项目挂到错的人头上。
+    /// 返回搬过来的运动员条目数。
+    /// </summary>
+    private int CarryOverTeamMembers(MeetProject project)
+    {
+        if (_project.Classes.Count == 0 || ReferenceEquals(_project, project)) return 0;
+
+        var carried = 0;
+        foreach (var meetClass in project.Classes)
+        {
+            var old = _project.Classes.FirstOrDefault(c =>
+                string.Equals(c.Name, meetClass.Name, StringComparison.Ordinal));
+            if (old is null) continue;
+
+            // 班级层面的团体项目：并集，不覆盖秩序册已有的。
+            foreach (var eventName in old.TeamEvents)
+            {
+                if (!meetClass.TeamEvents.Contains(eventName)) meetClass.TeamEvents.Add(eventName);
+            }
+
+            // 个人层面的团体勾选：按姓名对齐。
+            var byName = old.Athletes
+                .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+                .GroupBy(a => a.Name, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+            foreach (var athlete in meetClass.Athletes)
+            {
+                if (!byName.TryGetValue(athlete.Name, out var previous)) continue;
+                if (!HasTeamSlot(previous)) continue;
+
+                athlete.TeamEvent1 = previous.TeamEvent1;
+                athlete.TeamEvent2 = previous.TeamEvent2;
+                athlete.TeamEvent3 = previous.TeamEvent3;
+                carried++;
+            }
+        }
+
+        return carried;
+    }
+
+    private static bool HasTeamSlot(Athlete athlete) =>
+        !string.IsNullOrWhiteSpace(athlete.TeamEvent1) ||
+        !string.IsNullOrWhiteSpace(athlete.TeamEvent2) ||
+        !string.IsNullOrWhiteSpace(athlete.TeamEvent3);
 
     /// <summary>导入过的秩序册来源：导出时用来拒绝覆盖原件。</summary>
     private readonly List<string> _orderBookSources = [];
@@ -551,22 +673,29 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
+        BeginBusy(
+            request.Format == MeetExportFormat.Pdf ? "正在导出 PDF…" : "正在导出 Excel…",
+            "整本秩序册导出要排版数十页，通常十几秒；文件只写在本机。");
         SetStatus(request.Format == MeetExportFormat.Pdf ? "正在导出 PDF…" : "正在导出 Excel…");
         try
         {
             var project = _project;
             var options = request.Options;
-            await Task.Run(() => request.Format == MeetExportFormat.Pdf
-                ? MeetPdfExporter.Export(project, options, path)
-                : MeetWorkbookExporter.Export(project, options, path));
+            await Task.Run(() =>
+            {
+                if (request.Format == MeetExportFormat.Pdf)
+                    return MeetPdfExporter.Export(project, options, path);
+                return options.ExcelStyle == MeetExcelStyle.OriginalHighlight
+                    ? MeetOriginalWorkbookHighlighter.Export(project, options, path)
+                    : MeetWorkbookExporter.Export(project, options, path);
+            });
 
-            IsBusy = false;
+            EndBusy();
             SetStatus($"已导出 {Path.GetFileName(path)}", success: true, detail: path);
         }
         catch (Exception ex)
         {
-            IsBusy = false;
+            EndBusy();
             SetStatus(ex is InvalidOperationException
                 ? ex.Message
                 : ErrorText.Describe(ex, "导出参赛手册"), true);
@@ -593,7 +722,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
     public async Task ImportScheduleFileAsync(string path)
     {
-        IsBusy = true;
+        BeginBusy("正在导入赛程…", "读取竞赛日程与项目分组表；文件只在本机处理。");
         SetStatus("正在导入赛程工作簿…");
 
         ScheduleImportResult result;
@@ -603,23 +732,25 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
         catch (InvalidDataException ex)
         {
-            IsBusy = false;
+            EndBusy();
             SetStatus(ex.Message, true);
             return;
         }
         catch (Exception ex)
         {
-            IsBusy = false;
+            EndBusy();
             SetStatus(ErrorText.Describe(ex, "导入赛程"), true);
             return;
         }
 
-        IsBusy = false;
+        EndBusy();
         var project = new MeetProject
         {
             Title = _isDemo ? "运动会赛程" : _project.Title,
             Venue = _isDemo ? "田径场" : _project.Venue,
             Note = _project.Note,
+            // 赛程工作簿同样可以作为「原表高亮」的底板。
+            SourcePath = Path.GetFullPath(path),
         };
 
         if (!_isDemo)
@@ -666,7 +797,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
+        BeginBusy($"正在导出 {classes.Count} 份报名表…", "按模板逐份回写，文件只写在本机。");
         SetStatus($"正在导出 {classes.Count} 份报名表…");
         var errors = new List<string>();
         var exported = 0;
@@ -685,7 +816,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
                 }
             }
         });
-        IsBusy = false;
+        EndBusy();
 
         if (exported == 0)
         {
@@ -712,7 +843,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
+        BeginBusy($"正在保存 {classes.Count} 份报名表…", "先备份为 .bak 再替换原文件。");
         SetStatus($"正在保存 {classes.Count} 份报名表…");
 
         var errors = new List<string>();
@@ -732,7 +863,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
                 }
             }
         });
-        IsBusy = false;
+        EndBusy();
 
         if (saved == 0)
         {
@@ -882,7 +1013,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     /// 成功与否都会写进「导入时的提示」面板：状况摘要、失败原因一目了然。</summary>
     public async Task ImportRosterFileAsync(string path)
     {
-        IsBusy = true;
+        BeginBusy("正在读取名单…", "识别姓名 / 性别列；文件只在本机处理。");
         SetStatus("正在读取名单…");
 
         RosterImportResult result;
@@ -892,18 +1023,18 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
         catch (InvalidDataException ex)
         {
-            IsBusy = false;
+            EndBusy();
             FailRosterImport(ex.Message);
             return;
         }
         catch (Exception ex)
         {
-            IsBusy = false;
+            EndBusy();
             FailRosterImport(ErrorText.Describe(ex, "读取名单"));
             return;
         }
 
-        IsBusy = false;
+        EndBusy();
         if (result.Entries.Count == 0)
         {
             FailRosterImport("名单里没有读到学生：请确认「姓名」列下方有数据");

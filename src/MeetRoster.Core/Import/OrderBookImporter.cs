@@ -5,6 +5,18 @@ using MeetRoster.Core.Models;
 
 namespace MeetRoster.Core.Import;
 
+/// <summary>一份工作簿大致是什么：秩序册（带名单）、只有赛程，或两者都不是。</summary>
+public enum MeetWorkbookKind
+{
+    /// <summary>带「代表队名单」（或至少「参赛队统计」）：按秩序册整本导入。</summary>
+    OrderBook,
+
+    /// <summary>只有「竞赛日程 / 项目分组表」：按赛程导入，保留现有班级。</summary>
+    ScheduleOnly,
+
+    Unknown,
+}
+
 public sealed class OrderBookImportResult
 {
     public required MeetProject Project { get; init; }
@@ -45,6 +57,8 @@ public static class OrderBookImporter
             Title = TitleFromFileName(path),
             Venue = "田径场",
             Note = "由秩序册导入：号码、姓名与项目来自「代表队名单 + 项目分组表」；团体项目按班登记，不落到个人。",
+            // 「原表高亮」导出要拿它当底板；导入后原文件被移动时导出会如实报错。
+            SourcePath = Path.GetFullPath(path),
         };
 
         var rosterSheet = FindSheet(workbook, "代表队名单") ?? FindSheet(workbook, "名单");
@@ -109,25 +123,35 @@ public static class OrderBookImporter
         };
     }
 
-    /// <summary>只读工作簿里的表名，供 UI 在导入前判断这是不是一份秩序册。</summary>
-    public static bool LooksLikeOrderBook(string path)
+    /// <summary>
+    /// 判断一份工作簿该怎么导：带名单表就是秩序册，只有日程 / 分组表就是赛程。
+    /// 统一入口（顶栏「导入秩序册」）用它决定走哪条管线，用户不必自己选。
+    /// </summary>
+    public static MeetWorkbookKind DetectKind(string path)
     {
         try
         {
             using var stream = WorkbookIO.OpenReadShared(path);
             using var workbook = WorkbookIO.OpenWorkbook(path, stream);
-            return workbook.Worksheets.Any(w =>
-                       w.Name.Contains("代表队名单", StringComparison.Ordinal) ||
-                       w.Name.Contains("竞赛日程", StringComparison.Ordinal)) &&
-                   workbook.Worksheets.Any(w =>
-                       w.Name.Contains("项目分组表", StringComparison.Ordinal) ||
-                       w.Name.Contains("代表队名单", StringComparison.Ordinal));
+
+            var hasRoster = workbook.Worksheets.Any(w =>
+                w.Name.Contains("代表队名单", StringComparison.Ordinal) ||
+                w.Name.Contains("参赛队统计", StringComparison.Ordinal));
+            if (hasRoster) return MeetWorkbookKind.OrderBook;
+
+            var hasSchedule = workbook.Worksheets.Any(w =>
+                w.Name.Contains("竞赛日程", StringComparison.Ordinal) ||
+                w.Name.Contains("项目分组表", StringComparison.Ordinal));
+            return hasSchedule ? MeetWorkbookKind.ScheduleOnly : MeetWorkbookKind.Unknown;
         }
         catch
         {
-            return false;
+            return MeetWorkbookKind.Unknown;
         }
     }
+
+    /// <summary>只读工作簿里的表名，供 UI 在导入前判断这是不是一份秩序册。</summary>
+    public static bool LooksLikeOrderBook(string path) => DetectKind(path) == MeetWorkbookKind.OrderBook;
 
     // ----------------------------- 代表队名单 -----------------------------
 

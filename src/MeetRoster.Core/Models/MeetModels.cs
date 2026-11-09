@@ -17,6 +17,8 @@ public sealed class MeetProject
     public string Title { get; set; } = string.Empty;
     public string Venue { get; set; } = string.Empty;
     public string Note { get; set; } = string.Empty;
+    /// <summary>导入的秩序册 / 赛程工作簿；「原表高亮」导出以它为底板。</summary>
+    public string? SourcePath { get; set; }
     public List<MeetEvent> Events { get; } = [];
     public List<MeetClass> Classes { get; } = [];
     public List<MeetDay> Days { get; } = [];
@@ -101,4 +103,11 @@ public sealed class MeetEntry
     public string Lane { get; init; } = string.Empty;
     public string Bib { get; init; } = string.Empty;
     public string Group { get; init; } = string.Empty;
+    /// <summary>
+    /// 团体项目该班的报名队员（来自报名表，如「陈屿、许砚、沈观澜、陆行舟」）。
+    /// 秩序册不点名队员，这个字段只可能由报名表补上；空表示不知道具体是谁。
+    /// </summary>
+    public string TeamMembers { get; init; } = string.Empty;
+    /// <summary>团体项目的报名队员是否来自报名表（而不是秩序册的占位标签）。</summary>
+    public bool TeamMembersFromRegistration { get; init; }
 }

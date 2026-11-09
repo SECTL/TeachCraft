@@ -44,10 +44,51 @@ public sealed class MeetRosterTests
         var slot = FindSlot(project, "4x100米接力", "混合", "预赛");
 
         Assert.Equal(project.Classes.Count, slot.Entries.Count);
-        Assert.All(slot.Entries, entry => Assert.Equal("4x100 接力队", entry.AthleteName));
         Assert.Equal(
             project.Classes.Select(c => c.Name).OrderBy(n => n, StringComparer.Ordinal),
             slot.Entries.Select(e => e.ClassName).OrderBy(n => n, StringComparer.Ordinal));
+
+        // 演示数据里每人都勾了 4x100，所以赛程直接列出真实队员，而不是「4x100 接力队」占位。
+        Assert.All(slot.Entries, entry =>
+        {
+            Assert.True(entry.TeamMembersFromRegistration);
+            Assert.Equal(entry.TeamMembers, entry.AthleteName);
+        });
+
+        var first = slot.Entries[0];
+        var registered = project.Classes
+            .Single(c => c.Name == first.ClassName).Athletes
+            .Where(a => a.TeamEvent1 == "4x100米接力" || a.TeamEvent2 == "4x100米接力" ||
+                        a.TeamEvent3 == "4x100米接力")
+            .Select(a => a.Name);
+        Assert.Equal(string.Join("、", registered), first.TeamMembers);
+    }
+
+    [Fact]
+    public void RefreshEntries_TeamEventWithoutRegistrationFallsBackToLabel()
+    {
+        // 秩序册只按班列队、不点名队员：没有人勾选时不能凭空编出队员，退回占位标签。
+        var project = MeetSamples.CreateDemo();
+        foreach (var meetClass in project.Classes)
+        {
+            foreach (var athlete in meetClass.Athletes)
+            {
+                athlete.TeamEvent1 = string.Empty;
+                athlete.TeamEvent2 = string.Empty;
+                athlete.TeamEvent3 = string.Empty;
+            }
+        }
+
+        MeetScheduleBuilder.RefreshEntries(project);
+
+        var slot = FindSlot(project, "一分钟跳绳", "混合", "决赛");
+        Assert.NotEmpty(slot.Entries);
+        Assert.All(slot.Entries, entry =>
+        {
+            Assert.False(entry.TeamMembersFromRegistration);
+            Assert.Equal("跳绳队", entry.AthleteName);
+            Assert.Equal(string.Empty, entry.TeamMembers);
+        });
     }
 
     [Fact]

@@ -10,6 +10,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using MeetRoster.Core.Export;
 using MeetRoster.Core.Import;
 using TeachCraft.Shared;
 
@@ -183,14 +184,17 @@ public partial class MeetRosterWindow : Window
         }
     }
 
-    /// <summary>导入秩序册：一份工作簿同时带来全校名单、竞赛日程与分组表。</summary>
+    /// <summary>
+    /// 统一导入入口：一份工作簿自带名单就按秩序册整本导入，只有日程 / 分组表就按赛程导入。
+    /// 两者对老师来说是同一件事（都是「导入秩序册」），不该让他们先判断该点哪个按钮。
+    /// </summary>
     private async void OnImportOrderBook(object? sender, RoutedEventArgs e)
     {
         try
         {
             var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "导入秩序册",
+                Title = "导入秩序册 / 赛程工作簿",
                 AllowMultiple = false,
                 FileTypeFilter = [ExcelFilter],
             });
@@ -198,9 +202,33 @@ public partial class MeetRosterWindow : Window
             var path = files.FirstOrDefault()?.TryGetLocalPath();
             if (string.IsNullOrWhiteSpace(path)) return;
 
+            var kind = await Task.Run(() => OrderBookImporter.DetectKind(path));
+
+            if (kind == MeetWorkbookKind.Unknown)
+            {
+                ViewModel.SetStatus(
+                    "这份工作簿里既没有「代表队名单」，也没有「竞赛日程 / 项目分组表」，认不出是什么表。"
+                    + "请确认选的是秩序册或往届赛程。", true);
+                return;
+            }
+
+            if (kind == MeetWorkbookKind.ScheduleOnly)
+            {
+                // 只有赛程：保留现有班级，只换赛程与分组条目。
+                if (ViewModel.HasScheduleDays && !await ConfirmDialog.ShowAsync(
+                        this, "替换当前赛程？",
+                        "这份工作簿里没有代表队名单，将只导入赛程与分组条目，"
+                        + "替换当前的赛程表；现有班级名单保持不变。",
+                        "替换赛程", "取消", danger: true))
+                    return;
+
+                await ViewModel.ImportScheduleFileAsync(path);
+                return;
+            }
+
             if (ViewModel.HasAnyData && !await ConfirmDialog.ShowAsync(
                     this, "用秩序册替换当前数据？",
-                    "导入秩序册会整体替换当前的班级名单与赛程"
+                    "这份工作簿带代表队名单，将整本导入并替换当前的班级名单与赛程"
                     + $"（现有 {ViewModel.AllClasses.Count} 个班）。未保存的报名表修改不会保留。",
                     "导入秩序册", "取消", danger: true))
                 return;
@@ -254,34 +282,6 @@ public partial class MeetRosterWindow : Window
         catch (Exception ex)
         {
             ViewModel.SetStatus(ErrorText.Describe(ex, "导出参赛手册"), true);
-        }
-    }
-
-    private async void OnImportSchedule(object? sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = "导入赛程工作簿",
-                AllowMultiple = false,
-                FileTypeFilter = [ExcelFilter],
-            });
-
-            var path = files.FirstOrDefault()?.TryGetLocalPath();
-            if (string.IsNullOrWhiteSpace(path)) return;
-
-            if (ViewModel.HasScheduleDays && !await ConfirmDialog.ShowAsync(
-                    this, "替换当前赛程？",
-                    "导入新赛程会替换当前赛程表与分组条目。",
-                    "替换赛程", "取消", danger: true))
-                return;
-
-            await ViewModel.ImportScheduleFileAsync(path);
-        }
-        catch (Exception ex)
-        {
-            ViewModel.SetStatus(ErrorText.Describe(ex, "导入赛程"), true);
         }
     }
 
@@ -352,6 +352,13 @@ public partial class MeetRosterWindow : Window
         await ViewModel.ImportOrderBookAsync(path);
     }
 
+    /// <summary>走查用：再导入一份报名表，核对团体项目队员是否补进赛程。</summary>
+    public async Task LoadRegistrationForTeamCaptureAsync(string path)
+    {
+        _closeConfirmed = true;
+        await ViewModel.ImportRegistrationFilesAsync([path]);
+    }
+
     public async Task LoadScheduleForCaptureAsync(string path)
     {
         _closeConfirmed = true;
@@ -420,12 +427,45 @@ public partial class MeetRosterWindow : Window
     public void ShowOnlyClassForCapture(bool enabled) =>
         ViewModel.OnlyHighlightedClassEntries = enabled;
 
+    /// <summary>走查用：强制亮出忙碌遮罩，核对长任务提示。</summary>
+    public void ShowBusyForCapture(string title = "正在读取秩序册…",
+        string detail = "整本秩序册要解析名单、日程与分组表，通常几秒；文件只在本机处理。")
+    {
+        ViewModel.BusyTitle = title;
+        ViewModel.BusyDetail = detail;
+        ViewModel.ShowBusyOverlay = true;
+    }
+
     /// <summary>走查用：打开导出设置弹窗（不真正导出）。</summary>
-    public MeetExportOptionsWindow? OpenExportDialogForCapture() =>
-        ViewModel.AllClasses.Count == 0
-            ? null
-            : new MeetExportOptionsWindow(
-                ViewModel.Project, ViewModel.SelectedClass?.Name ?? ViewModel.ScheduleHighlightClass?.Name);
+    public MeetExportOptionsWindow? OpenExportDialogForCapture(string? layout = null, string? style = null)
+    {
+        if (ViewModel.AllClasses.Count == 0) return null;
+
+        var dialog = new MeetExportOptionsWindow(
+            ViewModel.Project, ViewModel.SelectedClass?.Name ?? ViewModel.ScheduleHighlightClass?.Name);
+
+        // 走查可以直接指定格式 / 版式 / 样式，省得截图脚本去点下拉。
+        if (dialog.DataContext is MeetExportOptionsViewModel options)
+        {
+            if (string.Equals(style, "original", StringComparison.OrdinalIgnoreCase))
+            {
+                options.SelectedStyle = options.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight);
+            }
+
+            if (string.Equals(layout, "card", StringComparison.OrdinalIgnoreCase))
+            {
+                options.SelectedFormat = options.Formats.Single(f => f.Format == MeetExportFormat.Pdf);
+                options.SelectedLayout = options.Layouts.Single(l => l.Layout == MeetPdfLayout.Card);
+            }
+            else if (string.Equals(layout, "handbook", StringComparison.OrdinalIgnoreCase))
+            {
+                options.SelectedFormat = options.Formats.Single(f => f.Format == MeetExportFormat.Pdf);
+                options.SelectedLayout = options.Layouts.Single(l => l.Layout == MeetPdfLayout.Handbook);
+            }
+        }
+
+        return dialog;
+    }
 
     /// <summary>导入学生名单：之后「添加运动员」改为从名单挑选。</summary>
     /// <summary>打开文件选择器并导入名单；被顶栏按钮与「添加运动员」引导共用。</summary>

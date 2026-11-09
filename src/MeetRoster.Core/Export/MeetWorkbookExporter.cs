@@ -230,7 +230,7 @@ public static class MeetWorkbookExporter
             sheet.Cell(row, 2).Value = line.Grade;
             sheet.Cell(row, 3).Value = line.EventName;
             sheet.Cell(row, 4).Value = line.Stage;
-            sheet.Cell(row, 5).Value = line.AthleteName;
+            sheet.Cell(row, 5).Value = line.AthleteLabel;
             sheet.Cell(row, 6).Value = line.Lane;
             sheet.Cell(row, 7).Value = line.GroupCount.Length > 0 ? $"{line.GroupCount} 组" : string.Empty;
 
