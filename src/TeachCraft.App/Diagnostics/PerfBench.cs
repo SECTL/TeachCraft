@@ -79,7 +79,7 @@ public static class PerfBench
     /// </summary>
     /// <param name="name">报告里的「项目」名，中文即可。</param>
     /// <param name="action">被测量的一段同步操作；不接收参数、不返回结果。</param>
-    /// <param name="iterations">样本数，至少 1 次。</param>
+    /// <param name="iterations">样本数，至少 1 次；首次另有 1 次预热不计入。</param>
     public static void Measure(string name, Action action, int iterations = 5)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -87,6 +87,12 @@ public static class PerfBench
 
         // 走查通道宁可估个数字，也不要因为参数写错整条报告失败。
         var count = Math.Max(1, iterations);
+
+        // 预热一次不计入：首轮会带上 JIT、首次文件 IO、首次 XLWorkbook 类型初始化，
+        // 不排掉的话 p95 会被一个几倍于真实耗时的样本撑爆（实测秩序册导入曾出现
+        // p50 52ms / p95 395ms 这种没有参考价值的分布）。
+        try { action(); } catch { /* 预热失败不影响后续采样 */ }
+
         var samples = new double[count];
         for (var i = 0; i < count; i++)
         {
@@ -99,6 +105,35 @@ public static class PerfBench
         lock (Gate)
         {
             Measurements.Add(new Measurement(name, samples));
+        }
+    }
+
+    /// <summary>
+    /// 业务基准注册表：Core 模块把「怎么跑一次真实规模的导入 / 导出」注册进来，
+    /// 由 App 层在 <see cref="RunBusinessBenchmarks"/> 里统一驱动。
+    /// <para>
+    /// 为什么要绕这一层：<see cref="PerfBench"/> 在 TeachCraft.App，而竞名 / 时序 / 分晓的
+    /// 核心逻辑在各自的 Core 程序集。让每个 Core 自己写 Markdown 报告会重复三份格式，
+    /// 也让「同一份报告里横向比较各模块」变得不可能。
+    /// </para>
+    /// </summary>
+    public static readonly List<(string Name, Action Action, int Iterations)> BusinessBenchmarks = new();
+
+    /// <summary>
+    /// 跑一遍所有已注册的业务基准，结果进同一张表。
+    /// 没注册任何项时什么也不做——自检项仍然保证报告非空。
+    /// </summary>
+    public static void RunBusinessBenchmarks()
+    {
+        (string Name, Action Action, int Iterations)[] snapshot;
+        lock (Gate)
+        {
+            snapshot = BusinessBenchmarks.ToArray();
+        }
+
+        foreach (var (name, action, iterations) in snapshot)
+        {
+            Measure(name, action, iterations);
         }
     }
 

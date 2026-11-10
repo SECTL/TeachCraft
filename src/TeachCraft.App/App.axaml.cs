@@ -701,7 +701,7 @@ public partial class App : Application
                 var directory = Path.GetDirectoryName(fullTarget);
                 if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-                File.WriteAllText(fullTarget, Diagnostics.PerfBench.RenderReport());
+                File.WriteAllText(fullTarget, RunPerfBenchReport());
             }
             catch (Exception ex)
             {
@@ -722,6 +722,18 @@ public partial class App : Application
         });
 
         return true;
+    }
+
+    /// <summary>
+    /// 组装一份完整的性能报告：先登记业务基准（竞名 / 时序 / 分晓），再驱动它们跑一遍，
+    /// 最后渲染。抽成独立方法是为了让自检项与业务项走同一条路，报告里只有一张表。
+    /// </summary>
+    private static string RunPerfBenchReport()
+    {
+        Diagnostics.MeetRosterBench.Register();
+        Diagnostics.ClassBlockBench.Register();
+        Diagnostics.PerfBench.RunBusinessBenchmarks();
+        return Diagnostics.PerfBench.RenderReport();
     }
 
     /// <summary>设计走查：打开「归位」并装载演示名单后截图。</summary>
