@@ -79,12 +79,12 @@ public static class MeetPdfExporter
         MeetProject project, IReadOnlyList<ClassExportSummary> summaries,
         MeetExportOptions options, int pageCount)
     {
-        // 把页数上限传进分页器：60 班秩序册要排 83 页，只为了第 1 页缩略图
-        // 把 83 页全排完（实测 325ms 里绝大部分是这一段）没有意义。
+        // 页数上限也传进分页器：预览只要 1 页，没必要先把 83 页全排完。
+        // 这一项本身收益很小（分页不耗时，慢的是渲染一页），真正的收益来自下面的倍率。
         var pages = BuildPages(project, summaries, options, pageCount);
 
-        // 缩略图只显示 760px 宽：按 0.45 倍渲染（≈810px）足够清晰，
-        // 而 1.8 倍是给打印用的。实测 1.8 → 0.45 让预览首页从 139ms 降到 27ms。
+        // 缩略图只显示 760px 宽：按 0.45 倍渲染（约 810px）足够清晰，
+        // 而 1.8 倍是给打印用的。实测 1.8 → 0.45 让预览首页从 135ms 降到 58ms。
         return pages
             .Select(page => RenderPage(page, project, summaries, options, pages.Count, 0.45f))
             .ToList();
@@ -621,7 +621,10 @@ public static class MeetPdfExporter
             }
         }
 
-        if (current.Items.Count > 0 && pages.Count < maxPages) pages.Add(current);
+        // 收尾：current 里还有内容就必须收进来。
+        // 不能写成 `pages.Count < maxPages` —— 那会在请求 N 页时把第 N 页丢掉
+        // （循环先因 pages.Count 到顶而退出，此时 current 恰好装着最后一页）。
+        if (current.Items.Count > 0) pages.Add(current);
         if (pages.Count == 0) pages.Add(new Page());
         return pages;
     }
