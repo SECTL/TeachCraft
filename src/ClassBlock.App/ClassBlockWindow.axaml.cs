@@ -104,7 +104,7 @@ public partial class ClassBlockWindow : Window
         });
         if (path is null) return;
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在读取总表…", "识别年级 / 班级 / 七天课表与课服、午学、晚修；文件只在本机处理。");
         try
         {
             var master = await Task.Run(() => MasterScheduleImporter.Import(path));
@@ -117,7 +117,7 @@ public partial class ClassBlockWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -125,7 +125,7 @@ public partial class ClassBlockWindow : Window
 
     private async void OnPrint(object? sender, RoutedEventArgs e)
     {
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在生成 PDF…", "把课程表渲染成高分辨率图并排进 A4，通常几秒。");
         try
         {
             var document = ViewModel.BuildDocument();
@@ -143,7 +143,7 @@ public partial class ClassBlockWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -159,7 +159,7 @@ public partial class ClassBlockWindow : Window
             return;
         }
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在导出图片…", "按当前课表渲染 PNG，文件只写在本机。");
         try
         {
             var document = ViewModel.BuildDocument();
@@ -172,7 +172,7 @@ public partial class ClassBlockWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 

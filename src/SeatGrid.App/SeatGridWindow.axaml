@@ -938,6 +938,35 @@
 
         <!-- 拖拽浮层：跟手的学生名卡 -->
         <Canvas Name="DragLayer" Grid.RowSpan="3" IsHitTestVisible="False" ZIndex="99" />
+
+        <!-- ==================== 忙碌遮罩 ====================
+             导入名单 / 生成预览 / 三种导出都要持续几百毫秒到几秒。没有可见反馈时，
+             老师会以为程序卡死并强关（强关会丢掉正在写的文件）。
+             400ms 后才亮：几十人的小名单瞬间完成，一闪而过的遮罩比不动更晃眼。 -->
+        <Border Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding ShowBusyOverlay}"
+                Background="#B3FAF9F5" ZIndex="60">
+            <Border Background="{StaticResource CardBrush}"
+                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="30,24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MaxWidth="420">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="{Binding BusyTitle}" FontFamily="{StaticResource SerifFont}"
+                               FontSize="17" Foreground="{StaticResource InkBrush}"
+                               TextWrapping="Wrap" HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Width="240" Height="3" />
+                    <TextBlock Text="{Binding BusyDetail}" FontSize="10" LineHeight="16"
+                               Foreground="{StaticResource MutedBrush}"
+                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="340"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="处理期间请勿关闭窗口" FontFamily="{StaticResource MonoFont}"
+                               FontSize="9" LetterSpacing="0.8"
+                               Foreground="{StaticResource LineStrongBrush}"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </Window>
 

@@ -112,6 +112,45 @@ public partial class SeatGridViewModel : ObservableObject
     [ObservableProperty] private IBrush _statusBrush = SuccessBrush;
     [ObservableProperty] private bool _isBusy;
 
+    // ---- 忙碌遮罩 ----
+    // 与竞名 / 织序同一套：先占住 IsBusy，400ms 后仍未结束才把遮罩亮出来。
+    // 400ms 是刻意的：小文件（几十人的名单）瞬间完成，一闪而过的遮罩比不动更晃眼。
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+    private CancellationTokenSource? _busyCts;
+
+    [ObservableProperty] private bool _showBusyOverlay;
+    [ObservableProperty] private string _busyTitle = string.Empty;
+    [ObservableProperty] private string _busyDetail = string.Empty;
+
+    /// <summary>开始一段可能较长的操作；务必在 finally 里配 <see cref="EndBusy"/>。</summary>
+    public void BeginBusy(string title, string detail)
+    {
+        BusyTitle = title;
+        BusyDetail = detail;
+        IsBusy = true;
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
+    }
+
+    public void EndBusy()
+    {
+        _busyCts?.Cancel();
+        _busyCts = null;
+        ShowBusyOverlay = false;
+        IsBusy = false;
+    }
+
     [ObservableProperty] private string _rosterHint = string.Empty;
     [ObservableProperty] private string _importSource = "尚未导入名单";
 

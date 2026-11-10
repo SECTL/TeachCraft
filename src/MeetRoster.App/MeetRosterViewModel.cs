@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia.Media;
+using ClosedXML.Excel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MeetRoster.Core.Export;
 using MeetRoster.Core.Import;
@@ -547,7 +548,21 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     /// 导入秩序册（一份工作簿里同时有代表队名单、竞赛日程与项目分组表）。
     /// 与逐班导入报名表互斥：秩序册自带全校名单，直接整体替换当前工程。
     /// </summary>
-    public async Task ImportOrderBookAsync(string path)
+    public Task ImportOrderBookAsync(string path) =>
+        ImportOrderBookCoreAsync(path, () => OrderBookImporter.Import(path));
+
+    /// <summary>
+    /// 用一份**已经打开**的工作簿导入秩序册。顶栏「导入秩序册」先用
+    /// <see cref="OrderBookImporter.DetectKind(XLWorkbook)"/> 判断类型，再把同一个实例交到这里，
+    /// 整份文件只解析一次。工作簿归调用方所有：这里只读，不释放。
+    /// </summary>
+    public Task ImportOrderBookAsync(string path, XLWorkbook workbook)
+    {
+        ArgumentNullException.ThrowIfNull(workbook);
+        return ImportOrderBookCoreAsync(path, () => OrderBookImporter.Import(path, workbook));
+    }
+
+    private async Task ImportOrderBookCoreAsync(string path, Func<OrderBookImportResult> read)
     {
         BeginBusy("正在读取秩序册…", "整本秩序册要解析名单、日程与分组表，通常几秒；文件只在本机处理。");
         SetStatus("正在读取秩序册…");
@@ -555,7 +570,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         OrderBookImportResult result;
         try
         {
-            result = await Task.Run(() => OrderBookImporter.Import(path));
+            result = await Task.Run(read);
         }
         catch (InvalidDataException ex)
         {
@@ -736,7 +751,20 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
     }
 
-    public async Task ImportScheduleFileAsync(string path)
+    public Task ImportScheduleFileAsync(string path) =>
+        ImportScheduleFileCoreAsync(path, () => ScheduleWorkbookImporter.Import(path));
+
+    /// <summary>
+    /// 用一份**已经打开**的工作簿导入赛程。与秩序册同理：顶栏判断类型时打开的那一个实例直接复用，
+    /// 不再重新读一遍文件。工作簿归调用方所有：这里只读，不释放。
+    /// </summary>
+    public Task ImportScheduleFileAsync(string path, XLWorkbook workbook)
+    {
+        ArgumentNullException.ThrowIfNull(workbook);
+        return ImportScheduleFileCoreAsync(path, () => ScheduleWorkbookImporter.Import(path, workbook));
+    }
+
+    private async Task ImportScheduleFileCoreAsync(string path, Func<ScheduleImportResult> read)
     {
         BeginBusy("正在导入赛程…", "读取竞赛日程与项目分组表；文件只在本机处理。");
         SetStatus("正在导入赛程工作簿…");
@@ -744,7 +772,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         ScheduleImportResult result;
         try
         {
-            result = await Task.Run(() => ScheduleWorkbookImporter.Import(path));
+            result = await Task.Run(read);
         }
         catch (InvalidDataException ex)
         {

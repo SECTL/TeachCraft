@@ -84,6 +84,45 @@ public partial class ClassBlockViewModel : ObservableObject
     public string ClassEmptyText => _classes.Count == 0 ? "还没有总表" : "没有匹配的班级";
     public string ClassCountLabel => $"{_classes.Count} 个班级";
 
+    // ---- 忙碌遮罩 ----
+    // 与竞名 / 织序 / 归位同一套：先占住 IsBusy，400ms 后仍未结束才把遮罩亮出来。
+    // 400ms 是刻意的：单张小表瞬间完成，一闪而过的遮罩比不动更晃眼。
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+    private CancellationTokenSource? _busyCts;
+
+    [ObservableProperty] private bool _showBusyOverlay;
+    [ObservableProperty] private string _busyTitle = string.Empty;
+    [ObservableProperty] private string _busyDetail = string.Empty;
+
+    /// <summary>开始一段可能较长的操作；务必在 finally 里配 <see cref="EndBusy"/>。</summary>
+    public void BeginBusy(string title, string detail)
+    {
+        BusyTitle = title;
+        BusyDetail = detail;
+        IsBusy = true;
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
+    }
+
+    public void EndBusy()
+    {
+        _busyCts?.Cancel();
+        _busyCts = null;
+        ShowBusyOverlay = false;
+        IsBusy = false;
+    }
+
     // ----------------------------- 作息模板 -----------------------------
 
     public void LoadTemplates()

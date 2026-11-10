@@ -75,13 +75,14 @@ public static class GradeSheetImporter
         options ??= new ImportOptions();
         path = path.Normalize(System.Text.NormalizationForm.FormC);
 
-        // P1 防误判：纯报表/名单文件直接拒绝，避免生成只有名字没有成绩的假会话
-        RejectRosterReportFile(path);
-
-        // 个人成绩单与分科合并表都基于 DataSet；只物化一次，避免同一工作簿解析两遍。
+        // 个人成绩单、分科合并表与「报表/名单」防误判都基于 DataSet：同一文件只物化一次，
+        // 不再为了判定单独打开一遍（旧实现里 .xls 会为此把整份工作簿解析两次以上）。
         var dataSet = TryLoadDataSet(path);
         try
         {
+            // P1 防误判：纯报表/名单文件直接拒绝，避免生成只有名字没有成绩的假会话
+            RejectRosterReportFile(path, dataSet);
+
             // 优先尝试读取智学网「全科个人成绩单」导出格式（支持 .xls 与 .xlsx，兼容用户勾选任意选项组合）
             if (dataSet is not null &&
                 TryLoadPersonalScoreReport(dataSet, path, options, out var personalData))
@@ -93,11 +94,8 @@ public static class GradeSheetImporter
             var ext = Path.GetExtension(path);
             if (string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase))
             {
-                // .xls 还会走一次专属读取；先释放 DataSet，避免两份全表同时驻留。
-                dataSet?.Dispose();
-                dataSet = null;
-
-                if (TryLoadTabularXls(path, options, out var xlsData))
+                // 同一份工作簿在上面已经物化过，这里直接复用同一份 DataSet，不再重新打开文件。
+                if (dataSet is not null && TryLoadTabularXls(dataSet, path, options, out var xlsData))
                 {
                     EnsureValidScores(xlsData.Students);
                     return xlsData;
@@ -168,7 +166,7 @@ public static class GradeSheetImporter
     /// 会生成只有名字没有成绩的假会话。命中报表关键字、且工作簿里找不到
     /// 「姓名 + 至少两个学科列」的常规成绩页时，明确拒绝并引导使用「导入分析报表」。
     /// </summary>
-    private static void RejectRosterReportFile(string path)
+    private static void RejectRosterReportFile(string path, DataSet? dataSet)
     {
         string fileName;
         try
@@ -180,54 +178,48 @@ public static class GradeSheetImporter
             return;
         }
 
+        // 文件没能物化成 DataSet（打不开 / 格式不认）时不做判定，
+        // 交给后续流程按原有方式报错——与旧实现里 catch 后直接 return 的语义一致。
+        if (dataSet is null) return;
+
         var sheetNames = new List<string>();
         var hasRegularScoreSheet = false;
 
-        try
+        foreach (DataTable table in dataSet.Tables)
         {
-            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = ExcelReaderFactory.CreateReader(stream);
+            sheetNames.Add((table.TableName ?? string.Empty).Trim());
 
-            do
+            // 逃生门：任何一张表的前 10 行里同时出现「姓名」行和「至少两个学科列」行，
+            // 就认为工作簿带有常规成绩页（如混合工作簿），交回正常导入流程。
+            // DataTable 与旧实现的 ExcelDataReader 逐行读取一一对应（空行不跳过、列序不变），
+            // 所以这里的前 10 行窗口与旧判定落在完全相同的行上。
+            var hasNameRow = false;
+            var hasMultiSubjectRow = false;
+            var rowCount = Math.Min(10, table.Rows.Count);
+            for (var row = 0; row < rowCount; row++)
             {
-                sheetNames.Add((reader.Name ?? string.Empty).Trim());
-
-                // 逃生门：任何一张表的前 10 行里同时出现「姓名」行和「至少两个学科列」行，
-                // 就认为工作簿带有常规成绩页（如混合工作簿），交回正常导入流程
-                var hasNameRow = false;
-                var hasMultiSubjectRow = false;
-                var row = 0;
-                while (row < 10 && reader.Read())
+                var dataRow = table.Rows[row];
+                var hasName = false;
+                var subjectCells = 0;
+                for (var c = 0; c < table.Columns.Count; c++)
                 {
-                    var hasName = false;
-                    var subjectCells = 0;
-                    for (var c = 0; c < reader.FieldCount; c++)
-                    {
-                        var value = CellStr(reader.GetValue(c));
-                        if (value.Length == 0) continue;
-                        if (value == "姓名") hasName = true;
-                        else if (KnownSubjects.Contains(value, StringComparer.Ordinal)) subjectCells++;
-                    }
-
-                    if (hasName) hasNameRow = true;
-                    if (subjectCells >= 2) hasMultiSubjectRow = true;
-
-                    if (hasNameRow && hasMultiSubjectRow)
-                    {
-                        hasRegularScoreSheet = true;
-                        break;
-                    }
-
-                    row++;
+                    var value = CellStr(dataRow[c]);
+                    if (value.Length == 0) continue;
+                    if (value == "姓名") hasName = true;
+                    else if (KnownSubjects.Contains(value, StringComparer.Ordinal)) subjectCells++;
                 }
 
-                if (hasRegularScoreSheet) break;
-            } while (reader.NextResult());
-        }
-        catch
-        {
-            // 打不开的文件交给后续流程按原有方式报错
-            return;
+                if (hasName) hasNameRow = true;
+                if (subjectCells >= 2) hasMultiSubjectRow = true;
+
+                if (hasNameRow && hasMultiSubjectRow)
+                {
+                    hasRegularScoreSheet = true;
+                    break;
+                }
+            }
+
+            if (hasRegularScoreSheet) break;
         }
 
         var haystack = string.Join('\n', fileName, string.Join('\n', sheetNames));
@@ -2402,17 +2394,11 @@ public static class GradeSheetImporter
         return str;
     }
     private static bool TryLoadTabularXls(
-        string path, ImportOptions options, [NotNullWhen(true)] out ExamData? examData)
+        DataSet dataSet, string path, ImportOptions options, [NotNullWhen(true)] out ExamData? examData)
     {
         examData = null;
         try
         {
-            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
-
-            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = ExcelReaderFactory.CreateReader(stream);
-            var dataSet = reader.AsDataSet();
-
             // 智学网「所有单科成绩报告」会把语文…体育拆成多张工作表，先尝试合并
             if (TryMergeSubjectTables(dataSet, path, options, out var mergedData))
             {

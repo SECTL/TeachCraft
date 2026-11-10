@@ -43,13 +43,29 @@ public static class OrderBookImporter
         @"^(?<grade>七|八|九|高一|高二|高三)年级?\s*(?<number>\d+)\s*班",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// 按路径导入：自己开一次工作簿，读完即关。
+    /// 只导入一本时用它；需要先 <see cref="DetectKind(string)"/> 再导入时，
+    /// 改用 <see cref="Import(string, XLWorkbook)"/> 复用同一个实例（见 <see cref="WorkbookSession"/>）。
+    /// </summary>
     public static OrderBookImportResult Import(string path)
     {
         if (!File.Exists(path))
             throw new InvalidDataException("找不到秩序册文件：" + path);
 
-        using var stream = WorkbookIO.OpenReadShared(path);
-        using var workbook = WorkbookIO.OpenWorkbook(path, stream);
+        using var session = WorkbookSession.Open(path);
+        return Import(path, session.Workbook);
+    }
+
+    /// <summary>
+    /// 用一份**已经打开**的工作簿导入。工作簿归调用方所有：这里只读，不释放它，
+    /// 调用方可以在同一次会话里先 <see cref="DetectKind(XLWorkbook)"/> 再导入。
+    /// </summary>
+    public static OrderBookImportResult Import(string path, XLWorkbook workbook)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(workbook);
+
         var issues = new List<RegistrationIssue>();
 
         var project = new MeetProject
@@ -74,7 +90,7 @@ public static class OrderBookImporter
         var hasSchedule = false;
         try
         {
-            var schedule = ScheduleWorkbookImporter.Import(path);
+            var schedule = ScheduleWorkbookImporter.Import(path, workbook);
             days = schedule.Days.ToList();
             hasSchedule = days.Count > 0;
             issues.AddRange(schedule.Issues);
@@ -131,23 +147,33 @@ public static class OrderBookImporter
     {
         try
         {
-            using var stream = WorkbookIO.OpenReadShared(path);
-            using var workbook = WorkbookIO.OpenWorkbook(path, stream);
-
-            var hasRoster = workbook.Worksheets.Any(w =>
-                w.Name.Contains("代表队名单", StringComparison.Ordinal) ||
-                w.Name.Contains("参赛队统计", StringComparison.Ordinal));
-            if (hasRoster) return MeetWorkbookKind.OrderBook;
-
-            var hasSchedule = workbook.Worksheets.Any(w =>
-                w.Name.Contains("竞赛日程", StringComparison.Ordinal) ||
-                w.Name.Contains("项目分组表", StringComparison.Ordinal));
-            return hasSchedule ? MeetWorkbookKind.ScheduleOnly : MeetWorkbookKind.Unknown;
+            // 文件不存在 / 打不开一律当「认不出」，与原实现一致：UI 只需给一句中文提示。
+            using var session = WorkbookSession.Open(path);
+            return DetectKind(session.Workbook);
         }
         catch
         {
             return MeetWorkbookKind.Unknown;
         }
+    }
+
+    /// <summary>
+    /// 判断一份**已经打开**的工作簿该怎么导。只读表名，不改工作簿，也不释放它；
+    /// 与 <see cref="Import(string, XLWorkbook)"/> 配合即可做到「一次导入只开一次文件」。
+    /// </summary>
+    public static MeetWorkbookKind DetectKind(XLWorkbook workbook)
+    {
+        ArgumentNullException.ThrowIfNull(workbook);
+
+        var hasRoster = workbook.Worksheets.Any(w =>
+            w.Name.Contains("代表队名单", StringComparison.Ordinal) ||
+            w.Name.Contains("参赛队统计", StringComparison.Ordinal));
+        if (hasRoster) return MeetWorkbookKind.OrderBook;
+
+        var hasSchedule = workbook.Worksheets.Any(w =>
+            w.Name.Contains("竞赛日程", StringComparison.Ordinal) ||
+            w.Name.Contains("项目分组表", StringComparison.Ordinal));
+        return hasSchedule ? MeetWorkbookKind.ScheduleOnly : MeetWorkbookKind.Unknown;
     }
 
     /// <summary>只读工作簿里的表名，供 UI 在导入前判断这是不是一份秩序册。</summary>

@@ -166,8 +166,10 @@ public static class MasterScheduleImporter
     {
         var bestRow = -1;
         var bestCount = 0;
+        // 边界提出来：写在 for 条件里会每轮重扫整表，而这里本来最多只看 4 行。
+        var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
 
-        for (var row = headerRow + 1; row <= Math.Min(headerRow + 4, sheet.LastRowUsed()?.RowNumber() ?? 0); row++)
+        for (var row = headerRow + 1; row <= Math.Min(headerRow + 4, lastRow); row++)
         {
             var count = 0;
             for (var day = 0; day < Math.Min(5, dayStarts.Count); day++)
@@ -369,8 +371,13 @@ public static class MasterScheduleImporter
             var dayColumns = FindSingleDayColumns(sheet, headerRow);
             if (dayColumns.Count < 5) continue;
 
+            // 边界查一次就够：LastColumnUsed / LastRowUsed 每次调用都要扫整张表，
+            // 写进 for 条件等于按行数做平方级扫描（60 个班的真实总表能差出上千次）。
+            var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+            var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
+
             var hasLunchHint = sheet.Name.Contains("午学") ||
-                               Enumerable.Range(1, sheet.LastColumnUsed()?.ColumnNumber() ?? 0)
+                               Enumerable.Range(1, lastColumn)
                                    .Any(c => sheet.Cell(headerRow, c).GetString().Contains("12:00"));
             if (!hasLunchHint) continue;
 
@@ -378,7 +385,7 @@ public static class MasterScheduleImporter
             if (classColumn < 0) continue;
 
             var values = new Dictionary<string, IReadOnlyList<string>>();
-            for (var row = headerRow + 1; row <= (sheet.LastRowUsed()?.RowNumber() ?? 0); row++)
+            for (var row = headerRow + 1; row <= lastRow; row++)
             {
                 if (!ClassKey.TryParse(sheet.Cell(row, classColumn).GetString(), gradeChar, out _, out var key, out _, out _))
                     continue;
@@ -404,10 +411,14 @@ public static class MasterScheduleImporter
             var classHeaderRow = FindHeaderRow(sheet, "班级");
             if (classHeaderRow < 0) continue;
 
+            // 与 ReadLunchStudy 同理：这两个查询各自要扫全表，循环里反复问等于平方级。
+            var lastColumnUsed = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+            var lastRowUsed = sheet.LastRowUsed()?.RowNumber() ?? 0;
+
             var subHeaderRow = -1;
             for (var row = Math.Max(1, classHeaderRow - 3); row < classHeaderRow; row++)
             {
-                var texts = Enumerable.Range(1, sheet.LastColumnUsed()?.ColumnNumber() ?? 0)
+                var texts = Enumerable.Range(1, lastColumnUsed)
                     .Select(c => sheet.Cell(row, c).GetString())
                     .ToList();
 
@@ -425,7 +436,7 @@ public static class MasterScheduleImporter
             var dayHeaderRow = -1;
             for (var row = Math.Max(1, subHeaderRow - 2); row < subHeaderRow; row++)
             {
-                if (FindDayStarts(sheet, row, sheet.LastColumnUsed()?.ColumnNumber() ?? 0).Count == 5)
+                if (FindDayStarts(sheet, row, lastColumnUsed).Count == 5)
                 {
                     dayHeaderRow = row;
                     break;
@@ -434,13 +445,13 @@ public static class MasterScheduleImporter
 
             if (dayHeaderRow < 0) continue;
 
-            var dayStarts = FindDayStarts(sheet, dayHeaderRow, sheet.LastColumnUsed()?.ColumnNumber() ?? 0);
+            var dayStarts = FindDayStarts(sheet, dayHeaderRow, lastColumnUsed);
             var classColumn = FindColumnByText(sheet, classHeaderRow, "班级");
             if (classColumn < 0) continue;
-            var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+            var lastColumn = lastColumnUsed;
 
             var values = new Dictionary<string, IReadOnlyList<DayService>>();
-            for (var row = classHeaderRow + 1; row <= (sheet.LastRowUsed()?.RowNumber() ?? 0); row++)
+            for (var row = classHeaderRow + 1; row <= lastRowUsed; row++)
             {
                 if (!ClassKey.TryParse(sheet.Cell(row, classColumn).GetString(), gradeChar, out _, out var key, out _, out _))
                     continue;
@@ -487,9 +498,26 @@ public static class MasterScheduleImporter
     private static (IReadOnlyList<string> Cells, string Rule) ReadEarlyReading(IXLWorksheet sheet, string gradeChar)
     {
         var cells = new string[5];
-        var note = sheet.CellsUsed()
-            .Select(c => c.GetString())
-            .FirstOrDefault(t => t.Contains("早读") && (t.Contains("语文") || t.Contains("英语")) && t.Length > 20);
+
+        // 早读备注是表尾的说明行，位置不固定：合成表里它在第 120 行也能被旧实现读到，
+        // 所以这里**不能**设行数上限（试过 80 行，实测会漏）。改为按已用区域逐格扫描——
+        // 不调用 CellsUsed()（它会把整张表的已用单元格先物化成一个集合再逐格 GetString），
+        // 直接对 LastRow/LastColumn 围出的矩形按行扫，找到第一条就停。
+        var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
+        var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+        string? note = null;
+        for (var row = 1; row <= lastRow && note is null; row++)
+        {
+            for (var column = 1; column <= lastColumn; column++)
+            {
+                var text = sheet.Cell(row, column).GetString();
+                if (text.Contains("早读") && (text.Contains("语文") || text.Contains("英语")) && text.Length > 20)
+                {
+                    note = text;
+                    break;
+                }
+            }
+        }
 
         if (string.IsNullOrWhiteSpace(note))
             return (cells, string.Empty);
@@ -531,8 +559,20 @@ public static class MasterScheduleImporter
         var first = GetMergedText(sheet, 1, 1);
         if (first.Length > 0) return first;
 
-        var used = sheet.CellsUsed().FirstOrDefault(c => c.GetString().Trim().Length > 0);
-        return used?.GetString().Trim() ?? string.Empty;
+        // 与 ReadEarlyReading 同理：不设行列上限（那会把「标题写在别处」的表判成无标题，
+        // 旧实现是能读到任意位置的），只把 CellsUsed() 换成按已用区域逐格扫、命中即停。
+        var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
+        var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+        for (var row = 1; row <= lastRow; row++)
+        {
+            for (var column = 1; column <= lastColumn; column++)
+            {
+                var text = sheet.Cell(row, column).GetString().Trim();
+                if (text.Length > 0) return text;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static string ParseGradeChar(string title)

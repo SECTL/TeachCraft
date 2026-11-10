@@ -17,14 +17,29 @@ public sealed class ScheduleImportResult
 /// <summary>读取往届赛程工作簿：竞赛日程 + 项目分组表。</summary>
 public static class ScheduleWorkbookImporter
 {
+    /// <summary>
+    /// 按路径导入：自己开一次工作簿，读完即关。
+    /// 作为秩序册的一部分导入时改走 <see cref="Import(string, XLWorkbook)"/>，
+    /// 复用导入器已经打开的那一份。
+    /// </summary>
     public static ScheduleImportResult Import(string path)
     {
         if (!File.Exists(path))
             throw new InvalidDataException("找不到赛程工作簿：" + path);
 
         // stream 构造 + 中文异常包装（Plan 4.1 / 4.4）。
-        using var stream = WorkbookIO.OpenReadShared(path);
-        using var workbook = WorkbookIO.OpenWorkbook(path, stream);
+        using var session = WorkbookSession.Open(path);
+        return Import(path, session.Workbook);
+    }
+
+    /// <summary>
+    /// 用一份**已经打开**的工作簿导入赛程。工作簿归调用方所有：这里只读，不释放它。
+    /// </summary>
+    public static ScheduleImportResult Import(string path, XLWorkbook workbook)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(workbook);
+
         var issues = new List<RegistrationIssue>();
         var scheduleSheet = FindSheet(workbook, "竞赛日程")
             ?? throw new InvalidDataException("赛程工作簿里没有找到“竞赛日程”工作表。");

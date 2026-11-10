@@ -173,7 +173,7 @@ public partial class SeatGridWindow : Window
                 "替换名单", "取消", danger: true))
             return;
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在读取名单…", "识别姓名 / 性别 / 学号等列；文件只在本机处理。");
         try
         {
             var (restored, roster) = await Task.Run(() => ReadRosterFile(path));
@@ -187,7 +187,7 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -871,7 +871,7 @@ public partial class SeatGridWindow : Window
 
     private async void OnPreview(object? sender, RoutedEventArgs e)
     {
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在生成预览…", "按当前排座与配色渲染座位表，稍等片刻。");
         try
         {
             var document = ViewModel.ComposeDocument();
@@ -886,13 +886,13 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
     private async void OnPrint(object? sender, RoutedEventArgs e)
     {
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在生成 PDF…", "把座位表渲染成高分辨率图并排进 A4，通常几秒。");
         try
         {
             var document = ViewModel.ComposeDocument();
@@ -910,7 +910,7 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -925,7 +925,7 @@ public partial class SeatGridWindow : Window
             return;
         }
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在导出图片…", "按当前排座渲染 PNG，文件只写在本机。");
         try
         {
             var document = ViewModel.ComposeDocument();
@@ -938,7 +938,7 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -953,7 +953,7 @@ public partial class SeatGridWindow : Window
             return;
         }
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在导出 Excel…", "写入座位表与名单两页，文件只写在本机。");
         try
         {
             var document = ViewModel.ComposeDocument();
@@ -968,7 +968,7 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -983,7 +983,7 @@ public partial class SeatGridWindow : Window
             return;
         }
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在导出配置…", "保存当前名单与座位设置，便于以后导回。");
         try
         {
             var settings = ViewModel.ToSettings();
@@ -998,7 +998,7 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 
@@ -1016,7 +1016,7 @@ public partial class SeatGridWindow : Window
                 "导入并覆盖", "取消", danger: true))
             return;
 
-        ViewModel.IsBusy = true;
+        ViewModel.BeginBusy("正在导入配置…", "读取配置里的名单、座位与版式并整体还原。");
         try
         {
             var config = await Task.Run(() => SeatGridConfigIO.Import(path));
@@ -1029,7 +1029,7 @@ public partial class SeatGridWindow : Window
         }
         finally
         {
-            ViewModel.IsBusy = false;
+            ViewModel.EndBusy();
         }
     }
 

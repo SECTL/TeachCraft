@@ -202,42 +202,70 @@ public partial class MeetRosterWindow : Window
             var path = files.FirstOrDefault()?.TryGetLocalPath();
             if (string.IsNullOrWhiteSpace(path)) return;
 
-            var kind = await Task.Run(() => OrderBookImporter.DetectKind(path));
+            // 整份工作簿只打开一次：判类型与后续导入共用同一个实例（60 班秩序册原先要解析三遍）。
+            // 打开与判类型都在后台线程；文件以共享读打开，会话存活期间 Excel 仍能同时打开同一份文件。
+            // 生命周期由本方法负责（using），ViewModel 只借用、不释放——否则会用到已释放的实例。
+            var (session, kind) = await Task.Run(() => OpenAndDetect(path));
 
-            if (kind == MeetWorkbookKind.Unknown)
+            if (session is null || kind == MeetWorkbookKind.Unknown)
             {
+                session?.Dispose();
                 ViewModel.SetStatus(
                     "这份工作簿里既没有「代表队名单」，也没有「竞赛日程 / 项目分组表」，认不出是什么表。"
                     + "请确认选的是秩序册或往届赛程。", true);
                 return;
             }
 
-            if (kind == MeetWorkbookKind.ScheduleOnly)
+            using (session)
             {
-                // 只有赛程：保留现有班级，只换赛程与分组条目。
-                if (ViewModel.HasScheduleDays && !await ConfirmDialog.ShowAsync(
-                        this, "替换当前赛程？",
-                        "这份工作簿里没有代表队名单，将只导入赛程与分组条目，"
-                        + "替换当前的赛程表；现有班级名单保持不变。",
-                        "替换赛程", "取消", danger: true))
+                if (kind == MeetWorkbookKind.ScheduleOnly)
+                {
+                    // 只有赛程：保留现有班级，只换赛程与分组条目。
+                    if (ViewModel.HasScheduleDays && !await ConfirmDialog.ShowAsync(
+                            this, "替换当前赛程？",
+                            "这份工作簿里没有代表队名单，将只导入赛程与分组条目，"
+                            + "替换当前的赛程表；现有班级名单保持不变。",
+                            "替换赛程", "取消", danger: true))
+                        return;
+
+                    await ViewModel.ImportScheduleFileAsync(path, session.Workbook);
+                    return;
+                }
+
+                if (ViewModel.HasAnyData && !await ConfirmDialog.ShowAsync(
+                        this, "用秩序册替换当前数据？",
+                        "这份工作簿带代表队名单，将整本导入并替换当前的班级名单与赛程"
+                        + $"（现有 {ViewModel.AllClasses.Count} 个班）。未保存的报名表修改不会保留。",
+                        "导入秩序册", "取消", danger: true))
                     return;
 
-                await ViewModel.ImportScheduleFileAsync(path);
-                return;
+                await ViewModel.ImportOrderBookAsync(path, session.Workbook);
             }
-
-            if (ViewModel.HasAnyData && !await ConfirmDialog.ShowAsync(
-                    this, "用秩序册替换当前数据？",
-                    "这份工作簿带代表队名单，将整本导入并替换当前的班级名单与赛程"
-                    + $"（现有 {ViewModel.AllClasses.Count} 个班）。未保存的报名表修改不会保留。",
-                    "导入秩序册", "取消", danger: true))
-                return;
-
-            await ViewModel.ImportOrderBookAsync(path);
         }
         catch (Exception ex)
         {
             ViewModel.SetStatus(ErrorText.Describe(ex, "导入秩序册"), true);
+        }
+    }
+
+    /// <summary>
+    /// 打开工作簿并判断这是秩序册还是只有赛程。打开 / 解析失败一律按「认不出」返回，
+    /// 与旧 <see cref="OrderBookImporter.DetectKind(string)"/> 的容忍行为一致：
+    /// 老师看到的是一句可操作的提示，而不是「文件被占用」这类技术异常。
+    /// 失败时已经打开的会话当场收掉，成功时把所有权交给调用方。
+    /// </summary>
+    private static (WorkbookSession? Session, MeetWorkbookKind Kind) OpenAndDetect(string path)
+    {
+        WorkbookSession? session = null;
+        try
+        {
+            session = WorkbookSession.Open(path);
+            return (session, OrderBookImporter.DetectKind(session.Workbook));
+        }
+        catch
+        {
+            session?.Dispose();
+            return (null, MeetWorkbookKind.Unknown);
         }
     }
 
