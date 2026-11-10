@@ -42,3 +42,10 @@ $RECYCLE.BIN/
 # 走查截图与本地代理工作区（不进仓库）
 outputs/
 .workbuddy/
+
+# 走查通道的失败回执：--*-bench / --*-shot 把异常写到「目标 + .error.txt」，
+# 目标写成裸目录名时落点是仓库根的 outputs.error.txt，只 ignore outputs/ 目录盖不住它。
+*.error.txt
+
+# IDE 生成的发布配置（每位开发机一套，不进仓库）
+**/Properties/PublishProfiles/

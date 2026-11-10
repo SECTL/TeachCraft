@@ -89,6 +89,7 @@ public partial class App : Application
                 !CaptureGradeWeaveConflictIfRequested(desktop) &&
                 !CaptureMeetRosterIfRequested(desktop) &&
                 !RunSliderBenchIfRequested(desktop) &&
+                !RunPerfBenchIfRequested(desktop) &&
                 !ShowGradeWeaveDemoIfRequested(desktop) &&
                 !ShowSeatGridDemoIfRequested(desktop))
                 CaptureIfRequested(desktop, window);
@@ -657,6 +658,66 @@ public partial class App : Application
             finally
             {
                 desktop.Shutdown();
+            }
+        });
+
+        return true;
+    }
+
+    /// <summary>
+    /// 性能基准走查：--perf-bench &lt;md路径&gt;。跑一遍 <see cref="Diagnostics.PerfBench"/> 里登记的自检基准，
+    /// 把环境段与 p50 / p95 表写到给定文件后退出。与 --slider-bench 同构：
+    /// 参数解析在 UI 线程之外完成，真正的采集与写文件放进 Dispatcher，异常落到
+    /// 「目标 + .error.txt」，无论成败都在 finally 里关掉进程——
+    /// 走查通道卡住不退出比报错更难排查。
+    ///
+    /// 与 --slider-bench 的两处差异都是为自动化服务的：目标目录不存在时先建出来
+    /// （否则连 .error.txt 都写不下去、异常会直接掀掉进程）；写 .error.txt 本身失败也不再向外抛，
+    /// finally 一定走到 Shutdown。成功是 0、失败是 2，与 --shot 的退出码契约一致。
+    /// </summary>
+    private static bool RunPerfBenchIfRequested(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var args = desktop.Args ?? Array.Empty<string>();
+        var index = Array.IndexOf(args, "--perf-bench");
+        if (index < 0 || index + 1 >= args.Length) return false;
+
+        var target = args[index + 1];
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            var exitCode = 0;
+            try
+            {
+                // 目标必须是文件，不是目录。把目录当文件名传是走查里最容易犯的错，
+                // 原来会抛 UnauthorizedAccessException，栈里全是 Win32 细节、看不出真正原因。
+                var fullTarget = Path.GetFullPath(target);
+                if (Directory.Exists(fullTarget))
+                {
+                    throw new InvalidOperationException(
+                        $"--perf-bench 需要一个文件路径，但「{target}」是已存在的目录；" +
+                        "请写成类似 outputs\\perf-bench-2026-11-10.md 的形式。");
+                }
+
+                var directory = Path.GetDirectoryName(fullTarget);
+                if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+                File.WriteAllText(fullTarget, Diagnostics.PerfBench.RenderReport());
+            }
+            catch (Exception ex)
+            {
+                exitCode = 2;
+                try
+                {
+                    File.WriteAllText(target + ".error.txt", ex.ToString());
+                }
+                catch (Exception)
+                {
+                    // 连错误文件都写不下去时已经没有更好的落点：让退出码说话。
+                }
+            }
+            finally
+            {
+                desktop.Shutdown(exitCode);
             }
         });
 

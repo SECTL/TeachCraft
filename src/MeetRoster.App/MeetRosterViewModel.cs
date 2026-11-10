@@ -404,137 +404,144 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
         BeginBusy($"正在导入 {paths.Count} 份报名表…", "逐个读取 Excel 模板，文件只在本机解析。");
         SetStatus($"正在导入 {paths.Count} 份报名表…");
-
-        var errors = new List<string>();
-        var results = new List<RegistrationImportResult>();
-        await Task.Run(() =>
+        try
         {
-            // 并行导入（Plan 4.1）：ClosedXML 载入占大头，限流并发 + (index, result) 按原文件顺序回填，
-            // 保住"同批次同名班级取最后一份"的既有语义。
-            var resultsBag = new System.Collections.Concurrent.ConcurrentBag<(int Index, RegistrationImportResult Result)>();
-            var errorBag = new System.Collections.Concurrent.ConcurrentBag<(int Index, string Error)>();
-            Parallel.ForEach(Enumerable.Range(0, paths.Count),
-                new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                i =>
-                {
-                    try
-                    {
-                        resultsBag.Add((i, RegistrationWorkbookImporter.Import(paths[i])));
-                    }
-                    catch (Exception ex)
-                    {
-                        // 业务校验的中文消息（InvalidDataException）原样透传，意外异常走 ErrorText 人话。
-                        var reason = ex is InvalidDataException ? ex.Message : ErrorText.Describe(ex, "读取");
-                        errorBag.Add((i, $"{Path.GetFileName(paths[i])}：{reason}"));
-                    }
-                });
-            results.AddRange(resultsBag.OrderBy(t => t.Index).Select(t => t.Result));
-            errors.AddRange(errorBag.OrderBy(t => t.Index).Select(t => t.Error));
-        });
 
-        EndBusy();
-        if (results.Count == 0)
-        {
-            SetStatus("报名表导入失败：" + (errors.FirstOrDefault() ?? "没有可读取的文件"), true);
-            return;
-        }
-
-        var duplicates = results
-            .GroupBy(r => r.Class.Name, StringComparer.Ordinal)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
-
-        var imported = results
-            .GroupBy(r => r.Class.Name, StringComparer.Ordinal)
-            .Select(g => g.Last())
-            .ToList();
-
-        _importIssues.Clear();
-        foreach (var result in imported)
-        {
-            _importIssues[result.Class.Name] = result.Issues.ToList();
-        }
-
-        var project = new MeetProject
-        {
-            Title = results.Select(r => r.Title).FirstOrDefault(t => t.Length > 0) ?? "运动会报名",
-            Venue = _isDemo ? "田径场" : _project.Venue,
-            Note = _isDemo
-                ? "每班每个单项最多男女各报 2 人，每人限报 2 个单项；团体项目最多报 3 项。"
-                : _project.Note,
-            // 报名表工程没有单一原工作簿，「原表高亮」会如实提示改用软件整理样式。
-            SourcePath = _isDemo ? null : _project.SourcePath,
-        };
-
-        // 合并导入：同名班整体替换、旧班原样保留、新班按导入顺序追加。
-        // 示例数据模式除外——首次导入把示例班整体换掉。
-        if (!_isDemo)
-        {
-            var importedByName = imported.ToDictionary(r => r.Class.Name, r => r, StringComparer.Ordinal);
-            var added = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var existing in _project.Classes)
+            var errors = new List<string>();
+            var results = new List<RegistrationImportResult>();
+            await Task.Run(() =>
             {
-                if (importedByName.TryGetValue(existing.Name, out var replacement))
-                {
-                    project.Classes.Add(replacement.Class);
-                    added.Add(existing.Name);
-                }
-                else
-                {
-                    project.Classes.Add(existing);
-                }
+                // 并行导入（Plan 4.1）：ClosedXML 载入占大头，限流并发 + (index, result) 按原文件顺序回填，
+                // 保住"同批次同名班级取最后一份"的既有语义。
+                var resultsBag = new System.Collections.Concurrent.ConcurrentBag<(int Index, RegistrationImportResult Result)>();
+                var errorBag = new System.Collections.Concurrent.ConcurrentBag<(int Index, string Error)>();
+                Parallel.ForEach(Enumerable.Range(0, paths.Count),
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                    i =>
+                    {
+                        try
+                        {
+                            resultsBag.Add((i, RegistrationWorkbookImporter.Import(paths[i])));
+                        }
+                        catch (Exception ex)
+                        {
+                            // 业务校验的中文消息（InvalidDataException）原样透传，意外异常走 ErrorText 人话。
+                            var reason = ex is InvalidDataException ? ex.Message : ErrorText.Describe(ex, "读取");
+                            errorBag.Add((i, $"{Path.GetFileName(paths[i])}：{reason}"));
+                        }
+                    });
+                results.AddRange(resultsBag.OrderBy(t => t.Index).Select(t => t.Result));
+                errors.AddRange(errorBag.OrderBy(t => t.Index).Select(t => t.Error));
+            });
+
+            if (results.Count == 0)
+            {
+                SetStatus("报名表导入失败：" + (errors.FirstOrDefault() ?? "没有可读取的文件"), true);
+                return;
             }
 
+            var duplicates = results
+                .GroupBy(r => r.Class.Name, StringComparer.Ordinal)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            var imported = results
+                .GroupBy(r => r.Class.Name, StringComparer.Ordinal)
+                .Select(g => g.Last())
+                .ToList();
+
+            _importIssues.Clear();
             foreach (var result in imported)
             {
-                if (added.Contains(result.Class.Name)) continue;
-                project.Classes.Add(result.Class);
+                _importIssues[result.Class.Name] = result.Issues.ToList();
             }
+
+            var project = new MeetProject
+            {
+                Title = results.Select(r => r.Title).FirstOrDefault(t => t.Length > 0) ?? "运动会报名",
+                Venue = _isDemo ? "田径场" : _project.Venue,
+                Note = _isDemo
+                    ? "每班每个单项最多男女各报 2 人，每人限报 2 个单项；团体项目最多报 3 项。"
+                    : _project.Note,
+                // 报名表工程没有单一原工作簿，「原表高亮」会如实提示改用软件整理样式。
+                SourcePath = _isDemo ? null : _project.SourcePath,
+            };
+
+            // 合并导入：同名班整体替换、旧班原样保留、新班按导入顺序追加。
+            // 示例数据模式除外——首次导入把示例班整体换掉。
+            if (!_isDemo)
+            {
+                var importedByName = imported.ToDictionary(r => r.Class.Name, r => r, StringComparer.Ordinal);
+                var added = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var existing in _project.Classes)
+                {
+                    if (importedByName.TryGetValue(existing.Name, out var replacement))
+                    {
+                        project.Classes.Add(replacement.Class);
+                        added.Add(existing.Name);
+                    }
+                    else
+                    {
+                        project.Classes.Add(existing);
+                    }
+                }
+
+                foreach (var result in imported)
+                {
+                    if (added.Contains(result.Class.Name)) continue;
+                    project.Classes.Add(result.Class);
+                }
+            }
+            else
+            {
+                foreach (var result in imported)
+                    project.Classes.Add(result.Class);
+            }
+
+            if (!_isDemo)
+            {
+                foreach (var day in _project.Days)
+                    project.Days.Add(day);
+            }
+
+            LoadProject(project, isDemo: false, scheduleImported: !_isDemo && _scheduleImported,
+                preferredClassName: imported[0].Class.Name);
+            if (project.Days.Count == 0) _scheduleImported = false;
+
+            // 报名表接管了工程：秩序册来源不再代表当前数据，导出时也就不该再拿它挡路径。
+            _orderBookSources.Clear();
+
+            // 报名表里有团体项目勾选，赛程里那些「4x100 接力队」占位可以换成真实队员。
+            // 只补团体条目，不整表重算——秩序册带来的组次 / 道次必须保留。
+            var refreshedTeams = 0;
+            if (_project.Days.Count > 0)
+            {
+                refreshedTeams = MeetScheduleBuilder.ApplyTeamMembers(_project);
+                foreach (var day in ScheduleDays)
+                    day.RefreshMeta();
+                RefreshSchedule();
+            }
+
+            IsDirty = false;
+            var issueCount = imported.Sum(r => r.Issues.Count(i => i.IsError));
+            var message = $"已导入 {imported.Count} 个班 · {imported.Sum(r => r.Class.Athletes.Count)} 名运动员";
+            if (issueCount > 0) message += $" · {issueCount} 项违规";
+            if (duplicates.Count > 0) message += $" · {duplicates.Count} 个同名班（取最后一份）";
+            if (refreshedTeams > 0) message += $" · 赛程已补上 {refreshedTeams} 条团体队员";
+            if (errors.Count > 0) message += $" · {errors.Count} 份失败";
+
+            var detail = errors.Count > 0
+                ? string.Join(Environment.NewLine, errors)
+                : string.Empty;
+            SetStatus(message, errors.Count > 0, detail, success: errors.Count == 0);
+    
         }
-        else
+        finally
         {
-            foreach (var result in imported)
-                project.Classes.Add(result.Class);
+            EndBusy();
         }
-
-        if (!_isDemo)
-        {
-            foreach (var day in _project.Days)
-                project.Days.Add(day);
-        }
-
-        LoadProject(project, isDemo: false, scheduleImported: !_isDemo && _scheduleImported,
-            preferredClassName: imported[0].Class.Name);
-        if (project.Days.Count == 0) _scheduleImported = false;
-
-        // 报名表接管了工程：秩序册来源不再代表当前数据，导出时也就不该再拿它挡路径。
-        _orderBookSources.Clear();
-
-        // 报名表里有团体项目勾选，赛程里那些「4x100 接力队」占位可以换成真实队员。
-        // 只补团体条目，不整表重算——秩序册带来的组次 / 道次必须保留。
-        var refreshedTeams = 0;
-        if (_project.Days.Count > 0)
-        {
-            refreshedTeams = MeetScheduleBuilder.ApplyTeamMembers(_project);
-            foreach (var day in ScheduleDays)
-                day.RefreshMeta();
-            RefreshSchedule();
-        }
-
-        IsDirty = false;
-        var issueCount = imported.Sum(r => r.Issues.Count(i => i.IsError));
-        var message = $"已导入 {imported.Count} 个班 · {imported.Sum(r => r.Class.Athletes.Count)} 名运动员";
-        if (issueCount > 0) message += $" · {issueCount} 项违规";
-        if (duplicates.Count > 0) message += $" · {duplicates.Count} 个同名班（取最后一份）";
-        if (refreshedTeams > 0) message += $" · 赛程已补上 {refreshedTeams} 条团体队员";
-        if (errors.Count > 0) message += $" · {errors.Count} 份失败";
-
-        var detail = errors.Count > 0
-            ? string.Join(Environment.NewLine, errors)
-            : string.Empty;
-        SetStatus(message, errors.Count > 0, detail, success: errors.Count == 0);
-    }
+}
 
     /// <summary>
     /// 导入秩序册（一份工作簿里同时有代表队名单、竞赛日程与项目分组表）。
@@ -563,43 +570,52 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        EndBusy();
-        _importIssues.Clear();
-        foreach (var meetClass in result.Project.Classes)
+        // 提示文案在 try 之前声明：finally 之后的 SetStatus 要用它，
+        // 而重建阶段真的抛异常时 finally 已收掉遮罩，异常会照常上抛、这条 SetStatus 根本不会执行。
+        var message = string.Empty;
+        try
         {
-            var issues = result.Issues
-                .Where(i => i.Message.Contains(meetClass.Name, StringComparison.Ordinal))
-                .ToList();
-            if (issues.Count > 0) _importIssues[meetClass.Name] = issues;
-        }
+            _importIssues.Clear();
+            foreach (var meetClass in result.Project.Classes)
+            {
+                var issues = result.Issues
+                    .Where(i => i.Message.Contains(meetClass.Name, StringComparison.Ordinal))
+                    .ToList();
+                if (issues.Count > 0) _importIssues[meetClass.Name] = issues;
+            }
 
-        _orderBookSources.Add(result.SourcePath!);
-        ScheduleSourceName = result.HasSchedule
-            ? DisplayFileName(path)
-            : "未导入赛程";
+            _orderBookSources.Add(result.SourcePath!);
+            ScheduleSourceName = result.HasSchedule
+                ? DisplayFileName(path)
+                : "未导入赛程";
 
-        // 秩序册不点名团体项目队员。如果这份工程之前导入过报名表，就把那些勾选带过来，
-        // 让赛程里显示真实上场的人，而不是「4x100 接力队」这种占位。
-        var carried = CarryOverTeamMembers(result.Project);
+            // 秩序册不点名团体项目队员。如果这份工程之前导入过报名表，就把那些勾选带过来，
+            // 让赛程里显示真实上场的人，而不是「4x100 接力队」这种占位。
+            var carried = CarryOverTeamMembers(result.Project);
 
-        LoadProject(result.Project, isDemo: false, scheduleImported: result.HasSchedule,
-            preferredClassName: SelectedClass?.Name);
+            LoadProject(result.Project, isDemo: false, scheduleImported: result.HasSchedule,
+                preferredClassName: SelectedClass?.Name);
 
-        // 沿用过来的团体勾选要落到赛程条目上，否则界面上还是「4x100 接力队」占位。
-        if (carried > 0 && _project.Days.Count > 0)
-        {
-            MeetScheduleBuilder.ApplyTeamMembers(_project);
-            RefreshSchedule();
-        }
+            // 沿用过来的团体勾选要落到赛程条目上，否则界面上还是「4x100 接力队」占位。
+            if (carried > 0 && _project.Days.Count > 0)
+            {
+                MeetScheduleBuilder.ApplyTeamMembers(_project);
+                RefreshSchedule();
+            }
 
-        IsDirty = false;
-        var message = $"已导入秩序册 · {result.Project.Classes.Count} 个班 · {result.AthleteCount} 名运动员"
+            IsDirty = false;
+            message = $"已导入秩序册 · {result.Project.Classes.Count} 个班 · {result.AthleteCount} 名运动员"
                       + (result.HasSchedule
                           ? $" · {result.Project.Days.Count} 天赛程"
                           : " · 没有找到竞赛日程");
-        if (carried > 0) message += $" · 沿用报名表的 {carried} 条团体报名";
-        var notices = result.Issues.Count(i => !i.IsError);
-        if (notices > 0) message += $" · {notices} 条提醒";
+            if (carried > 0) message += $" · 沿用报名表的 {carried} 条团体报名";
+            var notices = result.Issues.Count(i => !i.IsError);
+            if (notices > 0) message += $" · {notices} 条提醒";
+        }
+        finally
+        {
+            EndBusy();
+        }
         SetStatus(message, success: true,
             detail: string.Join(Environment.NewLine, result.Issues.Select(i => i.Message)));
     }
@@ -743,45 +759,53 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        EndBusy();
-        var project = new MeetProject
+        // 与秩序册导入同理：message 要在 try 之前声明，finally 之后的 SetStatus 才用得到。
+        var message = string.Empty;
+        try
         {
-            Title = _isDemo ? "运动会赛程" : _project.Title,
-            Venue = _isDemo ? "田径场" : _project.Venue,
-            Note = _project.Note,
-            // 赛程工作簿同样可以作为「原表高亮」的底板。
-            SourcePath = Path.GetFullPath(path),
-        };
-
-        if (!_isDemo)
-        {
-            foreach (var meetClass in _project.Classes)
-                project.Classes.Add(meetClass);
-        }
-
-        var existing = project.Classes.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
-        foreach (var className in result.ClassNames)
-        {
-            if (existing.Contains(className)) continue;
-            project.Classes.Add(new MeetClass
+            var project = new MeetProject
             {
-                Name = className,
-                Group = GroupFromClassName(className),
-            });
-            existing.Add(className);
+                Title = _isDemo ? "运动会赛程" : _project.Title,
+                Venue = _isDemo ? "田径场" : _project.Venue,
+                Note = _project.Note,
+                // 赛程工作簿同样可以作为「原表高亮」的底板。
+                SourcePath = Path.GetFullPath(path),
+            };
+
+            if (!_isDemo)
+            {
+                foreach (var meetClass in _project.Classes)
+                    project.Classes.Add(meetClass);
+            }
+
+            var existing = project.Classes.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var className in result.ClassNames)
+            {
+                if (existing.Contains(className)) continue;
+                project.Classes.Add(new MeetClass
+                {
+                    Name = className,
+                    Group = GroupFromClassName(className),
+                });
+                existing.Add(className);
+            }
+
+            foreach (var day in result.Days)
+                project.Days.Add(day);
+
+            _scheduleImported = true;
+            ScheduleSourceName = DisplayFileName(path);
+            LoadProject(project, isDemo: false, scheduleImported: true,
+                preferredClassName: SelectedClass?.Name);
+
+            var entryCount = result.Days.Sum(d => d.Slots.Sum(s => s.Entries.Count));
+            message = $"已导入赛程 · {result.Days.Count} 天 · {result.Days.Sum(d => d.Slots.Count)} 个项目 · {entryCount} 条记录";
+            if (result.Issues.Count > 0) message += $" · {result.Issues.Count} 条提醒";
         }
-
-        foreach (var day in result.Days)
-            project.Days.Add(day);
-
-        _scheduleImported = true;
-        ScheduleSourceName = DisplayFileName(path);
-        LoadProject(project, isDemo: false, scheduleImported: true,
-            preferredClassName: SelectedClass?.Name);
-
-        var entryCount = result.Days.Sum(d => d.Slots.Sum(s => s.Entries.Count));
-        var message = $"已导入赛程 · {result.Days.Count} 天 · {result.Days.Sum(d => d.Slots.Count)} 个项目 · {entryCount} 条记录";
-        if (result.Issues.Count > 0) message += $" · {result.Issues.Count} 条提醒";
+        finally
+        {
+            EndBusy();
+        }
         SetStatus(message, success: true);
     }
 
@@ -1034,48 +1058,55 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             return;
         }
 
-        EndBusy();
         if (result.Entries.Count == 0)
         {
+            EndBusy();
             FailRosterImport("名单里没有读到学生：请确认「姓名」列下方有数据");
             return;
         }
 
-        // 归班：条目自带班级优先；否则用标题/文件名推断的班级（如“七年级1班花名册”）。
-        var entries = result.Entries
-            .Select(e => e.ClassName.Length > 0 || result.InferredClassName.Length == 0
-                ? e
-                : e with { ClassName = result.InferredClassName })
-            .ToList();
-
-        // 按班替换：同一份花名册重复导入不会叠加，不同班的名单则累加（支持一班一个文件）。
-        var classes = entries.Select(e => e.ClassName).Distinct(StringComparer.Ordinal).ToList();
-        foreach (var cls in classes)
-            _roster.RemoveAll(e => string.Equals(e.ClassName, cls, StringComparison.Ordinal));
-        _roster.AddRange(entries);
-
-        OnPropertyChanged(nameof(HasRoster));
-        OnPropertyChanged(nameof(RosterCount));
-        OnPropertyChanged(nameof(RosterStatusHint));
-
-        var message = $"已导入名单 · {entries.Count} 人";
-        var labeled = entries.Select(e => e.ClassName).Where(c => c.Length > 0).Distinct(StringComparer.Ordinal).ToList();
-        if (labeled.Count == 1 && labeled[0] == result.InferredClassName && result.InferredClassName.Length > 0)
-            message += $"（{result.InferredClassName}，按标题/文件名识别）";
-        else if (labeled.Count == 1)
-            message += $"（{labeled[0]}）";
-        if (_roster.Count > entries.Count) message += $" · 名单累计 {_roster.Count} 人";
-        if (result.Issues.Count > 0) message += $" · {result.Issues.Count} 条提示";
-        SetStatus(message + "；点「添加运动员」即可从名单挑选", success: true);
-
-        // 导入状况进「导入时的提示」面板：摘要 + 全部问题（可点“知道了”收起）。
-        var notices = new List<RegistrationIssue>
+        try
         {
-            new($"已导入名单 {entries.Count} 人（{DistinctRosterClasses()}）", false),
-        };
-        notices.AddRange(result.Issues);
-        _importIssues[RosterIssueKey] = notices;
-        RebuildImportNotices();
+            // 归班：条目自带班级优先；否则用标题/文件名推断的班级（如“七年级1班花名册”）。
+            var entries = result.Entries
+                .Select(e => e.ClassName.Length > 0 || result.InferredClassName.Length == 0
+                    ? e
+                    : e with { ClassName = result.InferredClassName })
+                .ToList();
+
+            // 按班替换：同一份花名册重复导入不会叠加，不同班的名单则累加（支持一班一个文件）。
+            var classes = entries.Select(e => e.ClassName).Distinct(StringComparer.Ordinal).ToList();
+            foreach (var cls in classes)
+                _roster.RemoveAll(e => string.Equals(e.ClassName, cls, StringComparison.Ordinal));
+            _roster.AddRange(entries);
+
+            OnPropertyChanged(nameof(HasRoster));
+            OnPropertyChanged(nameof(RosterCount));
+            OnPropertyChanged(nameof(RosterStatusHint));
+
+            var message = $"已导入名单 · {entries.Count} 人";
+            var labeled = entries.Select(e => e.ClassName).Where(c => c.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+            if (labeled.Count == 1 && labeled[0] == result.InferredClassName && result.InferredClassName.Length > 0)
+                message += $"（{result.InferredClassName}，按标题/文件名识别）";
+            else if (labeled.Count == 1)
+                message += $"（{labeled[0]}）";
+            if (_roster.Count > entries.Count) message += $" · 名单累计 {_roster.Count} 人";
+            if (result.Issues.Count > 0) message += $" · {result.Issues.Count} 条提示";
+            SetStatus(message + "；点「添加运动员」即可从名单挑选", success: true);
+
+            // 导入状况进「导入时的提示」面板：摘要 + 全部问题（可点“知道了”收起）。
+            var notices = new List<RegistrationIssue>
+            {
+                new($"已导入名单 {entries.Count} 人（{DistinctRosterClasses()}）", false),
+            };
+            notices.AddRange(result.Issues);
+            _importIssues[RosterIssueKey] = notices;
+            RebuildImportNotices();
+        }
+        finally
+        {
+            EndBusy();
+        }
     }
 
     /// <summary>名单导入失败：原因写进提示面板（持久可见），状态栏同步提示。</summary>

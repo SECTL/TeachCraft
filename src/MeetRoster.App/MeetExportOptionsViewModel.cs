@@ -115,8 +115,14 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
     public bool HasPreview => PreviewImage is not null;
     public bool ShowPreviewEmpty => PreviewImage is null && !IsPreviewBusy;
 
-    partial void OnPreviewImageChanged(Avalonia.Media.Imaging.Bitmap? value)
+    /// <summary>
+    /// 预览位图是整页 A4 缩略图（每张 3–6MB 非托管像素），改设置就会重建一张。
+    /// 只留新图、直接丢掉旧引用的话，GC 感知不到这块原生内存，连点几次设置就能把进程推到几百 MB，
+    /// 所以换值时立即释放旧图。绑定的 <c>Image.Source</c> 在通知到达前已切到新值，释放是安全的。
+    /// </summary>
+    partial void OnPreviewImageChanged(Avalonia.Media.Imaging.Bitmap? oldValue, Avalonia.Media.Imaging.Bitmap? newValue)
     {
+        oldValue?.Dispose();
         OnPropertyChanged(nameof(HasPreview));
         OnPropertyChanged(nameof(ShowPreviewEmpty));
     }
