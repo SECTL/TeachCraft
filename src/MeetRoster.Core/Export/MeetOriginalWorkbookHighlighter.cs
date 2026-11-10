@@ -97,8 +97,9 @@ public static class MeetOriginalWorkbookHighlighter
 
             var endRow = i + 1 < blocks.Count ? blocks[i + 1].Row - 1 : lastRow;
             // 块尾常跟着几行空行，别把空白也刷成色块。
-            while (endRow > startRow && string.IsNullOrWhiteSpace(Clean(sheet.Cell(endRow, 1).GetString())) &&
-                   sheet.Row(endRow).CellsUsed().All(c => string.IsNullOrWhiteSpace(c.GetString())))
+            // 逐列查而不是用 sheet.Row(endRow).CellsUsed()：后者每退一行都要重建一次
+            // 整行的已用单元格集合，块尾空行多时是平方级开销。
+            while (endRow > startRow && IsRowBlank(sheet, endRow, PaintedColumns))
                 endRow--;
 
             for (var row = startRow; row <= endRow; row++)
@@ -184,6 +185,23 @@ public static class MeetOriginalWorkbookHighlighter
     }
 
     // ----------------------------- 工具 -----------------------------
+
+    /// <summary>高亮时涂色的列数：与 <see cref="PaintRow"/> 保持一致。</summary>
+    private const int PaintedColumns = 9;
+
+    /// <summary>
+    /// 该行在涂色列范围内是否全空。用逐格 GetString 而不是 `Row(...).CellsUsed()`：
+    /// 后者要为整行建集合，而这里只需要看涂色会覆盖的那几列。
+    /// </summary>
+    private static bool IsRowBlank(IXLWorksheet sheet, int row, int columns)
+    {
+        for (var column = 1; column <= columns; column++)
+        {
+            if (!string.IsNullOrWhiteSpace(sheet.Cell(row, column).GetString())) return false;
+        }
+
+        return true;
+    }
 
     private static void PaintRow(IXLWorksheet sheet, int row, int columns)
     {
