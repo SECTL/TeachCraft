@@ -183,6 +183,31 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
         </Style>
+
+        <!-- 赛程分组列表：只用它换取虚拟化，外观必须与原来的 ItemsControl 一模一样。
+             所以去掉边框 / 背景 / 内边距，并压掉 ListBoxItem 的选中与悬停底色。 -->
+        <Style Selector="ListBox.schedule-groups">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="SelectionMode" Value="Single" />
+        </Style>
+        <Style Selector="ListBox.schedule-groups ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+        <Style Selector="ListBox.schedule-groups ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.schedule-groups ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.schedule-groups ListBoxItem:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
         <Style Selector="ListBox.classes ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="7,7" />
@@ -1156,8 +1181,14 @@
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled" Padding="18,0,18,14">
                             <StackPanel Spacing="8">
-                                <ItemsControl ItemsSource="{Binding ScheduleGroups}">
-                                    <ItemsControl.ItemTemplate>
+                                <!-- 外层改成虚拟化 ListBox：「全部」视图下 3 天 × 60 个时段 =
+                                     180 个分组，每个分组里还有若干 chip。原先 StackPanel 里放
+                                     ItemsControl 会把所有分组一次性实例化并测量。
+                                     内层 Slots / Entries 保持 ItemsControl——它们数量有限，
+                                     且需要参与外层的高度测量。 -->
+                                <ListBox Classes="schedule-groups" ItemsSource="{Binding ScheduleGroups}"
+                                         SelectionMode="Single" IsTabStop="False">
+                                    <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="app:ScheduleGroupViewModel">
                                             <StackPanel Spacing="5" Margin="0,6,0,4">
                                                 <!-- 「全部」视图：日期换了才画一行小标题 -->
@@ -1314,8 +1345,8 @@
                                                 </ItemsControl>
                                             </StackPanel>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
 
                                 <Border IsVisible="{Binding !HasScheduleSlots}" Padding="0,28" HorizontalAlignment="Stretch">
                                     <StackPanel HorizontalAlignment="Center" Spacing="5">

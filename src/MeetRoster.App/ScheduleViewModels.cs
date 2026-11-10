@@ -148,7 +148,12 @@ public sealed class ScheduleSlotViewModel
 }
 
 /// <summary>赛程中的一条参赛记录。</summary>
-public sealed class ScheduleEntryViewModel
+/// <remarks>
+/// 高亮状态是可变的：切换高亮班级时只发通知、不重建整棵 VM 树。
+/// 原先每次切高亮都 <c>ScheduleGroups.Clear()</c> 再全量重建（2000+ 条目），
+/// 在非虚拟化的赛程树上等于整屏重画。现在 <see cref="ApplyHighlight"/> 就地改两个字段。
+/// </remarks>
+public sealed class ScheduleEntryViewModel : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
 {
     public ScheduleEntryViewModel(MeetEntry source, string? highlightClass = null)
     {
@@ -159,9 +164,7 @@ public sealed class ScheduleEntryViewModel
         Group = source.Group;
         TeamMembers = source.TeamMembers;
         TeamMembersFromRegistration = source.TeamMembersFromRegistration;
-        IsHighlighted = highlightClass is not null &&
-                        string.Equals(source.ClassName, highlightClass, StringComparison.Ordinal);
-        Opacity = highlightClass is null || IsHighlighted ? 1 : 0.7;
+        ApplyHighlight(highlightClass);
     }
 
     public string ClassName { get; }
@@ -182,7 +185,31 @@ public sealed class ScheduleEntryViewModel
         ? 0
         : TeamMembers.Split('、', StringSplitOptions.RemoveEmptyEntries).Length;
 
-    public bool IsHighlighted { get; }
-    public double Opacity { get; }
+    private bool _isHighlighted;
+    private double _opacity = 1;
+
+    public bool IsHighlighted
+    {
+        get => _isHighlighted;
+        private set => SetProperty(ref _isHighlighted, value);
+    }
+
+    public double Opacity
+    {
+        get => _opacity;
+        private set => SetProperty(ref _opacity, value);
+    }
+
+    /// <summary>
+    /// 就地应用高亮（<paramref name="highlightClass"/> 为 null 表示清除高亮）。
+    /// 只改两个字段并发通知，不重建对象。
+    /// </summary>
+    public void ApplyHighlight(string? highlightClass)
+    {
+        IsHighlighted = highlightClass is not null &&
+                        string.Equals(ClassName, highlightClass, StringComparison.Ordinal);
+        Opacity = highlightClass is null || IsHighlighted ? 1 : 0.7;
+    }
+
     public string Display => $"{ClassName} · {AthleteName}";
 }

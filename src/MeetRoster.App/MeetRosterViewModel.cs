@@ -306,7 +306,28 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         if (value is null) OnlyHighlightedClassEntries = false;
         OnPropertyChanged(nameof(CanOnlyShowClass));
         RefreshHighlightSummary();
-        RefreshSchedule();
+
+        // 「仅显示该班」要增删条目，必须重建；
+        // 但如果只是换高亮班级（条目集合不变），就地改颜色即可——
+        // 重建整棵树在 2000+ 条目上是整屏重画，而老师只是想看另一个班。
+        if (OnlyHighlightedClassEntries) RefreshSchedule();
+        else ApplyHighlightInPlace(value?.Name);
+    }
+
+    /// <summary>
+    /// 就地切换高亮：遍历已有的赛程 VM，逐个 <c>ApplyHighlight</c>。
+    /// 不增删任何条目，因此集合与展开状态都保持原样。
+    /// </summary>
+    private void ApplyHighlightInPlace(string? highlightName)
+    {
+        foreach (var group in ScheduleGroups)
+        {
+            foreach (var slot in group.Slots)
+            {
+                foreach (var entry in slot.Entries)
+                    entry.ApplyHighlight(highlightName);
+            }
+        }
     }
 
     partial void OnOnlyHighlightedClassEntriesChanged(bool value)
