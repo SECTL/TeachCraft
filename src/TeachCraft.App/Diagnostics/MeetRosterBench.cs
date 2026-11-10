@@ -57,13 +57,14 @@ internal static class MeetRosterBench
             MeetExportBuilder.Build(project, new MeetExportOptions());
         }, 3));
 
-        PerfBench.BusinessBenchmarks.Add(("竞名 · PDF 分页（全部分页）", () =>
+        // 预览只要第 1 页——这正是导出设置弹窗每次改设置都走的那条路。
+        PerfBench.BusinessBenchmarks.Add(("竞名 · 预览首页（导出弹窗路径）", () =>
         {
             if (corpus is null) return;
             var project = OrderBookImporter.Import(corpus).Project;
             var summaries = MeetExportBuilder.Build(project, new MeetExportOptions());
-            MeetPdfExporter.RenderPreviewPages(project, summaries, new MeetExportOptions(), 3);
-        }, 3));
+            MeetPdfExporter.RenderPreviewPages(project, summaries, new MeetExportOptions(), 1);
+        }, 5));
     }
 
     private static string NewDir()
