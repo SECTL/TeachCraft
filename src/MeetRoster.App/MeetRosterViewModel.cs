@@ -317,16 +317,17 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     /// <summary>
     /// 就地切换高亮：遍历已有的赛程 VM，逐个 <c>ApplyHighlight</c>。
     /// 不增删任何条目，因此集合与展开状态都保持原样。
+    /// <para>
+    /// 时段级派生状态（卡片底色 <c>HasClassHighlight</c>、「N 条高亮」标签）也必须在
+    /// 这里一并更新——它们原先只在构造时算一次，只改条目会让卡片底色停在旧班级上。
+    /// </para>
     /// </summary>
     private void ApplyHighlightInPlace(string? highlightName)
     {
         foreach (var group in ScheduleGroups)
         {
             foreach (var slot in group.Slots)
-            {
-                foreach (var entry in slot.Entries)
-                    entry.ApplyHighlight(highlightName);
-            }
+                slot.ApplyHighlight(highlightName);
         }
     }
 

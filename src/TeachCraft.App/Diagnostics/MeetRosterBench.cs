@@ -13,7 +13,8 @@ namespace TeachCraft.App.Diagnostics;
 /// <c>--perf-bench</c> 就拿不到（发布产物不含测试程序集）。
 /// </para>
 /// <para>
-/// 数据全部为合成：虚构校名「示例中学」、虚构姓名。生成到临时目录，跑完即删。
+/// 数据全部为合成：虚构校名「示例中学」、虚构姓名。生成到临时目录，跑完即删
+/// （<see cref="PerfBench"/> 在渲染完报告后统一清理）。
 /// </para>
 /// </summary>
 internal static class MeetRosterBench
@@ -71,6 +72,8 @@ internal static class MeetRosterBench
     {
         var dir = Path.Combine(Path.GetTempPath(), "TeachCraft.PerfBench", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
+        // 登记给 PerfBench，基准跑完统一删——否则每次 --perf-bench 都在 %TEMP% 留一份 60 班语料。
+        PerfBench.RegisterTemporaryDirectory(dir);
         return dir;
     }
 

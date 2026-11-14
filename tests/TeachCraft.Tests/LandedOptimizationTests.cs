@@ -90,16 +90,26 @@ public sealed class LandedOptimizationTests
     // ---------------------------------------------------------------- 4
     /// <summary>
     /// 织序总表必须复用课程格（按「班级 + 天 + 节」索引），不能每次全量重建。
-    /// 失效形态：<c>_masterCells</c> 的复用分支被删掉，拖拽 / 刷新时重建上千个 Border。
+    /// <para>
+    /// 这条断言比前三条更细：它要求「签名命中 → 走 RefreshMasterCells 分支 → 提前 return」，
+    /// 而不只是「某个字段名还在文件里」。改成全量重建时，那段 if + return 会被删掉，
+    /// 这条就会红。
+    /// </para>
     /// </summary>
     [Fact]
     public void GradeWeaveMasterGrid_ReusesCellsBySignature()
     {
         var source = ReadSource("src", "GradeWeave.App", "GradeWeaveWindow.axaml.cs");
 
-        Assert.Contains("_masterCells", source, StringComparison.Ordinal);
-        // 签名命中即复用，不再重建。
-        Assert.Contains("RefreshMasterCells", source, StringComparison.Ordinal);
-        Assert.Contains("_masterGridSignature", source, StringComparison.Ordinal);
+        // 复用分支的形态：签名相等且已有格子时，刷新内容后直接返回，不再重建。
+        Assert.Contains("if (signature == _masterGridSignature && _masterCells.Count > 0)", source,
+            StringComparison.Ordinal);
+        Assert.Contains("RefreshMasterCells(", source, StringComparison.Ordinal);
+
+        // 索引写入：按（班级 Id, 天, 节）登记，换工程或改节次数时签名失配。
+        Assert.Contains("_masterCells[(schoolClass.Id, day, period)] =", source, StringComparison.Ordinal);
+
+        // 签名由班级 Id 序列 + 节次序列构成——改这两样才该重建。
+        Assert.Contains("_masterGridSignature = signature;", source, StringComparison.Ordinal);
     }
 }

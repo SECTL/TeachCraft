@@ -120,8 +120,25 @@ public static class PerfBench
     public static readonly List<(string Name, Action Action, int Iterations)> BusinessBenchmarks = new();
 
     /// <summary>
+    /// 基准跑完后要清理的临时目录。注册基准的一方往里登记，<see cref="RunBusinessBenchmarks"/>
+    /// 结束时统一删——否则每次 <c>--perf-bench</c> 都会在 %TEMP% 里留下一份 60 班语料。
+    /// </summary>
+    private static readonly List<string> TemporaryDirectories = new();
+
+    /// <summary>登记一个跑完要删的临时目录。</summary>
+    public static void RegisterTemporaryDirectory(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        lock (Gate)
+        {
+            TemporaryDirectories.Add(path);
+        }
+    }
+
+    /// <summary>
     /// 跑一遍所有已注册的业务基准，结果进同一张表。
     /// 没注册任何项时什么也不做——自检项仍然保证报告非空。
+    /// 结束后清掉基准自己登记的临时目录。
     /// </summary>
     public static void RunBusinessBenchmarks()
     {
@@ -131,9 +148,38 @@ public static class PerfBench
             snapshot = BusinessBenchmarks.ToArray();
         }
 
-        foreach (var (name, action, iterations) in snapshot)
+        try
         {
-            Measure(name, action, iterations);
+            foreach (var (name, action, iterations) in snapshot)
+            {
+                Measure(name, action, iterations);
+            }
+        }
+        finally
+        {
+            CleanupTemporaryDirectories();
+        }
+    }
+
+    private static void CleanupTemporaryDirectories()
+    {
+        string[] dirs;
+        lock (Gate)
+        {
+            dirs = TemporaryDirectories.ToArray();
+            TemporaryDirectories.Clear();
+        }
+
+        foreach (var dir in dirs)
+        {
+            try
+            {
+                if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception)
+            {
+                // 删不掉不该让基准失败：临时目录有系统清理兜底。
+            }
         }
     }
 

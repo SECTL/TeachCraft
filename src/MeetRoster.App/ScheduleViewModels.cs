@@ -80,7 +80,12 @@ public sealed class ScheduleGroupViewModel
 }
 
 /// <summary>赛程中的一个时段与它的参赛名单。</summary>
-public sealed class ScheduleSlotViewModel
+/// <remarks>
+/// 高亮状态可变：切换高亮班级时，时段卡片底色（<see cref="HasClassHighlight"/>）
+/// 与「N 条高亮」标签也要跟着变。这两个值原先在构造时定型，只更新条目会让
+/// 卡片底色停在旧班级上——所以一并做成可变 + 通知。
+/// </remarks>
+public sealed class ScheduleSlotViewModel : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
 {
     public ScheduleSlotViewModel(MeetSlot source, string? highlightClass = null)
     {
@@ -89,8 +94,8 @@ public sealed class ScheduleSlotViewModel
         Entries = source.Entries
             .Select(entry => new ScheduleEntryViewModel(entry, highlightClass))
             .ToList();
-        HasClassHighlight = highlightClass is not null &&
-                           source.Entries.Any(e => e.ClassName == highlightClass);
+        _hasClassHighlight = highlightClass is not null &&
+                             source.Entries.Any(e => e.ClassName == highlightClass);
 
         (CategoryLabel, CategoryBrush, CategoryTint) = source.Category switch
         {
@@ -104,7 +109,35 @@ public sealed class ScheduleSlotViewModel
 
     public MeetSlot Source { get; }
     public string? HighlightClass { get; }
-    public bool HasClassHighlight { get; }
+
+    private bool _hasClassHighlight;
+
+    /// <summary>本时段是否含高亮班级的条目；切换高亮时由 <see cref="ApplyHighlight"/> 更新。</summary>
+    public bool HasClassHighlight
+    {
+        get => _hasClassHighlight;
+        private set
+        {
+            if (!SetProperty(ref _hasClassHighlight, value)) return;
+            // 派生标签跟着变：它绑在同一个卡片上，不通知就会停在旧文案。
+            OnPropertyChanged(nameof(HighlightedEntryCountLabel));
+        }
+    }
+
+    /// <summary>
+    /// 就地应用高亮：更新条目与时段级派生状态。
+    /// <paramref name="highlightClass"/> 为 null 表示清除高亮。
+    /// </summary>
+    public void ApplyHighlight(string? highlightClass)
+    {
+        foreach (var entry in Entries)
+            entry.ApplyHighlight(highlightClass);
+
+        HasClassHighlight = highlightClass is not null &&
+                            Source.Entries.Any(e => string.Equals(
+                                e.ClassName, highlightClass, StringComparison.Ordinal));
+    }
+
     public string Time => Source.Time;
     public string Period => Source.Period;
     public string EventName => Source.EventName;

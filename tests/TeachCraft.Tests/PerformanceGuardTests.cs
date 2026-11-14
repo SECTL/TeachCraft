@@ -12,7 +12,10 @@ namespace TeachCraft.Tests;
 /// CI 机器上必然抖动，而下面每一条被守的东西失效时，都会呈现为可观测的结构差异。
 /// </para>
 /// <para>
-/// 每一条都做过反向验证：把对应修复改回原样，这条测试确实失败。
+/// 守卫 1、2、3 做过反向验证（把对应修复改回原样，测试确实失败）。
+/// 守卫 4（预览异步）只对「完全内联渲染」的退回有效——若退回成
+/// <c>Dispatcher.Post</c> 派发，它在第一个 tick 仍未画完，这条不会红；
+/// 那一档由「防抖窗口内 PreviewImage 必须为空」间接覆盖，但不是强断言。
 /// </para>
 /// </summary>
 public sealed class PerformanceGuardTests

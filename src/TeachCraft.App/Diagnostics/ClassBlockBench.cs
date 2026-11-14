@@ -41,6 +41,7 @@ public static class ClassBlockBench
             var dir = Path.Combine(Path.GetTempPath(), "TeachCraft.PerfBench",
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(dir);
+            PerfBench.RegisterTemporaryDirectory(dir);
             corpus = WriteMaster(dir);
         }, 1));
 
