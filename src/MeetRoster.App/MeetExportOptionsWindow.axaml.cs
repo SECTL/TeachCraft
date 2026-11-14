@@ -25,6 +25,9 @@ public partial class MeetExportOptionsWindow : Window
             // 打开即画第一版预览，用户不用先动设置才看得到东西。
             _viewModel.RequestPreview();
         };
+
+        // 关窗时取消在途渲染：否则后台任务完成后会往已销毁的窗口写位图。
+        Closed += (_, _) => _viewModel.CancelPendingPreview();
     }
 
     private void OnExport(object? sender, RoutedEventArgs e)

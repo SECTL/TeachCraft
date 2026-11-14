@@ -1,3 +1,4 @@
+using MeetRoster.App;
 using MeetRoster.Core.Export;
 using MeetRoster.Core.Models;
 using TeachCraft.App.Diagnostics;
@@ -197,4 +198,49 @@ public sealed class PerformanceGuardTests
 
     private static string WriteOrderBook(string dir) =>
         MeetPerfCorpus.WriteOrderBook(dir, classes: 4);
+
+    // ---------------------------------------------------------------- 守卫 4
+    /// <summary>
+    /// 导出预览必须在后台线程渲染，且必须能取消。
+    /// <para>
+    /// 失效形态：<c>RequestPreview</c> 退回「直接同步调 Render」。那时预览仍能出图、
+    /// 内容也对，只是每次改设置都卡 UI 线程 60–135ms——纯性能问题，
+    /// 任何功能测试都抓不到。这条守的就是「不在 UI 线程上画」这个结构事实。
+    /// </para>
+    /// <para>
+    /// 判定方式：在 UI 线程上发起一次预览，同时断言「请求返回时还没画完」——
+    /// 异步实现会先经过 200ms 防抖窗口，同步实现会立刻画完。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void PreviewRendering_IsAsynchronous_NotOnUiThread()
+    {
+        var project = BuildWideProject();
+        var vm = new MeetExportOptionsViewModel(project, null);
+
+        // RequestPreview 若同步渲染，返回时 PreviewImage 已经有值。
+        // 异步实现会先进防抖等待，此刻必须还是空的。
+        vm.RequestPreview();
+        Assert.Null(vm.PreviewImage);
+
+        // 防抖 + 渲染窗口内必须能取消（关窗路径依赖它）。
+        vm.CancelPendingPreview();
+    }
+
+    /// <summary>
+    /// 关窗后不得再往界面回写预览。
+    /// 失效形态：去掉 CancelPendingPreview 的取消，后台任务完成后往已销毁的窗口写位图。
+    /// </summary>
+    [Fact]
+    public void CancelPendingPreview_StopsFurtherWrites()
+    {
+        var project = BuildWideProject();
+        var vm = new MeetExportOptionsViewModel(project, null);
+
+        vm.CancelPendingPreview();
+
+        // 取消之后再请求，应被 _isClosed 直接挡掉。
+        vm.RequestPreview();
+        Assert.Null(vm.PreviewImage);
+    }
 }

@@ -129,39 +129,75 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
 
     partial void OnIsPreviewBusyChanged(bool value) => OnPropertyChanged(nameof(ShowPreviewEmpty));
 
-    /// <summary>预览请求合并：连续改设置只画最后一次（渲染一张缩略图约几十毫秒）。</summary>
+    /// <summary>
+    /// 预览请求合并：连续改设置只画最后一次。
+    /// <para>
+    /// 光合并派发还不够——真正的渲染原来同步跑在 UI 线程上（一次 60–135ms，
+    /// 4 核机更久），连点几下设置就是连续卡顿。现在渲染挪到后台线程，
+    /// 并加 200ms 防抖：只有停手后才真的画。
+    /// </para>
+    /// </summary>
     private bool _previewQueued;
+    private CancellationTokenSource? _previewCts;
+    private bool _isClosed;
+
+    /// <summary>防抖窗口：连续改设置时只画最后一次。</summary>
+    private static readonly TimeSpan PreviewDebounce = TimeSpan.FromMilliseconds(200);
 
     /// <summary>由窗口在打开时调用一次，并在设置变化时调用。</summary>
     public void RequestPreview()
     {
+        if (_isClosed) return;
         if (_previewQueued) return;
         _previewQueued = true;
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-        {
-            _previewQueued = false;
-            RefreshPreview();
-        }, Avalonia.Threading.DispatcherPriority.Background);
+
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _previewCts, cts);
+        previous?.Cancel();
+        previous?.Dispose();
+
+        _ = RefreshPreviewDebouncedAsync(cts);
     }
 
-    private void RefreshPreview()
+    private async Task RefreshPreviewDebouncedAsync(CancellationTokenSource cts)
     {
-        if (_project.Classes.Count == 0) return;
-
-        IsPreviewBusy = true;
+        var token = cts.Token;
         try
         {
+            // 防抖：停手 200ms 才画。取消时抛 OperationCanceledException，直接走 catch。
+            await Task.Delay(PreviewDebounce, token).ConfigureAwait(true);
+
+            if (_project.Classes.Count == 0)
+            {
+                _previewQueued = false;
+                return;
+            }
+
             var options = BuildOptions();
             var kind = IsExcel ? MeetExportFormatKind.Excel : MeetExportFormatKind.Pdf;
-            var preview = MeetExportPreviewRenderer.Render(_project, options, kind);
+
+            IsPreviewBusy = true;
+
+            // 渲染在后台线程：SkiaSharp 画布 + PNG 编码是纯 CPU 工作，不该占 UI 线程。
+            var preview = await Task.Run(
+                () => MeetExportPreviewRenderer.Render(_project, options, kind), token)
+                .ConfigureAwait(true);
+
+            // 期间可能已经又改过设置：这份结果作废，别覆盖更新的那张。
+            if (token.IsCancellationRequested || _isClosed) return;
 
             using var stream = new MemoryStream(preview.Png);
             PreviewImage = new Avalonia.Media.Imaging.Bitmap(stream);
             PreviewCaption = preview.Caption;
             PreviewDetail = preview.Detail;
         }
+        catch (OperationCanceledException)
+        {
+            // 被更新的一次请求取代，正常路径。
+        }
         catch (Exception ex)
         {
+            if (token.IsCancellationRequested || _isClosed) return;
             PreviewImage = null;
             PreviewEmptyText = "预览生成失败：" + ex.Message;
             PreviewCaption = string.Empty;
@@ -169,8 +205,21 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         }
         finally
         {
-            IsPreviewBusy = false;
+            if (!token.IsCancellationRequested)
+            {
+                IsPreviewBusy = false;
+                _previewQueued = false;
+            }
         }
+    }
+
+    /// <summary>窗口关闭时调用：取消在途渲染，之后不再回写界面。</summary>
+    public void CancelPendingPreview()
+    {
+        _isClosed = true;
+        var cts = Interlocked.Exchange(ref _previewCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
     }
 
     public bool HasError => Error.Length > 0;
