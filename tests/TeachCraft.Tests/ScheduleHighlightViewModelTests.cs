@@ -74,8 +74,10 @@ public sealed class ScheduleHighlightViewModelTests
     /// 挂在它后面的标签通知就不会发。预赛一个组塞几个班是常态，不是边角情况。
     /// </para>
     /// <para>
-    /// 判定不看标签的最终值（那需要跑完整导入），而是直接验证「切到另一个班时
-    /// 标签确实发了通知」——没有通知，绑定就不会重算，界面就停在旧数量上。
+    /// 判定看的是「标签有没有发通知」，不是它的最终值。标签是计算属性
+    /// （读 <c>Entries.Count(e =&gt; e.IsHighlighted)</c>），所以**即使有 bug，
+    /// 直接读值也永远是对的**——失效的是绑定：没有 PropertyChanged，
+    /// XAML 不会重算，界面就停在旧数量上。断言值会假通过。
     /// </para>
     /// </summary>
     [Fact]
