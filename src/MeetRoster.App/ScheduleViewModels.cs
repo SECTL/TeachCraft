@@ -90,7 +90,6 @@ public sealed class ScheduleSlotViewModel : CommunityToolkit.Mvvm.ComponentModel
     public ScheduleSlotViewModel(MeetSlot source, string? highlightClass = null)
     {
         Source = source;
-        HighlightClass = highlightClass;
         Entries = source.Entries
             .Select(entry => new ScheduleEntryViewModel(entry, highlightClass))
             .ToList();
@@ -108,7 +107,6 @@ public sealed class ScheduleSlotViewModel : CommunityToolkit.Mvvm.ComponentModel
     }
 
     public MeetSlot Source { get; }
-    public string? HighlightClass { get; }
 
     private bool _hasClassHighlight;
 
@@ -116,17 +114,19 @@ public sealed class ScheduleSlotViewModel : CommunityToolkit.Mvvm.ComponentModel
     public bool HasClassHighlight
     {
         get => _hasClassHighlight;
-        private set
-        {
-            if (!SetProperty(ref _hasClassHighlight, value)) return;
-            // 派生标签跟着变：它绑在同一个卡片上，不通知就会停在旧文案。
-            OnPropertyChanged(nameof(HighlightedEntryCountLabel));
-        }
+        private set => SetProperty(ref _hasClassHighlight, value);
     }
 
     /// <summary>
     /// 就地应用高亮：更新条目与时段级派生状态。
     /// <paramref name="highlightClass"/> 为 null 表示清除高亮。
+    /// <para>
+    /// 「N 条高亮」标签**必须无条件通知**，不能挂在 <see cref="HasClassHighlight"/> 的
+    /// 变更通知上：同一时段里有两个班时（很常见——预赛一个组塞几个班），
+    /// 从一个班切到另一个班，布尔值一直是 true，<c>SetProperty</c> 提前返回，
+    /// 标签就停在旧数量上（显示「4 条高亮」而实际只高亮 3 条）。
+    /// 标签值依赖条目状态，条目刚被改过，就该重算。
+    /// </para>
     /// </summary>
     public void ApplyHighlight(string? highlightClass)
     {
@@ -136,6 +136,8 @@ public sealed class ScheduleSlotViewModel : CommunityToolkit.Mvvm.ComponentModel
         HasClassHighlight = highlightClass is not null &&
                             Source.Entries.Any(e => string.Equals(
                                 e.ClassName, highlightClass, StringComparison.Ordinal));
+
+        OnPropertyChanged(nameof(HighlightedEntryCountLabel));
     }
 
     public string Time => Source.Time;

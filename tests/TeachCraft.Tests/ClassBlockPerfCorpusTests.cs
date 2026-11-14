@@ -46,6 +46,26 @@ public sealed class ClassBlockBenchTests
         finally
         {
             try { Directory.Delete(dir, recursive: true); } catch { }
+
+            // 这条测试直接调基准动作，绕过了 PerfBench.RunBusinessBenchmarks 的
+            // 统一清理，所以得自己把语料目录收掉——否则跑一次测试就在 %TEMP%
+            // 里留一份 20 班语料，「基准跑完零残留」的检查会被它带偏。
+            try
+            {
+                var root = Path.Combine(Path.GetTempPath(), "TeachCraft.PerfBench");
+                if (Directory.Exists(root))
+                {
+                    foreach (var sub in Directory.GetDirectories(root))
+                    {
+                        if (Directory.GetFiles(sub, "示例中学总表.xlsx", SearchOption.AllDirectories).Length > 0)
+                            Directory.Delete(sub, recursive: true);
+                    }
+                }
+            }
+            catch
+            {
+                // 清理失败不影响测试结论。
+            }
         }
     }
 }
