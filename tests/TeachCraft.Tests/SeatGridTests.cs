@@ -1697,6 +1697,303 @@ public sealed class SeatGridTests : IDisposable
             DeskStickerPdfExporter.Export(document, new DeskStickerOptions(), Path.Combine(_root, "x.pdf")));
     }
 
+    // ----------------------------- 1.28.0 空间变换与还原 -----------------------------
+
+    [Fact]
+    public void Layout_AppendRowKeepsAssignmentsIntact()
+    {
+        var layout = new SeatChartLayout(2, 2, 2);
+        var appended = layout.AppendRow();
+
+        Assert.Equal(3, appended.Rows);
+        Assert.Equal(2, appended.Groups);
+        Assert.Equal(2, appended.Columns);
+        Assert.Equal(layout.CellCount + layout.Groups * layout.Columns, appended.CellCount);
+    }
+
+    [Fact]
+    public void Layout_RemoveLastRowReportsRemovedPositions()
+    {
+        var layout = new SeatChartLayout(2, 3, 2);
+        var (shrunk, removed) = layout.RemoveLastRow();
+
+        Assert.Equal(2, shrunk.Rows);
+        Assert.Equal(4, removed.Count);   // 2 组 × 2 列
+        Assert.All(removed, p => Assert.Equal(2, p.Row));
+    }
+
+    [Fact]
+    public void Layout_RemoveLastRowKeepsEarlierRows()
+    {
+        var layout = new SeatChartLayout(2, 3, 2);
+        var (shrunk, _) = layout.RemoveLastRow();
+
+        foreach (var seat in shrunk.AllSeats())
+            Assert.True(seat.Row <= 1);
+    }
+
+    [Fact]
+    public void Layout_AppendColumnDoesNotShiftExistingColumns()
+    {
+        var layout = new SeatChartLayout(1, 1, 2);
+        var appended = layout.AppendColumn();
+
+        // 已有列的位置与含义完全不变——追加绝不把已有列平移（那会改掉所有同桌关系）。
+        Assert.Equal(3, appended.Columns);
+        Assert.True(appended.Contains(new SeatPosition(0, 0, 0)));
+        Assert.True(appended.Contains(new SeatPosition(0, 0, 1)));
+        Assert.True(appended.Contains(new SeatPosition(0, 0, 2)));
+    }
+
+    [Fact]
+    public void Layout_RemoveLastCannotShrinkBelowOne()
+    {
+        var layout = new SeatChartLayout(1, 1, 1);
+
+        Assert.Empty(layout.RemoveLastRow().Removed);
+        Assert.Empty(layout.RemoveLastColumn().Removed);
+        Assert.Empty(layout.RemoveLastGroup().Removed);
+    }
+
+    [Fact]
+    public void Composer_MirrorColumnsSwapsWithinGroupOnly()
+    {
+        var students = MakeStudents(2);
+        var layout = new SeatChartLayout(1, 1, 2);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+            [new SeatPosition(0, 0, 1)] = students[1],
+        };
+
+        var mirrored = SeatChartComposer.MirrorColumns(seats, layout, out var blocked);
+
+        Assert.Equal(0, blocked);
+        Assert.Equal(students[0].Name, mirrored[new SeatPosition(0, 0, 1)].Name);
+        Assert.Equal(students[1].Name, mirrored[new SeatPosition(0, 0, 0)].Name);
+    }
+
+    [Fact]
+    public void Composer_MirrorGroupsSwapsOutermostGroups()
+    {
+        var students = MakeStudents(2);
+        var layout = new SeatChartLayout(4, 1, 1);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+            [new SeatPosition(3, 0, 0)] = students[1],
+        };
+
+        var mirrored = SeatChartComposer.MirrorGroups(seats, layout, out var blocked);
+
+        Assert.Equal(0, blocked);
+        Assert.Equal(students[0].Name, mirrored[new SeatPosition(3, 0, 0)].Name);
+        Assert.Equal(students[1].Name, mirrored[new SeatPosition(0, 0, 0)].Name);
+    }
+
+    [Fact]
+    public void Composer_MirrorSkipsAislesAndReports()
+    {
+        var students = MakeStudents(1);
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 1), true);
+        var layout = new SeatChartLayout(1, 1, 2, canvas);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+        };
+
+        var mirrored = SeatChartComposer.MirrorColumns(seats, layout, out var blocked);
+
+        Assert.Equal(1, blocked);
+        Assert.Equal(new SeatPosition(0, 0, 0), mirrored.Single().Key);
+    }
+
+    [Fact]
+    public void ShiftOnScreen_LeavesStudentInPlaceWhenTargetIsAisle()
+    {
+        var students = MakeStudents(1);
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 1), true);
+        var layout = new SeatChartLayout(1, 1, 3, canvas);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+        };
+
+        var shifted = SeatChartComposer.ShiftOnScreen(
+            seats, layout, ViewMode.Teacher, 1, 0, out var blocked);
+
+        Assert.Equal(1, blocked);
+        Assert.Equal(new SeatPosition(0, 0, 0), shifted.Single().Key);
+    }
+
+    [Fact]
+    public void Presets_UShapeDisablesCenterFrontSeats()
+    {
+        var layout = new SeatChartLayout(4, 6, 2);
+        var canvas = SeatCanvasPresets.UShape(layout);
+
+        Assert.NotNull(canvas);
+        // 中间两组靠讲台的前 3 排成为过道。
+        Assert.True(canvas!.IsDisabled(new SeatPosition(1, 0, 0)));
+        Assert.True(canvas.IsDisabled(new SeatPosition(2, 2, 1)));
+        // 两侧组一格未动。
+        Assert.False(canvas.IsDisabled(new SeatPosition(0, 0, 0)));
+        Assert.False(canvas.IsDisabled(new SeatPosition(3, 0, 0)));
+    }
+
+    [Fact]
+    public void Presets_UShapeWidensCenterCorridor()
+    {
+        var layout = new SeatChartLayout(4, 6, 2);
+        var canvas = SeatCanvasPresets.UShape(layout);
+
+        Assert.NotNull(canvas);
+        Assert.True(canvas!.GroupCorridor(1) > 0);
+    }
+
+    [Fact]
+    public void Presets_IslandsGroupsSeatsIntoBlocks()
+    {
+        var layout = new SeatChartLayout(4, 2, 2);
+        var canvas = SeatCanvasPresets.Islands(layout, islandGroups: 2);
+
+        Assert.NotNull(canvas);
+        Assert.True(canvas!.GroupCorridor(1) >= 1.0f);
+        Assert.Equal(0, canvas.GroupCorridor(0));
+    }
+
+    [Fact]
+    public void Presets_StaggeredRowsShortensEvenRows()
+    {
+        var layout = new SeatChartLayout(1, 4, 2);
+        var canvas = SeatCanvasPresets.StaggeredRows(layout);
+
+        Assert.NotNull(canvas);
+        // 第 2 排（索引 1）末位是过道；第 1 排完整。
+        Assert.True(canvas!.IsDisabled(new SeatPosition(0, 1, 1)));
+        Assert.False(canvas.IsDisabled(new SeatPosition(0, 0, 1)));
+    }
+
+    [Fact]
+    public void Presets_ReturnNullWhenLayoutTooSmall()
+    {
+        Assert.Null(SeatCanvasPresets.UShape(new SeatChartLayout(2, 4, 2)));
+        Assert.Null(SeatCanvasPresets.Islands(new SeatChartLayout(2, 4, 2)));
+        Assert.Null(SeatCanvasPresets.StaggeredRows(new SeatChartLayout(2, 4, 1)));
+        Assert.Null(SeatCanvasPresets.FrontFilled(new SeatChartLayout(2, 2, 2)));
+    }
+
+    [Fact]
+    public void Presets_OutputIsOrdinaryCanvasAndRoundTrips()
+    {
+        var layout = new SeatChartLayout(4, 6, 2);
+        var canvas = SeatCanvasPresets.UShape(layout);
+        Assert.NotNull(canvas);
+
+        var settings = new SeatChartSettings { Groups = 4, Rows = 6, Columns = 2, Canvas = canvas! };
+        var students = MakeStudents(2);
+        var path = Path.Combine(_root, "ushape.xlsx");
+        SeatGridConfigIO.Export(path, settings, students, new Dictionary<SeatPosition, Student>());
+
+        var imported = SeatGridConfigIO.Import(path);
+
+        // 往返后走廊数组会被补零到布局长度（Normalize 的正常归一化），按逐边界取值比较。
+        Assert.Equal(canvas!.DisabledSeats.Count, imported.Settings.Canvas.DisabledSeats.Count);
+        Assert.Equal(canvas.GroupCorridor(1), imported.Settings.Canvas.GroupCorridor(1));
+        Assert.Equal(canvas.GroupCorridor(0), imported.Settings.Canvas.GroupCorridor(0));
+    }
+
+    [Fact]
+    public void Geometry_TieredRowsIncreaseDepthMonotonically()
+    {
+        var settings = new SeatChartSettings
+        {
+            Groups = 1, Rows = 4, Columns = 1, CellScalePercent = 100, TierRowGrowthPercent = 20,
+        };
+        var layout = settings.GetLayout();
+
+        var offsets = SeatChartGeometry.Measure(layout, settings, ViewMode.Student);
+
+        var first = offsets.Row[1] - offsets.Row[0];
+        var second = offsets.Row[2] - offsets.Row[1];
+        var third = offsets.Row[3] - offsets.Row[2];
+        Assert.True(second > first, $"{second} 应大于 {first}");
+        Assert.True(third > second, $"{third} 应大于 {second}");
+    }
+
+    [Fact]
+    public void Geometry_TieredRowsKeepFrontRowAtOrigin()
+    {
+        var settings = new SeatChartSettings
+        {
+            Groups = 1, Rows = 4, Columns = 1, TierRowGrowthPercent = 20,
+        };
+        var offsets = SeatChartGeometry.Measure(settings.GetLayout(), settings, ViewMode.Student);
+
+        Assert.Equal(0f, offsets.Row[0]);
+    }
+
+    [Fact]
+    public void Geometry_TierInTeacherViewGrowsTowardBackWall()
+    {
+        // 教师视角的显示序是倒的（讲台在下）：阶梯必须仍然朝后墙加深，不能反向。
+        var settings = new SeatChartSettings
+        {
+            Groups = 1, Rows = 4, Columns = 1, TierRowGrowthPercent = 20,
+        };
+        var offsets = SeatChartGeometry.Measure(settings.GetLayout(), settings, ViewMode.Teacher);
+
+        // 显示序第 1 段 = 物理最后排，应最宽。
+        Assert.True(offsets.Row[1] - offsets.Row[0] > offsets.Row[3] - offsets.Row[2]);
+    }
+
+    [Fact]
+    public void SeatingEngine_UShapeStillFillsFrontFirst()
+    {
+        var students = new List<Student>
+        {
+            new() { Name = "高个", Height = 190 },
+            new() { Name = "最矮", Height = 150 },
+        };
+        var canvas = SeatCanvasPresets.UShape(new SeatChartLayout(4, 6, 2));
+        var layout = new SeatChartLayout(4, 6, 2, canvas);
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.Height);
+
+        // 最矮的仍落在最靠前的那一排（Row = 0）。
+        var shortSeat = SeatOf(result, students[1].Id);
+        Assert.NotNull(shortSeat);
+        Assert.Equal(0, shortSeat!.Value.Row);
+    }
+
+    [Fact]
+    public void SeatZone_ZoneRestrictionFlowsThroughConstraints()
+    {
+        var students = MakeStudents(4);
+        var layout = new SeatChartLayout(1, 4, 2);
+        var constraints = new ArrangeConstraints
+        {
+            Zones = new Dictionary<Guid, StudentZone>
+            {
+                [students[3].Id] = new StudentZone(
+                    new[] { SeatRect.RowBand(layout, 0, 0) }, Array.Empty<SeatRect>()),
+            },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+        var seat = SeatOf(result, students[3].Id);
+
+        Assert.NotNull(seat);
+        Assert.Equal(0, seat!.Value.Row);
+    }
+
+    private static SeatPosition? SeatOf(ArrangeResult result, Guid id)
+    {
+        foreach (var (position, student) in result.Assignments)
+            if (student.Id == id) return position;
+        return null;
+    }
+
     private static List<Student> MakeStudents(int count) =>
         Enumerable.Range(0, count)
             .Select(i => new Student { Name = $"同学{i + 1}", Gender = i % 2 == 0 ? Gender.Male : Gender.Female })

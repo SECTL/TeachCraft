@@ -736,6 +736,23 @@
                                 <TextBlock Text="{Binding CanvasSummary}" Classes="helper" />
                                 <Button Classes="ghost tool" Content="编辑画布…" Click="OnEditCanvas"
                                         AutomationProperties.Name="打开教室画布编辑器" />
+                                <StackPanel Spacing="5">
+                                    <TextBlock Classes="field-label" Text="快速形状（会替换当前过道标记）" />
+                                    <WrapPanel ItemSpacing="6" LineSpacing="6">
+                                        <Button Classes="mode" Content="U 型" Click="OnPresetUShape"
+                                                IsEnabled="{Binding CanApplyUShape}"
+                                                AutomationProperties.Name="应用 U 型布局" />
+                                        <Button Classes="mode" Content="多岛" Click="OnPresetIslands"
+                                                IsEnabled="{Binding CanApplyIslands}"
+                                                AutomationProperties.Name="应用多岛布局" />
+                                        <Button Classes="mode" Content="长短排" Click="OnPresetStaggered"
+                                                IsEnabled="{Binding CanApplyStaggered}"
+                                                AutomationProperties.Name="应用长短排布局" />
+                                        <Button Classes="mode" Content="报告厅" Click="OnPresetFrontFilled"
+                                                IsEnabled="{Binding CanApplyFrontFilled}"
+                                                AutomationProperties.Name="应用报告厅布局" />
+                                    </WrapPanel>
+                                </StackPanel>
                                 <StackPanel Spacing="3">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <TextBlock Classes="field-label" Text="排与排的间距" VerticalAlignment="Center" />
@@ -857,6 +874,25 @@
                                 <Button Classes="ghost tool" Content="+ 添加规则" Click="OnAddConstraint"
                                         AutomationProperties.Name="添加互斥或结对规则" />
 
+                                <StackPanel Spacing="5">
+                                    <TextBlock Classes="field-label" Text="区域限制（对选中的学生）" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                        <TextBlock Text="{Binding SelectedStudent.Name, FallbackValue='先在名单里选一名学生'}"
+                                                   FontSize="10.5" Foreground="{StaticResource MutedBrush}"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5">
+                                        <Button Classes="ghost tool" Content="只在前 2 排" FontSize="10"
+                                                Click="OnZoneFrontTwo" AutomationProperties.Name="限制在前两排" />
+                                        <Button Grid.Column="1" Classes="ghost tool" Content="避开后 2 排" FontSize="10"
+                                                Click="OnZoneAvoidBackTwo" AutomationProperties.Name="避开后两排" />
+                                        <Button Grid.Column="2" Classes="ghost tool" Content="清除" FontSize="10"
+                                                Click="OnZoneClear" AutomationProperties.Name="清除区域限制" />
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="区域只裁剪可选座位，不改变排序——被限制在前 2 排的矮个仍落在最靠前的位置。" />
+                                </StackPanel>
+
                                 <TextBlock Classes="helper"
                                            Text="锁定：选中座位后按 L 或点上方按钮；互斥 = 前后左右都不挨着，结对 = 坐同一张双人桌。" />
 
@@ -899,10 +935,50 @@
                                     <TextBlock Grid.Column="1" Classes="eyebrow" Text="SHIFT" />
                                 </Grid>
                                 <StackPanel Spacing="6">
+                                    <TextBlock Classes="field-label" Text="末尾增删" />
+                                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6" RowDefinitions="Auto,Auto"
+                                          RowSpacing="6">
+                                        <Button Classes="ghost tool" Content="+ 一排" Click="OnAppendRow"
+                                                FontSize="10.5" AutomationProperties.Name="在末尾追加一排" />
+                                        <Button Grid.Column="1" Classes="ghost tool" Content="+ 一组" Click="OnAppendGroup"
+                                                FontSize="10.5" AutomationProperties.Name="在末尾追加一组" />
+                                        <Button Grid.Column="2" Classes="ghost tool" Content="+ 一列" Click="OnAppendColumn"
+                                                FontSize="10.5" AutomationProperties.Name="在末尾追加一列" />
+                                        <Button Grid.Row="1" Classes="ghost tool" Content="− 末排" Click="OnRemoveRow"
+                                                FontSize="10.5" Foreground="{StaticResource MutedBrush}"
+                                                AutomationProperties.Name="删除最后一排" />
+                                        <Button Grid.Row="1" Grid.Column="1" Classes="ghost tool" Content="− 末组"
+                                                Click="OnRemoveGroup" FontSize="10.5"
+                                                Foreground="{StaticResource MutedBrush}"
+                                                AutomationProperties.Name="删除最后一组" />
+                                        <Button Grid.Row="1" Grid.Column="2" Classes="ghost tool" Content="− 末列"
+                                                Click="OnRemoveColumn" FontSize="10.5"
+                                                Foreground="{StaticResource MutedBrush}"
+                                                AutomationProperties.Name="删除最后一列" />
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="追加不会移动任何学生；删除末排/末列/末组会把上面的人退回未排（学生仍留在名单里）。" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="6">
+                                    <TextBlock Classes="field-label" Text="镜像（数据变换，不是视角）" />
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                        <Button Classes="ghost tool" Content="左右镜像" Click="OnMirrorColumns"
+                                                FontSize="10.5" AutomationProperties.Name="左右镜像" />
+                                        <Button Grid.Column="1" Classes="ghost tool" Content="组序镜像"
+                                                Click="OnMirrorGroups" FontSize="10.5"
+                                                AutomationProperties.Name="组序镜像" />
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="镜像是把学生真的换位置；学生视角只是把整张表转 180°，不改数据。" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="6">
                                     <TextBlock Classes="field-label" Text="整班平移一格" />
                                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="6">
                                         <Button Classes="ghost tool" Click="OnShiftLeft"
-                                                ToolTip.Tip="整班向左平移一格" AutomationProperties.Name="全部向左平移">                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                ToolTip.Tip="整班向左平移一格" AutomationProperties.Name="全部向左平移">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <Path Classes="shift-icon" Data="M9,5 L1,5 M4.5,1.5 L1,5 L4.5,8.5" />
                                                 <TextBlock Text="左移" />
                                             </StackPanel>

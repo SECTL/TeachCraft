@@ -116,4 +116,60 @@ public sealed record SeatChartLayout(int Groups, int Rows, int Columns, SeatChar
 
     public static SeatChartLayout FromSettings(SeatChartSettings settings) =>
         new(settings.Groups, settings.Rows, settings.Columns, settings.Canvas);
+
+    // ----------------------------- 末尾增删 -----------------------------
+
+    /// <summary>在末尾追加一组 / 一排 / 一列。只扩边界，不动任何学生，因此不需要确认。</summary>
+    public SeatChartLayout AppendGroup() => Resize(Groups + 1, Rows, Columns);
+
+    public SeatChartLayout AppendRow() => Resize(Groups, Rows + 1, Columns);
+
+    public SeatChartLayout AppendColumn() => Resize(Groups, Rows, Columns + 1);
+
+    /// <summary>
+    /// 删除末排。返回被挤掉的座位坐标，由调用方把那些人退回未排并报数。
+    /// 只允许删末尾：删中间排要重新编号，而 Row=0 是物理不变量，重编号会让所有
+    /// SeatPosition 失效。老师要删中间一排时，正确做法是把人挪走再把那排标成过道。
+    /// </summary>
+    public (SeatChartLayout Layout, IReadOnlyList<SeatPosition> Removed) RemoveLastRow()
+    {
+        if (Rows <= 1) return (this, Array.Empty<SeatPosition>());
+
+        var removed = new List<SeatPosition>();
+        for (var group = 0; group < Groups; group++)
+            for (var column = 0; column < Columns; column++)
+                removed.Add(new SeatPosition(group, Rows - 1, column));
+
+        return (Resize(Groups, Rows - 1, Columns), removed);
+    }
+
+    public (SeatChartLayout Layout, IReadOnlyList<SeatPosition> Removed) RemoveLastColumn()
+    {
+        if (Columns <= 1) return (this, Array.Empty<SeatPosition>());
+
+        var removed = new List<SeatPosition>();
+        for (var group = 0; group < Groups; group++)
+            for (var row = 0; row < Rows; row++)
+                removed.Add(new SeatPosition(group, row, Columns - 1));
+
+        return (Resize(Groups, Rows, Columns - 1), removed);
+    }
+
+    public (SeatChartLayout Layout, IReadOnlyList<SeatPosition> Removed) RemoveLastGroup()
+    {
+        if (Groups <= 1) return (this, Array.Empty<SeatPosition>());
+
+        var removed = new List<SeatPosition>();
+        for (var row = 0; row < Rows; row++)
+            for (var column = 0; column < Columns; column++)
+                removed.Add(new SeatPosition(Groups - 1, row, column));
+
+        return (Resize(Groups - 1, Rows, Columns), removed);
+    }
+
+    private SeatChartLayout Resize(int groups, int rows, int columns)
+    {
+        var resized = new SeatChartLayout(groups, rows, columns);
+        return resized with { Canvas = Surface.Normalize(resized) };
+    }
 }

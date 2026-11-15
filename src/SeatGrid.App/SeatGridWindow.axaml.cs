@@ -1158,6 +1158,26 @@ public partial class SeatGridWindow : Window
         panel.Children.Add(new TextBlock { Text = "最多列数", FontSize = 10.5, Foreground = DialogMuted });
         panel.Children.Add(maxColumns);
 
+        // 桌椅搬运量：只给静态指引，不做路径动画。
+        var movingHint = new TextBlock
+        {
+            FontSize = 10.5, Foreground = DialogMuted, TextWrapping = TextWrapping.Wrap, LineHeight = 17,
+        };
+        panel.Children.Add(movingHint);
+
+        void UpdateMovingHint()
+        {
+            if (ViewModel.StudentCount == 0) return;
+            var options = new ExamLayoutOptions((int)(maxColumns.Value ?? 8), serpentine.IsChecked == true);
+            var plan = ViewModel.BuildMovingPlan(options);
+            var head = $"预计：保留 {plan.KeepDesks} 张 · 搬出 {plan.MoveOutDesks} 张 · 补进 {plan.MoveInDesks} 张";
+            movingHint.Text = head + "\n" + string.Join("\n", plan.Steps);
+        }
+
+        maxColumns.ValueChanged += (_, _) => UpdateMovingHint();
+        serpentine.IsCheckedChanged += (_, _) => UpdateMovingHint();
+        UpdateMovingHint();
+
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8,
@@ -1210,6 +1230,115 @@ public partial class SeatGridWindow : Window
             ViewModel.EndBusy();
         }
     }
+
+    // ----------------------------- 末尾增删与镜像 -----------------------------
+
+    private void OnAppendRow(object? sender, RoutedEventArgs e) => ViewModel.AppendRow();
+    private void OnAppendColumn(object? sender, RoutedEventArgs e) => ViewModel.AppendColumn();
+    private void OnAppendGroup(object? sender, RoutedEventArgs e) => ViewModel.AppendGroup();
+
+    private async void OnRemoveRow(object? sender, RoutedEventArgs e) => await RemoveTailAsync("row", "末排");
+    private async void OnRemoveColumn(object? sender, RoutedEventArgs e) => await RemoveTailAsync("column", "末列");
+    private async void OnRemoveGroup(object? sender, RoutedEventArgs e) => await RemoveTailAsync("group", "末组");
+
+    private async Task RemoveTailAsync(string kind, string label)
+    {
+        var count = ViewModel.CountSeatsInTail(kind);
+        var message = count > 0
+            ? $"最后{label}有 {count} 名学生，删除后他们将退回未排（学生仍保留在名单里）。"
+            : $"将删除最后{label}。";
+
+        if (!await ConfirmDialog.ShowAsync(this, $"删除最后{label}？", message, $"删除{label}", "取消", danger: true))
+            return;
+
+        switch (kind)
+        {
+            case "row": ViewModel.RemoveLastRow(); break;
+            case "column": ViewModel.RemoveLastColumn(); break;
+            case "group": ViewModel.RemoveLastGroup(); break;
+        }
+    }
+
+    private void OnMirrorColumns(object? sender, RoutedEventArgs e) => ViewModel.MirrorColumns();
+    private void OnMirrorGroups(object? sender, RoutedEventArgs e) => ViewModel.MirrorGroups();
+
+    // ----------------------------- 异形教室预设 -----------------------------
+
+    private async void OnPresetUShape(object? sender, RoutedEventArgs e)
+    {
+        var canvas = SeatCanvasPresets.UShape(ViewModel.CurrentLayoutPublic);
+        if (canvas is null)
+        {
+            ViewModel.SetStatus("U 型至少需要 3 组。", true);
+            return;
+        }
+
+        if (!await ConfirmPresetAsync("应用 U 型布局", canvas)) return;
+        ViewModel.ApplyCanvas(canvas, "已应用 U 型布局。");
+    }
+
+    private async void OnPresetIslands(object? sender, RoutedEventArgs e)
+    {
+        var canvas = SeatCanvasPresets.Islands(ViewModel.CurrentLayoutPublic);
+        if (canvas is null)
+        {
+            ViewModel.SetStatus("多岛布局至少需要 4 组。", true);
+            return;
+        }
+
+        if (!await ConfirmPresetAsync("应用多岛布局", canvas)) return;
+        ViewModel.ApplyCanvas(canvas, "已应用多岛布局。");
+    }
+
+    private async void OnPresetStaggered(object? sender, RoutedEventArgs e)
+    {
+        var canvas = SeatCanvasPresets.StaggeredRows(ViewModel.CurrentLayoutPublic);
+        if (canvas is null)
+        {
+            ViewModel.SetStatus("长短排至少需要 2 列。", true);
+            return;
+        }
+
+        if (!await ConfirmPresetAsync("应用长短排布局", canvas)) return;
+        ViewModel.ApplyCanvas(canvas, "已应用长短排布局。");
+    }
+
+    private async void OnPresetFrontFilled(object? sender, RoutedEventArgs e)
+    {
+        var canvas = SeatCanvasPresets.FrontFilled(ViewModel.CurrentLayoutPublic);
+        if (canvas is null)
+        {
+            ViewModel.SetStatus("报告厅布局至少需要 3 排。", true);
+            return;
+        }
+
+        if (!await ConfirmPresetAsync("应用报告厅布局", canvas)) return;
+        ViewModel.ApplyCanvas(canvas, "已应用报告厅布局（后两排不坐人）。");
+    }
+
+    /// <summary>预设会覆盖手工调的过道标记，所以要先说清楚。</summary>
+    private async Task<bool> ConfirmPresetAsync(string title, SeatChartCanvas canvas)
+    {
+        var current = ViewModel.CurrentCanvas;
+        var existing = current.IsEmpty ? 0 : current.DisabledSeats.Count;
+        if (existing == 0) return true;
+
+        return await ConfirmDialog.ShowAsync(
+            this, title,
+            $"这会替换当前画布上的 {existing} 处过道标记。",
+            title, "取消", danger: true);
+    }
+
+    // ----------------------------- 区域限制 -----------------------------
+
+    private void OnZoneFrontTwo(object? sender, RoutedEventArgs e) =>
+        ViewModel.SetSelectedStudentZone(frontRows: 2, avoidBackRows: null);
+
+    private void OnZoneAvoidBackTwo(object? sender, RoutedEventArgs e) =>
+        ViewModel.SetSelectedStudentZone(frontRows: null, avoidBackRows: 2);
+
+    private void OnZoneClear(object? sender, RoutedEventArgs e) =>
+        ViewModel.SetSelectedStudentZone(frontRows: null, avoidBackRows: null);
 
     private void OnResetStyle(object? sender, RoutedEventArgs e) => ViewModel.ResetStyle();
 

@@ -860,8 +860,7 @@ public partial class SeatGridViewModel : ObservableObject
     }
 
     /// <summary>切换某格是否为过道。若该格上有人，学生退回未排并报数。</summary>
-    public void ToggleAisle(SeatPosition position)
-    {
+    public void ToggleAisle(SeatPosition position)    {
         var canvas = Canvas.Toggle(position);
         ApplyCanvas(canvas, $"已把 {position} 设为{(canvas.IsDisabled(position) ? "过道" : "座位")}。");
     }
@@ -887,6 +886,205 @@ public partial class SeatGridViewModel : ObservableObject
     }
 
     public void ClearCanvas() => ApplyCanvas(SeatChartCanvas.Empty, "已清空画布。");
+
+    // ----------------------------- 末尾增删 -----------------------------
+
+    public void AppendRow() => ResizeLayout(CurrentLayout.AppendRow(), "已在末尾追加一排。");
+
+    public void AppendColumn() => ResizeLayout(CurrentLayout.AppendColumn(), "已在末尾追加一列。");
+
+    public void AppendGroup() => ResizeLayout(CurrentLayout.AppendGroup(), "已在末尾追加一组。");
+
+    public void RemoveLastRow() => RemoveTail(CurrentLayout.RemoveLastRow(), "末排");
+
+    public void RemoveLastColumn() => RemoveTail(CurrentLayout.RemoveLastColumn(), "末列");
+
+    public void RemoveLastGroup() => RemoveTail(CurrentLayout.RemoveLastGroup(), "末组");
+
+    /// <summary>删末尾前先算清楚会挤掉几个人，供确认弹窗显示。</summary>
+    public int CountSeatsInTail(string kind)
+    {
+        var layout = CurrentLayout;
+        return kind switch
+        {
+            "row" => _assignments.Keys.Count(p => p.Row == layout.Rows - 1),
+            "column" => _assignments.Keys.Count(p => p.Column == layout.Columns - 1),
+            "group" => _assignments.Keys.Count(p => p.Group == layout.Groups - 1),
+            _ => 0,
+        };
+    }
+
+    private void RemoveTail((SeatChartLayout Layout, IReadOnlyList<SeatPosition> Removed) result, string label)
+    {
+        if (result.Removed.Count == 0)
+        {
+            SetStatus($"只剩一{label}，不能再删。", true);
+            return;
+        }
+
+        var unseated = 0;
+        foreach (var position in result.Removed)
+        {
+            if (!_assignments.Remove(position)) continue;
+            unseated++;
+        }
+
+        ResizeLayout(result.Layout, unseated > 0
+            ? $"已删除{label}，{unseated} 名学生退回未排。"
+            : $"已删除{label}。", unseated > 0);
+    }
+
+    private void ResizeLayout(SeatChartLayout layout, string message, bool warn = false)
+    {
+        _suppressRebuild = true;
+        GroupCount = layout.Groups;
+        RowCount = layout.Rows;
+        ColumnCount = layout.Columns;
+        Canvas = layout.Surface;
+        _suppressRebuild = false;
+
+        BuildGrid();
+        NotifyCounts();
+        SetStatus(message, warn);
+    }
+
+    // ----------------------------- 镜像 -----------------------------
+
+    public void MirrorColumns()
+    {
+        if (_assignments.Count == 0)
+        {
+            SetStatus("还没有已安排的座位。", true);
+            return;
+        }
+
+        if (RefuseIfPinned(_assignments.Values, "左右镜像")) return;
+
+        var mirrored = SeatChartComposer.MirrorColumns(_assignments, CurrentLayout, out var blocked);
+        _assignments.Clear();
+        foreach (var (position, student) in mirrored) _assignments[position] = student;
+
+        RefreshSeatVisuals();
+        var note = blocked > 0 ? $"（{blocked} 人因目标格是过道未移动）" : string.Empty;
+        SetStatus($"已左右镜像{note}");
+    }
+
+    public void MirrorGroups()
+    {
+        if (_assignments.Count == 0)
+        {
+            SetStatus("还没有已安排的座位。", true);
+            return;
+        }
+
+        if (RefuseIfPinned(_assignments.Values, "组序镜像")) return;
+
+        var mirrored = SeatChartComposer.MirrorGroups(_assignments, CurrentLayout, out var blocked);
+        _assignments.Clear();
+        foreach (var (position, student) in mirrored) _assignments[position] = student;
+
+        RefreshSeatVisuals();
+        var note = blocked > 0 ? $"（{blocked} 人因目标格是过道未移动）" : string.Empty;
+        SetStatus($"已组序镜像{note}");
+    }
+
+    // ----------------------------- 异形教室预设 -----------------------------
+
+    public bool CanApplyUShape => CurrentLayout.Groups >= 3;
+    public bool CanApplyIslands => CurrentLayout.Groups >= 4;
+    public bool CanApplyStaggered => CurrentLayout.Columns >= 2;
+    public bool CanApplyFrontFilled => CurrentLayout.Rows > 2;
+
+    public void ApplyUShape(bool openTowardPodium)
+    {
+        var canvas = SeatCanvasPresets.UShape(CurrentLayout, openTowardPodium);
+        if (canvas is null)
+        {
+            SetStatus("U 型至少需要 3 组。", true);
+            return;
+        }
+
+        ApplyCanvas(canvas, "已应用 U 型布局。");
+    }
+
+    public void ApplyIslands()
+    {
+        var canvas = SeatCanvasPresets.Islands(CurrentLayout);
+        if (canvas is null)
+        {
+            SetStatus("多岛布局至少需要 4 组。", true);
+            return;
+        }
+
+        ApplyCanvas(canvas, "已应用多岛布局。");
+    }
+
+    public void ApplyStaggered()
+    {
+        var canvas = SeatCanvasPresets.StaggeredRows(CurrentLayout);
+        if (canvas is null)
+        {
+            SetStatus("长短排至少需要 2 列。", true);
+            return;
+        }
+
+        ApplyCanvas(canvas, "已应用长短排布局。");
+    }
+
+    public void ApplyFrontFilled()
+    {
+        var canvas = SeatCanvasPresets.FrontFilled(CurrentLayout);
+        if (canvas is null)
+        {
+            SetStatus("报告厅布局至少需要 3 排。", true);
+            return;
+        }
+
+        ApplyCanvas(canvas, "已应用报告厅布局（后两排不坐人）。");
+    }
+
+    // ----------------------------- 区域限制 -----------------------------
+
+    /// <summary>给当前选中的学生设置区域限制（允许 / 禁止的排区间）。</summary>
+    public void SetSelectedStudentZone(int? frontRows, int? avoidBackRows)
+    {
+        if (SelectedStudent is null)
+        {
+            SetStatus("先在名单里选中一名学生。", true);
+            return;
+        }
+
+        var layout = CurrentLayout;
+        var allowed = new List<SeatRect>();
+        var denied = new List<SeatRect>();
+
+        if (frontRows is int n && n > 0)
+            allowed.Add(SeatRect.RowBand(layout, 0, Math.Min(n - 1, layout.Rows - 1)));
+
+        if (avoidBackRows is int m && m > 0)
+            denied.Add(SeatRect.RowBand(layout, Math.Max(0, layout.Rows - m), layout.Rows - 1));
+
+        var zone = new StudentZone(allowed, denied);
+        Constraints.SetZone(SelectedStudent, zone);
+        RefreshSeatVisuals();
+
+        SetStatus(zone.IsEmpty
+            ? $"已清除 {SelectedStudent.Name} 的区域限制。"
+            : $"已设置 {SelectedStudent.Name} 的区域限制。");
+    }
+
+    /// <summary>把区域限制写进排座引擎：`Constraints.Build` 已经带 Zones，这里只做提示。</summary>
+    public bool HasZones => Constraints.Zones.Count > 0;
+
+    // ----------------------------- 搬运量 -----------------------------
+
+    /// <summary>当前布局 → 考场布局的桌椅搬运计划，供考场弹窗展示。</summary>
+    public DeskMovingPlan BuildMovingPlan(ExamLayoutOptions options)
+    {
+        var examPlan = ExamPlanner.Build(_students.Select(s => s.Model).ToList(), options);
+        var dailyIsDoubleDesk = CurrentLayout.Columns >= 2;
+        return DeskMovingPlanCalculator.Build(CurrentLayout, examPlan.Layout, dailyIsDoubleDesk);
+    }
 
     public void SetRowCorridor(int row, double cells) =>
         ApplyCanvas(Canvas.WithRowCorridor(row, (float)cells),

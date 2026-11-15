@@ -151,6 +151,19 @@ public static class SeatChartComposer
     public static Dictionary<SeatPosition, T> ShiftOnScreen<T>(
         IReadOnlyDictionary<SeatPosition, T> assignments, SeatChartLayout layout, ViewMode view, int dx, int dy)
     {
+        var shifted = ShiftOnScreen(assignments, layout, view, dx, dy, out _);
+        return shifted;
+    }
+
+    /// <summary>
+    /// \u540c\u4e0a\uff0c\u5e76\u62a5\u544a\u300c\u56e0\u76ee\u6807\u683c\u662f\u8fc7\u9053\u800c\u7559\u5728\u539f\u5730\u300d\u7684\u4eba\u6570\u3002
+    /// \u6574\u73ed\u5e73\u79fb\u7684\u9884\u671f\u662f\u300c\u6240\u6709\u4eba\u4e00\u8d77\u632a\u4e00\u683c\u300d\uff1b\u82e5\u76ee\u6807\u683c\u662f\u8fc7\u9053\u5c31\u7ee7\u7eed\u5f80\u540e\u627e\u7a7a\u4f4d\uff0c
+    /// \u4f1a\u9020\u6210\u4e0d\u540c\u5b66\u751f\u632a\u7684\u683c\u6570\u4e0d\u540c\u3001\u76f8\u5bf9\u987a\u5e8f\u88ab\u6253\u4e71\uff0c\u6bd4\u4e0d\u52a8\u66f4\u7cdf\u3002
+    /// </summary>
+    public static Dictionary<SeatPosition, T> ShiftOnScreen<T>(
+        IReadOnlyDictionary<SeatPosition, T> assignments, SeatChartLayout layout, ViewMode view,
+        int dx, int dy, out int blocked)
+    {
         var groups = GroupOrder(layout, view);
         var columns = ColumnOrder(layout, view);
         var rows = RowOrder(layout, view);
@@ -158,6 +171,8 @@ public static class SeatChartComposer
         // \u6a2a\u5411\u628a\u5404\u7ec4\u62fc\u6210\u4e00\u6761\uff1a\u5c4f\u5e55\u7b2c i \u683c = (groups[i / \u5217\u6570], columns[i % \u5217\u6570])\u3002
         var width = groups.Length * columns.Length;
         var shifted = new Dictionary<SeatPosition, T>(assignments.Count);
+        blocked = 0;
+
         foreach (var (position, value) in assignments)
         {
             var x = Array.IndexOf(groups, position.Group) * columns.Length + Array.IndexOf(columns, position.Column);
@@ -170,10 +185,77 @@ public static class SeatChartComposer
 
             x = ((x + dx) % width + width) % width;
             y = ((y + dy) % rows.Length + rows.Length) % rows.Length;
-            shifted[new SeatPosition(groups[x / columns.Length], rows[y], columns[x % columns.Length])] = value;
+            var target = new SeatPosition(groups[x / columns.Length], rows[y], columns[x % columns.Length]);
+
+            if (!layout.IsUsable(target))
+            {
+                shifted[position] = value;   // \u76ee\u6807\u683c\u662f\u8fc7\u9053\uff1a\u539f\u5730\u4e0d\u52a8\u5e76\u62a5\u6570
+                blocked++;
+                continue;
+            }
+
+            shifted[target] = value;
         }
 
         return shifted;
+    }
+
+    /// <summary>\u5de6\u53f3\u955c\u50cf\uff1a\u6bcf\u7ec4\u5185\u7b2c c \u5217\u4e0e\u7b2c Columns-1-c \u5217\u4e92\u6362\u5b66\u751f\u3002\u7269\u7406\u53d8\u6362\uff0c\u4e0d\u662f\u89c6\u89d2\u3002</summary>
+    public static Dictionary<SeatPosition, T> MirrorColumns<T>(
+        IReadOnlyDictionary<SeatPosition, T> assignments, SeatChartLayout layout, out int blocked)
+    {
+        var mirrored = new Dictionary<SeatPosition, T>(assignments.Count);
+        blocked = 0;
+
+        foreach (var (position, value) in assignments)
+        {
+            if (!layout.Contains(position))
+            {
+                mirrored[position] = value;
+                continue;
+            }
+
+            var target = position with { Column = layout.Columns - 1 - position.Column };
+            if (!layout.IsUsable(target))
+            {
+                mirrored[position] = value;
+                blocked++;
+                continue;
+            }
+
+            mirrored[target] = value;
+        }
+
+        return mirrored;
+    }
+
+    /// <summary>\u7ec4\u5e8f\u955c\u50cf\uff1a\u7b2c g \u7ec4\u4e0e\u7b2c Groups-1-g \u7ec4\u4e92\u6362\u5b66\u751f\u3002</summary>
+    public static Dictionary<SeatPosition, T> MirrorGroups<T>(
+        IReadOnlyDictionary<SeatPosition, T> assignments, SeatChartLayout layout, out int blocked)
+    {
+        var mirrored = new Dictionary<SeatPosition, T>(assignments.Count);
+        blocked = 0;
+
+        foreach (var (position, value) in assignments)
+        {
+            if (!layout.Contains(position))
+            {
+                mirrored[position] = value;
+                continue;
+            }
+
+            var target = position with { Group = layout.Groups - 1 - position.Group };
+            if (!layout.IsUsable(target))
+            {
+                mirrored[position] = value;
+                blocked++;
+                continue;
+            }
+
+            mirrored[target] = value;
+        }
+
+        return mirrored;
     }
 
     /// <summary>
