@@ -27,6 +27,9 @@ public partial class GroupViewModel : ObservableObject
     [ObservableProperty] private IBrush _labelBrush = Brushes.Gray;
     [ObservableProperty] private bool _showHints = true;
     [ObservableProperty] private Thickness _labelMargin = new(0, 0, 0, 5);
+
+    /// <summary>组间间距（含逐边界过道），由 SeatChartGeometry 统一给出。</summary>
+    [ObservableProperty] private Thickness _margin;
 }
 
 public partial class RowViewModel : ObservableObject
@@ -42,6 +45,9 @@ public partial class RowViewModel : ObservableObject
 
     /// <summary>行首整排拖动把手：只在第一组显示，避免每组重复。</summary>
     [ObservableProperty] private bool _showHandle;
+
+    /// <summary>排距（含逐边界过道），由 SeatChartGeometry 统一给出。</summary>
+    [ObservableProperty] private Thickness _margin;
 
     public string AutomationName => $"第{Number}排 整排调整把手";
 }

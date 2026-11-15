@@ -36,6 +36,9 @@ public sealed class DisplaySeat
     public required Student? Student { get; init; }
     public required bool IsEmpty { get; init; }
     public required bool IsFemale { get; init; }
+
+    /// <summary>座位还是过道。过道格不坐人，渲染与 Excel 都不画边框。</summary>
+    public SeatCellKind Kind { get; init; } = SeatCellKind.Seat;
 }
 
 /// <summary>
@@ -63,13 +66,17 @@ public static class SeatChartComposer
                 {
                     var position = new SeatPosition(group, row, column);
                     assignments.TryGetValue(position, out var student);
+                    var aisle = layout.Surface.IsDisabled(position);
                     return new DisplaySeat
                     {
                         Position = position,
-                        Student = student,
-                        IsEmpty = student is null,
-                        IsFemale = student?.Gender == Gender.Female,
-                        Name = student is null ? string.Empty : DisplayName(student.Name, settings.SpaceTwoCharNames),
+                        Student = aisle ? null : student,
+                        IsEmpty = aisle || student is null,
+                        IsFemale = !aisle && student?.Gender == Gender.Female,
+                        Name = aisle || student is null
+                            ? string.Empty
+                            : DisplayName(student.Name, settings.SpaceTwoCharNames),
+                        Kind = aisle ? SeatCellKind.Aisle : SeatCellKind.Seat,
                     };
                 }).ToList();
 

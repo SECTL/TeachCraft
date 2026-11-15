@@ -188,6 +188,15 @@ public static class SeatGridConfigIO
         Add("FemaleMark", source.FemaleMark);
         Add("ArrangeMode", source.ArrangeMode.ToString());
         Add("WithinGroupOrder", source.WithinGroup.ToString());
+        Add("Canvas", SeatChartCanvasCodec.Encode(source.Canvas));
+        Add("RowGapPercent", source.RowGapPercent);
+        Add("ColumnGapPercent", source.ColumnGapPercent);
+        Add("GroupGapPercent", source.GroupGapPercent);
+        Add("TierRowGrowthPercent", source.TierRowGrowthPercent);
+        Add("ShowDoors", source.ShowDoors);
+        Add("PodiumLabel", source.PodiumLabel);
+        Add("PodiumWidthPercent", source.PodiumWidthPercent);
+        Add("PodiumHeight", source.PodiumHeight);
 
         sheet.Column(1).Width = 26;
         sheet.Column(2).Width = 34;
@@ -504,6 +513,15 @@ public static class SeatGridConfigIO
             FemaleMark = Get(values, "FemaleMark", "#C6613F"),
             ArrangeMode = GetEnum(values, "ArrangeMode", ArrangeMode.RosterOrder),
             WithinGroup = GetEnum(values, "WithinGroupOrder", WithinGroupOrder.Fold),
+            Canvas = SeatChartCanvasCodec.Decode(Get(values, "Canvas")),
+            RowGapPercent = GetInt(values, "RowGapPercent", 7),
+            ColumnGapPercent = GetInt(values, "ColumnGapPercent", 7),
+            GroupGapPercent = GetInt(values, "GroupGapPercent", 28),
+            TierRowGrowthPercent = GetInt(values, "TierRowGrowthPercent", 0),
+            ShowDoors = GetBool(values, "ShowDoors", true),
+            PodiumLabel = Get(values, "PodiumLabel", "讲　台"),
+            PodiumWidthPercent = GetInt(values, "PodiumWidthPercent", 55),
+            PodiumHeight = GetInt(values, "PodiumHeight", 40),
         };
         settings.Normalize();
         return settings;

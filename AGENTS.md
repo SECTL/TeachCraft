@@ -138,6 +138,8 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 - 归位以独立 Avalonia 窗口运行，但**由工具箱同进程打开**（`SeatGridWindow`），单实例复用；不要改成外部 exe。
 - 数据管线固定为：`RosterImporter` → `SeatingEngine` → `SeatChartComposer` → `SeatChartRenderer` / `SeatChartExcelExporter` / `SeatGridConfigIO`。界面、PNG、PDF、Excel 共用同一个 `SeatChartDocument`，不得各自写一套布局。
 - **同桌与邻座语义单源**（1.25.0 起）：`SeatChartLayout.DeskmateOf / AreDeskmates`（同组同排、同一对双人桌，不跨组不跨排，`Columns=1` 无同桌、`Columns=3` 第 3 列落单）与 `NeighborsOf / AreAdjacent`（前后左右，不跨组、不含对角）。`GenderPair` 必须用它成对，不得再依赖 `FillOrder` 的列循环。
+- **几何单源**（1.26.0 起）：`SeatChartGeometry.Measure` 是格子大小与全部间距的唯一来源，界面、PNG / PDF、Excel 一律读它，**不得再各写一套**（此前 XAML `Spacing`、`UpdatePodium`、Renderer 三份副本互不相等）。偏移数组按显示序生成；阶梯深度按物理排号算；过道挂在它后面那一段上，最后一段也要算。
+- **教室画布**（1.26.0 起）：`SeatChartCanvas` 不可变（所有变换返回新实例，`Settings.Clone()` 的浅拷贝靠它保证安全），用 `FrozenSet` 而非 `HashSet`（后台渲染线程并发读）。`SeatChartLayout` 加可选 `Canvas` 参数；`FillOrder` 过滤过道，`AllSeats` 不过滤。门窗用「边缘枚举 + 0–1 比例」，UI 只提供 Front / Back；**Excel 端门窗只能落成文字**（ClosedXML 无形状 API），与 PNG 的门洞线段形态不同是刻意降级。讲台倾角不做、位置不是自由参数。
 - **排座约束**（1.25.0 起）：`SeatingEngine.Arrange(students, layout, mode, ArrangeConstraints)` 返回 `ArrangeResult`（座位 + `Issues` + 未排座学生）；旧的 3 参重载保留为薄包装。约束四步：固定点预占 → 约束感知贪心 → 局部修复（≤4 轮）→ 报告，不做通用 CSP。锁的是「学生-座位绑定」；手动移动 / 平移 / 整排整列对调遇锁定整体拒绝；`ClearSeats` 保留锁定；`BuildGrid` 丢弃越界座位必须报数（`!_interactiveLayoutEdit` 守卫）。排座说明进状态栏首条 + 右侧「排座约束」节 Expander，不新建窗口。
 - 名单识别必须同时支持 **带表头** 与 **无表头** 的 xlsx / xls / csv；不得要求用户套用固定模板。识别字段：姓名、性别、学号、身高、视力、成绩、原小组、备注。
 - 座位坐标统一用 `SeatPosition(Group, Row, Column)`；`Row=0` 永远表示靠近讲台的第一排。教师视角 / 学生视角只改变展示顺序，不改变物理座位。屏幕摆放顺序只由 `SeatChartComposer.GroupOrder / ColumnOrder / RowOrder` 给出，界面、PNG / PDF / Excel 与整班平移共用，不得各写一套；学生视角是教师视角整体旋转 180°，组序、组内列序、排序一起反转。

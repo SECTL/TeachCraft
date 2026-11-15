@@ -96,6 +96,84 @@ public partial class SeatGridViewModel : ObservableObject
 
     [ObservableProperty] private int _arrangeModeIndex;
 
+    /// <summary>教室画布：过道格、走廊宽度、门窗。不可变对象，替换即通知。</summary>
+    [ObservableProperty] private SeatChartCanvas _canvas = SeatChartCanvas.Empty;
+
+    [ObservableProperty] private double _rowGapPercent = 7;
+    [ObservableProperty] private double _columnGapPercent = 7;
+    [ObservableProperty] private double _groupGapPercent = 28;
+    [ObservableProperty] private double _tierRowGrowthPercent;
+    [ObservableProperty] private bool _showDoors = true;
+    [ObservableProperty] private string _podiumLabel = "讲　台";
+    [ObservableProperty] private double _podiumWidthPercent = 55;
+    [ObservableProperty] private double _podiumHeightValue = 40;
+
+    /// <summary>座位表内容宽度（含行首把手列），门窗定位用。</summary>
+    public double ChartContentWidth    {
+        get
+        {
+            var offsets = SeatChartGeometry.Measure(CurrentLayout, ToSettings(), CurrentView);
+            return offsets.GridWidth + 44;
+        }
+    }
+
+    public string CanvasSummary
+    {
+        get
+        {
+            var layout = CurrentLayout;
+            var aisles = layout.CellCount - layout.UsableSeatCount;
+            return aisles == 0
+                ? $"{layout.CellCount} 格 · {layout.UsableSeatCount} 座"
+                : $"{layout.CellCount} 格 · {layout.UsableSeatCount} 座 · {aisles} 处过道";
+        }
+    }
+
+    public string RowGapLabel => $"{(int)Math.Round(RowGapPercent)}%";
+    public string ColumnGapLabel => $"{(int)Math.Round(ColumnGapPercent)}%";
+    public string GroupGapLabel => $"{(int)Math.Round(GroupGapPercent)}%";
+    public string TierRowGrowthLabel => $"{(int)Math.Round(TierRowGrowthPercent)}%";
+    public string PodiumWidthLabel => $"{(int)Math.Round(PodiumWidthPercent)}%";
+    public string PodiumHeightLabel => $"{(int)Math.Round(PodiumHeightValue)}px";
+
+    partial void OnRowGapPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(RowGapLabel));
+        RefreshSeatVisuals();
+    }
+
+    partial void OnColumnGapPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(ColumnGapLabel));
+        RefreshSeatVisuals();
+    }
+
+    partial void OnGroupGapPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(GroupGapLabel));
+        RefreshSeatVisuals();
+    }
+
+    partial void OnTierRowGrowthPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(TierRowGrowthLabel));
+        RefreshSeatVisuals();
+    }
+
+    partial void OnPodiumWidthPercentChanged(double value)
+    {
+        OnPropertyChanged(nameof(PodiumWidthLabel));
+        UpdatePodium();
+    }
+
+    partial void OnPodiumHeightValueChanged(double value)
+    {
+        OnPropertyChanged(nameof(PodiumHeightLabel));
+        UpdatePodium();
+    }
+
+    partial void OnCanvasChanged(SeatChartCanvas value) => OnPropertyChanged(nameof(CanvasSummary));
+
     [ObservableProperty] private double _podiumWidth = 320;
     [ObservableProperty] private Thickness _podiumTopMargin = new(0);
     [ObservableProperty] private Thickness _podiumBottomMargin = new(0, 16, 0, 0);
@@ -223,7 +301,8 @@ public partial class SeatGridViewModel : ObservableObject
     private SeatChartLayout CurrentLayout => new(
         Math.Clamp((int)Math.Round(GroupCount), 1, 8),
         Math.Clamp((int)Math.Round(RowCount), 1, 10),
-        Math.Clamp((int)Math.Round(ColumnCount), 1, 4));
+        Math.Clamp((int)Math.Round(ColumnCount), 1, 4),
+        Canvas);
 
     private ViewMode CurrentView => IsStudentView ? ViewMode.Student : ViewMode.Teacher;
 
@@ -564,11 +643,14 @@ public partial class SeatGridViewModel : ObservableObject
         var nameColor = SeatTextBrush;
         var femaleColor = MarkFemales ? FemaleMarkBrush : SeatTextBrush;
         var border = SeatBorderBrush;
+        var layout = CurrentLayout;
+        var offsets = SeatChartGeometry.Measure(layout, ToSettings(), CurrentView);
 
         foreach (var seat in _seats.Values)
         {
             _assignments.TryGetValue(seat.Position, out var student);
             var name = student is null ? string.Empty : SeatChartComposer.DisplayName(student.Model.Name, SpaceTwoCharNames);
+            var aisle = layout.Surface.IsDisabled(seat.Position);
 
             seat.Update(
                 name,
@@ -576,6 +658,7 @@ public partial class SeatGridViewModel : ObservableObject
                 student?.Model.Gender == Gender.Female,
                 seat == SelectedSeat,
                 student is not null && Constraints.IsPinned(student.Id),
+                aisle,
                 size,
                 fontSize,
                 BoldNames,
@@ -585,7 +668,14 @@ public partial class SeatGridViewModel : ObservableObject
                 femaleColor,
                 border,
                 HideEmptySeats);
+
+            // 列距由 SeatChartGeometry 统一给出（含逐边界过道），所以用 Margin 而不是 StackPanel.Spacing。
+            var columnIndex = DisplayIndex(offsets.Column, seat.Position.Column);
+            seat.Margin = new Thickness(0, 0,
+                columnIndex >= 0 ? offsets.Column[columnIndex + 1] - offsets.Column[columnIndex] - size : 0, 0);
         }
+
+        ApplyGroupAndRowSpacing(offsets);
 
         var reverse = new Dictionary<Guid, SeatPosition>();
         foreach (var (position, student) in _assignments) reverse[student.Id] = position;
@@ -617,15 +707,14 @@ public partial class SeatGridViewModel : ObservableObject
 
     private void UpdatePodium()
     {
-        var layout = CurrentLayout;
-        var groupWidth = layout.Columns * CellSizeValue + (layout.Columns - 1) * 6;
-        var gridWidth = layout.Groups * groupWidth + (layout.Groups - 1) * 22;
-        var contentWidth = gridWidth + 44; // 行首把手列固定占位
+        var offsets = SeatChartGeometry.Measure(CurrentLayout, ToSettings(), CurrentView);
+        var contentWidth = offsets.GridWidth + 44; // 行首把手列固定占位
 
-        PodiumWidth = Math.Min(contentWidth * 0.55, 360);
+        PodiumWidth = Math.Min(contentWidth * ToSettings().PodiumWidthPercent / 100.0, 360);
         PodiumTopMargin = new Thickness(0, 0, 0, PodiumGap);
         PodiumBottomMargin = new Thickness(0, PodiumGap, 0, 0);
         OnPropertyChanged(nameof(PodiumOnTop));
+        OnPropertyChanged(nameof(ChartContentWidth));
     }
 
     // ----------------------------- 名单 -----------------------------
@@ -731,6 +820,82 @@ public partial class SeatGridViewModel : ObservableObject
               (result.Issues.Count > 1 ? $"（另有 {result.Issues.Count - 1} 条）" : string.Empty),
             error: result.Issues.Count > 0);
     }
+
+    /// <summary>
+    /// 显示序里某个物理列/排/组的下标。偏移数组按显示序生成，取值前要先换回来
+    /// （学生视角下三者都是倒的）。
+    /// </summary>
+    private int DisplayIndex(float[] offsets, int physical)
+    {
+        var count = offsets.Length - 1;
+        if (physical < 0 || physical >= count) return -1;
+        return CurrentView == ViewMode.Student ? count - 1 - physical : physical;
+    }
+
+    /// <summary>把组距与排距写进 GroupViewModel / RowViewModel 的 Margin。</summary>
+    private void ApplyGroupAndRowSpacing(SeatChartGeometry.Offsets offsets)
+    {
+        var groupOrder = SeatChartComposer.GroupOrder(CurrentLayout, CurrentView);
+        var rowOrder = SeatChartComposer.RowOrder(CurrentLayout, CurrentView);
+
+        for (var i = 0; i < Groups.Count; i++)
+        {
+            var gap = i + 1 < offsets.Group.Length
+                ? offsets.Group[i + 1] - offsets.Group[i] - offsets.GroupWidth
+                : 0;
+            Groups[i].Margin = new Thickness(0, 0, gap, 0);
+
+            var rows = Groups[i].Rows;
+            for (var r = 0; r < rows.Count; r++)
+            {
+                var rowGap = r + 1 < offsets.Row.Length
+                    ? offsets.Row[r + 1] - offsets.Row[r] - offsets.Cell
+                    : 0;
+                rows[r].Margin = new Thickness(0, 0, 0, rowGap);
+            }
+        }
+    }
+
+    /// <summary>切换某格是否为过道。若该格上有人，学生退回未排并报数。</summary>
+    public void ToggleAisle(SeatPosition position)
+    {
+        var canvas = Canvas.Toggle(position);
+        ApplyCanvas(canvas, $"已把 {position} 设为{(canvas.IsDisabled(position) ? "过道" : "座位")}。");
+    }
+
+    /// <summary>应用一份新画布：裁掉越界格、把受影响的学生退回未排、重建网格。</summary>
+    public void ApplyCanvas(SeatChartCanvas canvas, string message)
+    {
+        var layout = CurrentLayout with { Canvas = canvas };
+        Canvas = canvas.Normalize(layout);
+
+        var unseated = 0;
+        foreach (var (position, student) in _assignments.ToList())
+        {
+            if (CurrentLayout.IsUsable(position)) continue;
+            _assignments.Remove(position);
+            unseated++;
+        }
+
+        BuildGrid();
+        var suffix = unseated > 0 ? $" {unseated} 名学生退回未排。" : string.Empty;
+        SetStatus(message + suffix, unseated > 0);
+        OnPropertyChanged(nameof(CanvasSummary));
+    }
+
+    public void ClearCanvas() => ApplyCanvas(SeatChartCanvas.Empty, "已清空画布。");
+
+    public void SetRowCorridor(int row, double cells) =>
+        ApplyCanvas(Canvas.WithRowCorridor(row, (float)cells),
+            cells <= 0 ? $"已去掉第 {row + 1} 排之后的过道。" : $"第 {row + 1} 排之后加了过道。");
+
+    public void SetColumnCorridor(int column, double cells) =>
+        ApplyCanvas(Canvas.WithColumnCorridor(column, (float)cells),
+            cells <= 0 ? $"已去掉第 {column + 1} 列之后的过道。" : $"第 {column + 1} 列之后加了过道。");
+
+    public void SetGroupCorridor(int group, double cells) =>
+        ApplyCanvas(Canvas.WithGroupCorridor(group, (float)cells),
+            cells <= 0 ? $"已去掉第 {group + 1} 组之后的过道。" : $"第 {group + 1} 组之后加了过道。");
 
     /// <summary>切换当前选中座位的锁定状态。锁的是「学生-座位绑定」。</summary>
     public void ToggleSelectedSeatPin()
@@ -862,6 +1027,12 @@ public partial class SeatGridViewModel : ObservableObject
 
     /// <summary>完整名单（不受搜索过滤影响），供配对弹窗的选择器使用。</summary>
     public IReadOnlyList<StudentViewModel> AllStudents => _students;
+
+    /// <summary>当前布局（含画布），供画布编辑器打开时读取。</summary>
+    public SeatChartLayout CurrentLayoutPublic => CurrentLayout;
+
+    /// <summary>当前画布，供画布编辑器打开时读取。</summary>
+    public SeatChartCanvas CurrentCanvas => Canvas;
 
     /// <summary>约束变更后由窗口层调用的刷新入口。</summary>
     public void RefreshSeatVisualsPublic() => RefreshSeatVisuals();
@@ -1096,6 +1267,15 @@ public partial class SeatGridViewModel : ObservableObject
         RowLabel = Hex(RowLabelColor),
         FemaleMark = Hex(FemaleMarkColor),
         ArrangeMode = (ArrangeMode)Math.Clamp(ArrangeModeIndex, 0, ArrangeModes.Count - 1),
+        Canvas = Canvas,
+        RowGapPercent = (int)Math.Round(RowGapPercent),
+        ColumnGapPercent = (int)Math.Round(ColumnGapPercent),
+        GroupGapPercent = (int)Math.Round(GroupGapPercent),
+        TierRowGrowthPercent = (int)Math.Round(TierRowGrowthPercent),
+        ShowDoors = ShowDoors,
+        PodiumLabel = PodiumLabel,
+        PodiumWidthPercent = (int)Math.Round(PodiumWidthPercent),
+        PodiumHeight = (int)Math.Round(PodiumHeightValue),
     };
 
     /// <summary>导出用的约束快照；无约束时返回 null，让配置里不多出一张空表。</summary>
@@ -1146,6 +1326,15 @@ public partial class SeatGridViewModel : ObservableObject
         RowLabelColor = Color.Parse(config.Settings.RowLabel);
         FemaleMarkColor = Color.Parse(config.Settings.FemaleMark);
         ArrangeModeIndex = (int)config.Settings.ArrangeMode;
+        Canvas = config.Settings.Canvas;
+        RowGapPercent = config.Settings.RowGapPercent;
+        ColumnGapPercent = config.Settings.ColumnGapPercent;
+        GroupGapPercent = config.Settings.GroupGapPercent;
+        TierRowGrowthPercent = config.Settings.TierRowGrowthPercent;
+        ShowDoors = config.Settings.ShowDoors;
+        PodiumLabel = config.Settings.PodiumLabel;
+        PodiumWidthPercent = config.Settings.PodiumWidthPercent;
+        PodiumHeightValue = config.Settings.PodiumHeight;
         _suppressRebuild = false;
 
         _students.Clear();

@@ -10,9 +10,30 @@ public readonly record struct SeatPosition(int Group, int Row, int Column)
     public override string ToString() => $"{Group + 1} 组 · {Row + 1} 排 · {Column + 1} 列";
 }
 
-public sealed record SeatChartLayout(int Groups, int Rows, int Columns)
+public sealed record SeatChartLayout(int Groups, int Rows, int Columns, SeatChartCanvas? Canvas = null)
 {
-    public int SeatCount => Groups * Rows * Columns;
+    /// <summary>画布（过道 / 走廊 / 门窗）。未设置时是空画布，行为与旧版完全一致。</summary>
+    public SeatChartCanvas Surface => Canvas ?? SeatChartCanvas.Empty;
+
+    /// <summary>矩形格数（画布要画满整个矩形）。</summary>
+    public int CellCount => Groups * Rows * Columns;
+
+    /// <summary>可坐座位数 = 矩形格数减去落在矩形内的过道格。状态栏的「N 座」用它。</summary>
+    public int UsableSeatCount
+    {
+        get
+        {
+            if (Surface.IsEmpty) return CellCount;
+
+            var disabled = 0;
+            foreach (var seat in Surface.DisabledSeats)
+                if (Contains(seat)) disabled++;
+            return CellCount - disabled;
+        }
+    }
+
+    /// <summary>兼容旧名：语义等同 <see cref="UsableSeatCount"/>。</summary>
+    public int SeatCount => UsableSeatCount;
 
     /// <summary>每排的双人桌数：2 列 = 1 桌，3 列 = 1 桌 + 1 个落单，4 列 = 2 桌。</summary>
     public int DeskPairCount => Columns / 2;
@@ -21,6 +42,9 @@ public sealed record SeatChartLayout(int Groups, int Rows, int Columns)
         position.Group >= 0 && position.Group < Groups &&
         position.Row >= 0 && position.Row < Rows &&
         position.Column >= 0 && position.Column < Columns;
+
+    /// <summary>矩形内、且不是过道。</summary>
+    public bool IsUsable(SeatPosition position) => Contains(position) && !Surface.IsDisabled(position);
 
     /// <summary>
     /// 同桌：同组同排、列号落在同一对双人桌（col / 2 相同）。不跨组、不跨排。
@@ -55,7 +79,7 @@ public sealed record SeatChartLayout(int Groups, int Rows, int Columns)
 
     /// <summary>
     /// 排座时的填充顺序：先填靠近讲台的一排，再从左到右跨组，最后才往后退。
-    /// 这样按身高 / 视力排序时，前排优先的语义才成立。
+    /// 这样按身高 / 视力排序时，前排优先的语义才成立。过道格被跳过。
     /// </summary>
     public IEnumerable<SeatPosition> FillOrder()
     {
@@ -65,12 +89,14 @@ public sealed record SeatChartLayout(int Groups, int Rows, int Columns)
             {
                 for (var column = 0; column < Columns; column++)
                 {
-                    yield return new SeatPosition(group, row, column);
+                    var seat = new SeatPosition(group, row, column);
+                    if (IsUsable(seat)) yield return seat;
                 }
             }
         }
     }
 
+    /// <summary>矩形内全部格子（含过道）——画布要画满，所以不过滤。</summary>
     public IEnumerable<SeatPosition> AllSeats()
     {
         for (var group = 0; group < Groups; group++)
@@ -85,6 +111,9 @@ public sealed record SeatChartLayout(int Groups, int Rows, int Columns)
         }
     }
 
+    /// <summary>只列可坐的格子（组 → 排 → 列）。</summary>
+    public IEnumerable<SeatPosition> AllUsableSeats() => AllSeats().Where(IsUsable);
+
     public static SeatChartLayout FromSettings(SeatChartSettings settings) =>
-        new(settings.Groups, settings.Rows, settings.Columns);
+        new(settings.Groups, settings.Rows, settings.Columns, settings.Canvas);
 }

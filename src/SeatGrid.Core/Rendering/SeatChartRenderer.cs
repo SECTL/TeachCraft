@@ -119,25 +119,20 @@ public static class SeatChartRenderer
     private static ChartMetrics Measure(SeatChartDocument document)
     {
         var settings = document.Settings;
-        var cell = settings.CellSizePx;
-        var gap = Math.Max(3f, cell * 0.07f);
-        var groupGap = Math.Max(16f, cell * 0.28f);
-        var groupWidth = document.Layout.Columns * cell + (document.Layout.Columns - 1) * gap;
-        var gridWidth = document.Layout.Groups * groupWidth + (document.Layout.Groups - 1) * groupGap;
-        var gridHeight = document.Layout.Rows * cell + (document.Layout.Rows - 1) * gap;
+        var offsets = SeatChartGeometry.Measure(document.Layout, settings, settings.View);
 
         var hints = settings.ShowGroupRowHints;
         var rowLabelWidth = hints ? 44f : 0f;
         var groupLabelHeight = hints ? 24f : 0f;
-        var contentWidth = rowLabelWidth + gridWidth;
-        var podiumHeight = 42f;
+        var contentWidth = rowLabelWidth + offsets.GridWidth;
+        var podiumHeight = settings.PodiumHeight;
 
         var width = 28f * 2 + contentWidth;
         var height = 28f * 2
                      + 40f
                      + 24f
                      + groupLabelHeight
-                     + gridHeight
+                     + offsets.GridHeight
                      + settings.PodiumGap
                      + podiumHeight;
 
@@ -145,15 +140,11 @@ public static class SeatChartRenderer
         {
             Width = width,
             Height = height,
-            Cell = cell,
-            Gap = gap,
-            GroupGap = groupGap,
-            GroupWidth = groupWidth,
-            GridWidth = gridWidth,
-            GridHeight = gridHeight,
+            Cell = offsets.Cell,
+            Offsets = offsets,
             RowLabelWidth = rowLabelWidth,
             GroupLabelHeight = groupLabelHeight,
-            PodiumWidth = Math.Min(contentWidth * 0.55f, 360f),
+            PodiumWidth = Math.Min(contentWidth * settings.PodiumWidthPercent / 100f, 360f),
             PodiumHeight = podiumHeight,
         };
     }
@@ -203,8 +194,8 @@ public static class SeatChartRenderer
             for (var groupIndex = 0; groupIndex < document.Groups.Count; groupIndex++)
             {
                 var group = document.Groups[groupIndex];
-                var groupX = pad + metrics.RowLabelWidth + groupIndex * (metrics.GroupWidth + metrics.GroupGap);
-                DrawCentered(canvas, group.Label, groupX + metrics.GroupWidth / 2f, y + 15f, groupFont, groupPaint);
+                var groupX = pad + metrics.RowLabelWidth + metrics.Offsets.Group[groupIndex];
+                DrawCentered(canvas, group.Label, groupX + metrics.Offsets.GroupWidth / 2f, y + 15f, groupFont, groupPaint);
             }
         }
 
@@ -218,12 +209,12 @@ public static class SeatChartRenderer
         for (var groupIndex = 0; groupIndex < document.Groups.Count; groupIndex++)
         {
             var group = document.Groups[groupIndex];
-            var groupX = gridLeft + groupIndex * (metrics.GroupWidth + metrics.GroupGap);
+            var groupX = gridLeft + metrics.Offsets.Group[groupIndex];
 
             for (var rowIndex = 0; rowIndex < group.Rows.Count; rowIndex++)
             {
                 var row = group.Rows[rowIndex];
-                var rowY = gridTop + rowIndex * (metrics.Cell + metrics.Gap);
+                var rowY = gridTop + metrics.Offsets.Row[rowIndex];
 
                 if (settings.ShowGroupRowHints)
                 {
@@ -233,21 +224,77 @@ public static class SeatChartRenderer
                 for (var columnIndex = 0; columnIndex < row.Seats.Count; columnIndex++)
                 {
                     var seat = row.Seats[columnIndex];
-                    var rect = new SKRect(
-                        groupX + columnIndex * (metrics.Cell + metrics.Gap),
-                        rowY,
-                        groupX + columnIndex * (metrics.Cell + metrics.Gap) + metrics.Cell,
-                        rowY + metrics.Cell);
+                    var seatX = groupX + metrics.Offsets.Column[columnIndex];
+                    var rect = new SKRect(seatX, rowY, seatX + metrics.Cell, rowY + metrics.Cell);
 
                     DrawSeat(canvas, document, seat, rect, seatFontSize, paintCache);
                 }
             }
         }
 
+        DrawDoors(canvas, document, metrics, gridLeft, gridTop);
+
         if (!document.PodiumOnTop)
         {
-            var podiumY = gridTop + metrics.GridHeight + settings.PodiumGap;
+            var podiumY = gridTop + metrics.Offsets.GridHeight + settings.PodiumGap;
             DrawPodium(canvas, document, metrics, centerX, podiumY, settings);
+        }
+    }
+
+    /// <summary>
+    /// 门窗：沿网格外沿画一段门洞（先擦 1px 边框再画 3px 短线）+ 旁边 9px 灰字。
+    /// 只画 Front / Back 两个方向——Left / Right 留在模型与导出里，界面不提供
+    /// （横向排布的组是居中的 StackPanel，画在两侧需要整张表换成绝对定位，不值得）。
+    /// </summary>
+    private static void DrawDoors(
+        SKCanvas canvas, SeatChartDocument document, ChartMetrics metrics, float gridLeft, float gridTop)
+    {
+        var settings = document.Settings;
+        if (!settings.ShowDoors || document.Layout.Surface.Doors.IsDefaultOrEmpty) return;
+
+        using var linePaint = new SKPaint
+        {
+            Color = Color("#A34A36"), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3f,
+            StrokeCap = SKStrokeCap.Round,
+        };
+        using var erasePaint = new SKPaint
+        {
+            Color = SKColors.White, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2f,
+        };
+        using var font = new SKFont(RegularTypeface.Value, 9f);
+        using var textPaint = new SKPaint { Color = Color("#6F6A5E"), IsAntialias = true };
+
+        const float doorWidth = 26f;
+        var gridWidth = metrics.Offsets.GridWidth;
+        var gridHeight = metrics.Offsets.GridHeight;
+
+        foreach (var door in document.Layout.Surface.Doors)
+        {
+            switch (door.Edge)
+            {
+                case RoomEdge.Front:
+                {
+                    // 教师视角讲台在下，Front 边是网格下沿；学生视角在上沿。
+                    var y = document.PodiumOnTop ? gridTop : gridTop + gridHeight;
+                    var x = gridLeft + (float)(door.OffsetRatio * gridWidth) - doorWidth / 2f;
+                    canvas.DrawLine(x, y, x + doorWidth, y, erasePaint);
+                    canvas.DrawLine(x, y, x + doorWidth, y, linePaint);
+                    canvas.DrawText(door.Label, x, y + (document.PodiumOnTop ? -5f : 13f),
+                        SKTextAlign.Left, font, textPaint);
+                    break;
+                }
+
+                case RoomEdge.Back:
+                {
+                    var y = document.PodiumOnTop ? gridTop + gridHeight : gridTop;
+                    var x = gridLeft + (float)(door.OffsetRatio * gridWidth) - doorWidth / 2f;
+                    canvas.DrawLine(x, y, x + doorWidth, y, erasePaint);
+                    canvas.DrawLine(x, y, x + doorWidth, y, linePaint);
+                    canvas.DrawText(door.Label, x, y + (document.PodiumOnTop ? 13f : -5f),
+                        SKTextAlign.Left, font, textPaint);
+                    break;
+                }
+            }
         }
     }
 
@@ -259,6 +306,9 @@ public static class SeatChartRenderer
         float fontSize,
         SeatPaintCache paintCache)
     {
+        // 过道：什么都不画（底色就是纸张白），不画边框也不画虚线框。
+        if (seat.Kind == SeatCellKind.Aisle) return;
+
         var settings = document.Settings;
         var empty = seat.IsEmpty;
 
@@ -318,7 +368,7 @@ public static class SeatChartRenderer
 
         using var font = new SKFont(RegularTypeface.Value, 12f);
         using var paint = new SKPaint { Color = Color(settings.PodiumText), IsAntialias = true };
-        canvas.DrawText("讲　台", rect.MidX, rect.MidY - (font.Metrics.Ascent + font.Metrics.Descent) / 2f, SKTextAlign.Center, font, paint);
+        canvas.DrawText(settings.PodiumLabel, rect.MidX, rect.MidY - (font.Metrics.Ascent + font.Metrics.Descent) / 2f, SKTextAlign.Center, font, paint);
     }
 
     private static void DrawCentered(SKCanvas canvas, string text, float x, float baseline, SKFont font, SKPaint paint)
@@ -416,11 +466,7 @@ public static class SeatChartRenderer
         public float Width { get; init; }
         public float Height { get; init; }
         public float Cell { get; init; }
-        public float Gap { get; init; }
-        public float GroupGap { get; init; }
-        public float GroupWidth { get; init; }
-        public float GridWidth { get; init; }
-        public float GridHeight { get; init; }
+        public required SeatChartGeometry.Offsets Offsets { get; init; }
         public float RowLabelWidth { get; init; }
         public float GroupLabelHeight { get; init; }
         public float PodiumWidth { get; init; }

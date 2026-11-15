@@ -527,12 +527,12 @@
                                 <ItemsControl ItemsSource="{Binding Groups}" HorizontalAlignment="Center">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <StackPanel Orientation="Horizontal" Spacing="22" />
+                                            <StackPanel Orientation="Horizontal" Spacing="0" />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="app:GroupViewModel">
-                                            <StackPanel>
+                                            <StackPanel Margin="{Binding Margin}">
                                                 <TextBlock Text="{Binding Label}"
                                                            IsVisible="{Binding ShowHints}"
                                                            Margin="{Binding LabelMargin}"
@@ -541,8 +541,8 @@
                                                 <ItemsControl ItemsSource="{Binding Rows}">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate x:DataType="app:RowViewModel">
-                                                            <StackPanel Orientation="Horizontal" Spacing="6"
-                                                                        Margin="0,0,0,6">
+                                                            <StackPanel Orientation="Horizontal" Spacing="0"
+                                                                        Margin="{Binding Margin}">
                                                                 <Border Width="44" IsVisible="{Binding ShowHandle}">
                                                                     <Button Classes="line-handle" Tag="{Binding}"
                                                                             Width="30" Height="20"
@@ -556,7 +556,7 @@
                                                                 <ItemsControl ItemsSource="{Binding Seats}">
                                                                     <ItemsControl.ItemsPanel>
                                                                         <ItemsPanelTemplate>
-                                                                            <StackPanel Orientation="Horizontal" Spacing="6" />
+                                                                            <StackPanel Orientation="Horizontal" Spacing="0" />
                                                                         </ItemsPanelTemplate>
                                                                     </ItemsControl.ItemsPanel>
                                                                     <ItemsControl.ItemTemplate>
@@ -565,6 +565,7 @@
                                                                                     Classes.selected="{Binding IsSelected}"
                                                                                     Width="{Binding Width}"
                                                                                     Height="{Binding Height}"
+                                                                                    Margin="{Binding Margin}"
                                                                                     Background="{Binding Fill}"
                                                                                     BorderBrush="{Binding Stroke}"
                                                                                     BorderThickness="{Binding BorderThickness}"
@@ -709,6 +710,88 @@
                                     <Slider Minimum="50" Maximum="200" TickFrequency="1" IsSnapToTickEnabled="True"
                                             Value="{Binding CellScale, Mode=TwoWay}" AutomationProperties.Name="格子大小" />
                                 </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="inspector-divider" />
+
+                        <!-- 教室画布 -->
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="教室画布" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="CANVAS" />
+                                </Grid>
+                                <TextBlock Text="{Binding CanvasSummary}" Classes="helper" />
+                                <Button Classes="ghost tool" Content="编辑画布…" Click="OnEditCanvas"
+                                        AutomationProperties.Name="打开教室画布编辑器" />
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="排与排的间距" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding RowGapLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding RowGapPercent, Mode=TwoWay}" AutomationProperties.Name="排与排的间距" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="同桌之间的间距" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ColumnGapLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding ColumnGapPercent, Mode=TwoWay}" AutomationProperties.Name="同桌之间的间距" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="组与组的间距" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding GroupGapLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding GroupGapPercent, Mode=TwoWay}" AutomationProperties.Name="组与组的间距" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="阶梯教室 · 每排加深" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding TierRowGrowthLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="0" Maximum="50" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding TierRowGrowthPercent, Mode=TwoWay}" AutomationProperties.Name="阶梯教室每排加深" />
+                                    <TextBlock Classes="helper toggle-note" Text="平层教室保持 0；阶梯教室设 10–20% 后，越往后排距越大。" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="inspector-divider" />
+
+                        <!-- 教室设施 -->
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="教室设施" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="ROOM" />
+                                </Grid>
+                                <CheckBox IsChecked="{Binding ShowDoors, Mode=TwoWay}" Content="显示门窗" />
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="讲台文字" />
+                                    <TextBox Classes="field" Text="{Binding PodiumLabel, Mode=TwoWay}"
+                                             PlaceholderText="讲　台" AutomationProperties.Name="讲台文字" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="讲台宽度" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding PodiumWidthLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="20" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding PodiumWidthPercent, Mode=TwoWay}" AutomationProperties.Name="讲台宽度" />
+                                </StackPanel>
+                                <StackPanel Spacing="3">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Classes="field-label" Text="讲台高度" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding PodiumHeightLabel}" Classes="numeral" FontSize="11" />
+                                    </Grid>
+                                    <Slider Minimum="24" Maximum="80" TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding PodiumHeightValue, Mode=TwoWay}" AutomationProperties.Name="讲台高度" />
+                                </StackPanel>
+                                <TextBlock Classes="helper"
+                                           Text="讲台始终在靠讲台的第一排那一侧；切到学生视角时它会画到上方。Excel 导出里门窗只印文字。" />
                             </StackPanel>
                         </Border>
                         <Border Classes="inspector-divider" />

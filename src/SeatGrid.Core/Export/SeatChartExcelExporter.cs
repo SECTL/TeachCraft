@@ -26,8 +26,31 @@ public static class SeatChartExcelExporter
 
         var hints = settings.ShowGroupRowHints;
         var firstSeatColumn = hints ? 2 : 1;
-        var seatColumns = document.Layout.Groups * document.Layout.Columns + (document.Layout.Groups - 1);
-        var lastColumn = firstSeatColumn + seatColumns - 1;
+
+        // 过道 / 走廊占位：只在真的设了过道时才插入额外的列与行，
+        // 保证「不设过道」时输出与旧版逐格一致（既有测试与导回都依赖这一点）。
+        var layout = document.Layout;
+        var extraColumnAfter = BuildExtraColumns(document);
+        var extraRowAfter = BuildExtraRows(document);
+
+        var groupStarts = new int[layout.Groups];
+        var columnOf = new int[layout.Columns];
+        var running = firstSeatColumn;
+        for (var group = 0; group < layout.Groups; group++)
+        {
+            groupStarts[group] = running;
+            for (var column = 0; column < layout.Columns; column++)
+            {
+                if (group == 0) columnOf[column] = running + column;
+                running++;
+                var extra = extraColumnAfter(group, column);
+                if (extra > 0) running += extra;
+            }
+
+            if (group < layout.Groups - 1) running += 1;   // 组与组之间固定的 1 列空档
+        }
+
+        var lastColumn = Math.Max(firstSeatColumn, running - 1);
 
         var cursor = 1;
 
@@ -59,14 +82,20 @@ public static class SeatChartExcelExporter
         if (settings.ShowGroupRowHints)
             sheet.Column(1).Width = 6;
 
-        for (var group = 0; group < document.Layout.Groups; group++)
+        for (var group = 0; group < layout.Groups; group++)
         {
-            var groupStart = firstSeatColumn + group * (document.Layout.Columns + 1);
-            for (var column = 0; column < document.Layout.Columns; column++)
-                sheet.Column(groupStart + column).Width = Math.Max(6, settings.CellSizePx / 7.0);
+            var groupStart = groupStarts[group];
+            for (var column = 0; column < layout.Columns; column++)
+            {
+                var excelColumn = groupStart + column + OffsetWithinGroup(extraColumnAfter, group, column);
+                sheet.Column(excelColumn).Width = Math.Max(6, settings.CellSizePx / 7.0);
+            }
 
-            if (group < document.Layout.Groups - 1)
-                sheet.Column(groupStart + document.Layout.Columns).Width = 2;
+            if (group < layout.Groups - 1)
+            {
+                var spacer = groupStart + layout.Columns + OffsetWithinGroup(extraColumnAfter, group, layout.Columns - 1);
+                sheet.Column(spacer).Width = 2;
+            }
         }
 
         if (document.PodiumOnTop)
@@ -81,8 +110,8 @@ public static class SeatChartExcelExporter
             for (var groupIndex = 0; groupIndex < document.Groups.Count; groupIndex++)
             {
                 var group = document.Groups[groupIndex];
-                var start = firstSeatColumn + groupIndex * (document.Layout.Columns + 1);
-                var end = start + document.Layout.Columns - 1;
+                var start = groupStarts[groupIndex];
+                var end = start + layout.Columns - 1 + OffsetWithinGroup(extraColumnAfter, groupIndex, layout.Columns - 1);
                 sheet.Range(cursor, start, cursor, end).Merge();
                 var cell = sheet.Cell(cursor, start);
                 cell.Value = group.Label;
@@ -117,12 +146,21 @@ public static class SeatChartExcelExporter
             {
                 var group = document.Groups[groupIndex];
                 var row = group.Rows[displayRow];
-                var groupStart = firstSeatColumn + groupIndex * (document.Layout.Columns + 1);
+                var groupStart = groupStarts[groupIndex];
 
                 for (var columnIndex = 0; columnIndex < row.Seats.Count; columnIndex++)
                 {
                     var seat = row.Seats[columnIndex];
-                    var cell = sheet.Cell(cursor, groupStart + columnIndex);
+                    var cell = sheet.Cell(cursor, groupStart + columnIndex +
+                                                  OffsetWithinGroup(extraColumnAfter, groupIndex, columnIndex));
+
+                    // 过道格：不写文字、不填底色、不画边框——与 PNG 里的留白一致。
+                    if (seat.Kind == SeatCellKind.Aisle)
+                    {
+                        cell.Value = string.Empty;
+                        continue;
+                    }
+
                     cell.Value = seat.Name;
 
                     cell.Style.Font.FontName = "Microsoft YaHei";
@@ -154,6 +192,14 @@ public static class SeatChartExcelExporter
 
             sheet.Row(cursor).Height = Math.Max(22, settings.CellSizePx * 0.75);
             cursor++;
+
+            // 该排之后的过道：插一行窄高占位，与 PNG 里的走廊视觉对应。
+            var extraRows = extraRowAfter(displayRow);
+            for (var i = 0; i < extraRows; i++)
+            {
+                sheet.Row(cursor).Height = Math.Max(3, settings.CellSizePx * 0.35);
+                cursor++;
+            }
         }
 
         if (!document.PodiumOnTop)
@@ -161,6 +207,10 @@ public static class SeatChartExcelExporter
             DrawPodium(sheet, cursor, firstSeatColumn, lastColumn, settings);
             cursor++;
         }
+
+        // 门窗：ClosedXML 没有形状 API，Excel 端只能落成一行文字。
+        // PNG / PDF 里是画在网格外沿的门洞线段——两边的形态本来就不同，不是 bug。
+        DrawDoorLabels(sheet, document, cursor, firstSeatColumn, lastColumn);
 
         // 名单页与配置共用写法；再附一张隐藏的「座位设置」，导回时布局、配色与座位都能还原。
         // 隐藏表放在最后，打开文件时停在座位表上。
@@ -176,12 +226,78 @@ public static class SeatChartExcelExporter
         workbook.SaveAs(path);
     }
 
+    /// <summary>
+    /// 某组某列之后要插入几个占位列。返回 0 表示不插——「不设过道」时整张表与旧版逐格一致。
+    /// 一条过道最多插 2 列，避免把表撑得过宽。
+    /// </summary>
+    private static Func<int, int, int> BuildExtraColumns(SeatChartDocument document)
+    {
+        var surface = document.Layout.Surface;
+        if (surface.ColumnCorridors.IsDefaultOrEmpty && surface.GroupCorridors.IsDefaultOrEmpty)
+            return (_, _) => 0;
+
+        return (group, column) =>
+        {
+            var cells = surface.ColumnCorridor(column);
+            if (column == document.Layout.Columns - 1) cells += surface.GroupCorridor(group);
+            return cells <= 0 ? 0 : Math.Min(2, Math.Max(1, (int)Math.Ceiling(cells)));
+        };
+    }
+
+    /// <summary>某排之后要插入几个占位行；0 表示不插。</summary>
+    private static Func<int, int> BuildExtraRows(SeatChartDocument document)
+    {
+        var surface = document.Layout.Surface;
+        if (surface.RowCorridors.IsDefaultOrEmpty) return _ => 0;
+
+        return row =>
+        {
+            var cells = surface.RowCorridor(row);
+            return cells <= 0 ? 0 : Math.Min(2, Math.Max(1, (int)Math.Ceiling(cells)));
+        };
+    }
+
+    /// <summary>组内前 column 列累积插入的占位列数。</summary>
+    private static int OffsetWithinGroup(Func<int, int, int> extraAfter, int group, int column)
+    {
+        var sum = 0;
+        for (var i = 0; i < column; i++) sum += extraAfter(group, i);
+        return sum;
+    }
+
+    /// <summary>
+    /// 门窗在 Excel 里只能落成文字（ClosedXML 没有形状 API）。这一处与 PNG / PDF 的
+    /// 门洞线段形态不同，是刻意的降级，不要当成 bug 去「修」。
+    /// </summary>
+    private static void DrawDoorLabels(
+        IXLWorksheet sheet, SeatChartDocument document, int row, int firstColumn, int lastColumn)
+    {
+        var settings = document.Settings;
+        if (!settings.ShowDoors || document.Layout.Surface.Doors.IsDefaultOrEmpty) return;
+
+        var front = document.Layout.Surface.Doors.Where(d => d.Edge == RoomEdge.Front).Select(d => d.Label);
+        var back = document.Layout.Surface.Doors.Where(d => d.Edge == RoomEdge.Back).Select(d => d.Label);
+
+        var left = string.Join("、", front);
+        var right = string.Join("、", back);
+        if (left.Length == 0 && right.Length == 0) return;
+
+        sheet.Range(row, firstColumn, row, lastColumn).Merge();
+        var cell = sheet.Cell(row, firstColumn);
+        cell.Value = string.Join("　　", new[] { left, right }.Where(s => s.Length > 0));
+        cell.Style.Font.FontName = "Microsoft YaHei";
+        cell.Style.Font.FontSize = 9;
+        cell.Style.Font.FontColor = XLColor.FromHtml("#85806F");
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        sheet.Row(row).Height = 16;
+    }
+
     private static void DrawPodium(IXLWorksheet sheet, int row, int firstColumn, int lastColumn, SeatChartSettings settings)
     {
         var range = sheet.Range(row, firstColumn, row, lastColumn);
         range.Merge();
         var cell = sheet.Cell(row, firstColumn);
-        cell.Value = "讲　台";
+        cell.Value = settings.PodiumLabel;
         cell.Style.Fill.BackgroundColor = XLColor.FromHtml(settings.PodiumBackground);
         cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         cell.Style.Border.OutsideBorderColor = XLColor.FromHtml(settings.SeatBorder);

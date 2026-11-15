@@ -755,6 +755,7 @@ public partial class App : Application
                 var window = new SeatGrid.App.SeatGridWindow();
                 if (!empty) window.LoadDemoData();
                 if (mode == "constraints") window.LoadDemoConstraints();
+                if (mode == "canvas") window.LoadDemoCanvas();
                 window.Show();
                 await Task.Delay(1600);
                 window.CaptureTo(target);

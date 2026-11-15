@@ -23,6 +23,8 @@ public partial class SeatCellViewModel : ObservableObject
     [ObservableProperty] private bool _isFemale;
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private bool _isPinned;
+    [ObservableProperty] private bool _isAisle;
+    [ObservableProperty] private Thickness _margin;
     [ObservableProperty] private bool _showEmptyFrame;
     [ObservableProperty] private double _width = 80;
     [ObservableProperty] private double _height = 80;
@@ -47,6 +49,7 @@ public partial class SeatCellViewModel : ObservableObject
         bool isFemale,
         bool isSelected,
         bool isPinned,
+        bool isAisle,
         double size,
         double fontSize,
         bool bold,
@@ -62,6 +65,21 @@ public partial class SeatCellViewModel : ObservableObject
         IsFemale = isFemale;
         IsSelected = isSelected;
         IsPinned = isPinned;
+        IsAisle = isAisle;
+
+        if (isAisle)
+        {
+            // 过道格：透明、无边框、不画虚线框，读屏念「过道」而不是「空座位」。
+            Fill = Brushes.Transparent;
+            Stroke = Brushes.Transparent;
+            BorderThickness = new Thickness(0);
+            Width = size;
+            Height = size;
+            _emptyFrameWhenIdle = false;
+            ShowEmptyFrame = false;
+            AutomationName = $"过道 {PositionLabel}";
+            return;
+        }
         Width = size;
         Height = size;
         FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal;

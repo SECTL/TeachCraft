@@ -15,6 +15,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using SeatGrid.Core;
 using SeatGrid.Core.Export;
+using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
 using SeatGrid.Core.Roster;
 using TeachCraft.Shared;
@@ -138,6 +139,28 @@ public partial class SeatGridWindow : Window
         ViewModel.AutoArrange();
         ViewModel.RefreshSeatVisualsPublic();
         ViewModel.SetStatus("演示：1 个锁定座位 · 1 对互斥 · 1 对结对 · 成绩均衡");
+    }
+
+    /// <summary>设计走查：教室画布演示态——中间两组靠讲台的前两排设为过道，加一条组间走廊与两扇门。</summary>
+    public void LoadDemoCanvas()
+    {
+        LoadDemoData();
+
+        var canvas = SeatChartCanvas.Empty;
+        // 中间两组（第 2、3 组）靠讲台的前两排设为过道，拼出一个 U 型。
+        for (var group = 1; group <= 2; group++)
+            for (var row = 0; row < 2; row++)
+                for (var column = 0; column < 2; column++)
+                    canvas = canvas.WithDisabled(new SeatPosition(group, row, column), true);
+
+        canvas = canvas.WithGroupCorridor(1, 0.8f)
+            .WithDoors(System.Collections.Immutable.ImmutableArray.Create(
+                new RoomDoor(RoomEdge.Front, 0.15, "前门"),
+                new RoomDoor(RoomEdge.Back, 0.85, "后门")));
+
+        ViewModel.ApplyCanvas(canvas, "演示：U 型画布 · 组间走廊 · 前后门");
+        ViewModel.ArrangeModeIndex = 0;
+        ViewModel.AutoArrange();
     }
 
     public void CaptureTo(string path)
@@ -884,6 +907,21 @@ public partial class SeatGridWindow : Window
             ViewModel.ToggleSelectedSeatPin();
             e.Handled = true;
         }
+    }
+
+    private async void OnEditCanvas(object? sender, RoutedEventArgs e)
+    {
+        var editor = new SeatCanvasEditorWindow(ViewModel.CurrentLayoutPublic, ViewModel.CurrentCanvas);
+        await editor.ShowDialog(this);
+
+        if (editor.Result is not { } canvas) return;
+        if (canvas.Equals(ViewModel.CurrentCanvas))
+        {
+            ViewModel.SetStatus("画布没有变化。");
+            return;
+        }
+
+        ViewModel.ApplyCanvas(canvas, "已更新教室画布。");
     }
 
     private void OnUnpinAll(object? sender, RoutedEventArgs e)

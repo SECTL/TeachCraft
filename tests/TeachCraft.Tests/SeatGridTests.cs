@@ -1084,7 +1084,384 @@ public sealed class SeatGridTests : IDisposable
         Assert.Single(imported.Constraints!.Pins);
     }
 
-    private static List<Student> MakeStudents(int count) =>        Enumerable.Range(0, count)
+    // ----------------------------- 1.26.0 教室画布 -----------------------------
+
+    [Fact]
+    public void Layout_DisabledSeatsAreSkippedByFillOrder()
+    {
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 0), true)
+            .WithDisabled(new SeatPosition(1, 1, 1), true);
+        var layout = new SeatChartLayout(2, 2, 2, canvas);
+
+        var seats = layout.FillOrder().ToList();
+
+        Assert.Equal(6, seats.Count);
+        Assert.DoesNotContain(new SeatPosition(0, 0, 0), seats);
+        Assert.DoesNotContain(new SeatPosition(1, 1, 1), seats);
+        // 顺序仍是 row → group → column。
+        Assert.Equal(new SeatPosition(0, 0, 1), seats[0]);
+    }
+
+    [Fact]
+    public void Layout_UsableSeatCountExcludesAisles()
+    {
+        var canvas = SeatChartCanvas.Empty
+            .WithDisabled(new SeatPosition(0, 0, 0), true)
+            .WithDisabled(new SeatPosition(0, 0, 1), true)
+            .WithDisabled(new SeatPosition(1, 1, 0), true);
+        var layout = new SeatChartLayout(2, 2, 2, canvas);
+
+        Assert.Equal(8, layout.CellCount);
+        Assert.Equal(5, layout.UsableSeatCount);
+        Assert.Equal(5, layout.SeatCount);
+    }
+
+    [Fact]
+    public void Layout_AllSeatsStillReturnsFullRectangle()
+    {
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 0), true);
+        var layout = new SeatChartLayout(2, 2, 2, canvas);
+
+        Assert.Equal(8, layout.AllSeats().Count());
+        Assert.Equal(7, layout.AllUsableSeats().Count());
+    }
+
+    [Fact]
+    public void SeatingEngine_ArrangeSkipsDisabledSeats()
+    {
+        var students = MakeStudents(10);
+        var canvas = SeatChartCanvas.Empty
+            .WithDisabled(new SeatPosition(0, 0, 0), true)
+            .WithDisabled(new SeatPosition(1, 0, 0), true);
+        var layout = new SeatChartLayout(2, 2, 2, canvas);   // 8 格 - 2 过道 = 6 座
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder);
+
+        Assert.Equal(6, result.Count);
+        Assert.DoesNotContain(new SeatPosition(0, 0, 0), result.Keys);
+        Assert.DoesNotContain(new SeatPosition(1, 0, 0), result.Keys);
+    }
+
+    [Fact]
+    public void Composer_MarksDisabledSeatsAsAisle()
+    {
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 0), true);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2, Canvas = canvas };
+        var document = SeatChartComposer.Compose(settings, new Dictionary<SeatPosition, Student>(), 0);
+
+        var aisle = document.Groups[0].Rows.SelectMany(r => r.Seats)
+            .Single(s => s.Position == new SeatPosition(0, 0, 0));
+        Assert.Equal(SeatCellKind.Aisle, aisle.Kind);
+        Assert.True(aisle.IsEmpty);
+
+        // 矩形形状不变：每组仍是 Columns 个座位。
+        Assert.All(document.Groups, g => Assert.All(g.Rows, r => Assert.Equal(2, r.Seats.Count)));
+    }
+
+    [Fact]
+    public void Canvas_NormalizeDropsOutOfBoundsAisles()
+    {
+        var canvas = SeatChartCanvas.Empty
+            .WithDisabled(new SeatPosition(0, 0, 0), true)
+            .WithDisabled(new SeatPosition(7, 0, 0), true);
+
+        var normalized = canvas.Normalize(new SeatChartLayout(3, 2, 2));
+
+        Assert.Single(normalized.DisabledSeats);
+        Assert.Contains(normalized.DisabledSeats, s => s == new SeatPosition(0, 0, 0));
+    }
+
+    [Fact]
+    public void Canvas_StructuralEquality()
+    {
+        var a = SeatChartCanvas.Empty
+            .WithDisabled(new SeatPosition(0, 0, 0), true)
+            .WithDisabled(new SeatPosition(1, 1, 1), true);
+        var b = SeatChartCanvas.Empty
+            .WithDisabled(new SeatPosition(1, 1, 1), true)
+            .WithDisabled(new SeatPosition(0, 0, 0), true);
+
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void Settings_CloneDoesNotAliasCanvas()
+    {
+        var settings = new SeatChartSettings();
+        var clone = settings.Clone();
+
+        // 浅拷贝共享同一个不可变画布引用（安全）；给原对象换新画布后，克隆体仍指向旧画布。
+        Assert.Same(settings.Canvas, clone.Canvas);
+
+        settings.Canvas = settings.Canvas.Toggle(new SeatPosition(0, 0, 0));
+
+        Assert.True(clone.Canvas.IsEmpty);
+        Assert.False(settings.Canvas.IsEmpty);
+    }
+
+    [Fact]
+    public void Config_RoundTripsCanvas()
+    {
+        var students = MakeStudents(2);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+        settings.Canvas = SeatChartCanvas.Empty
+            .WithDisabled(new SeatPosition(0, 0, 1), true)
+            .WithGroupCorridor(0, 0.5f);
+
+        var path = Path.Combine(_root, "canvas.xlsx");
+        SeatGridConfigIO.Export(path, settings, students, new Dictionary<SeatPosition, Student>());
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.Contains(imported.Settings.Canvas.DisabledSeats, s => s == new SeatPosition(0, 0, 1));
+        Assert.Equal(0.5f, imported.Settings.Canvas.GroupCorridor(0));
+    }
+
+    [Fact]
+    public void Config_MissingCanvasKeyReadsEmpty()
+    {
+        var students = MakeStudents(2);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+
+        var path = Path.Combine(_root, "no-canvas.xlsx");
+        SeatGridConfigIO.Export(path, settings, students, new Dictionary<SeatPosition, Student>());
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.True(imported.Settings.Canvas.IsEmpty);
+        Assert.Empty(imported.Warnings);
+    }
+
+    [Fact]
+    public void Geometry_DefaultOffsetsMatchLegacySpacing()
+    {
+        var settings = new SeatChartSettings { Groups = 1, Rows = 2, Columns = 2, CellScalePercent = 100 };
+        var layout = settings.GetLayout();
+
+        var offsets = SeatChartGeometry.Measure(layout, settings, ViewMode.Teacher);
+
+        // Cell = 80，列距 = max(3, 0.07*80) = 5.6 → 第一列到第二列 85.6。
+        Assert.Equal(85.6f, offsets.Column[1] - offsets.Column[0], 1);
+        // 组宽 = 80 + 5.6 + 80 = 165.6。
+        Assert.Equal(165.6f, offsets.GroupWidth, 1);
+        // 排距同为 5.6。
+        Assert.Equal(85.6f, offsets.Row[1] - offsets.Row[0], 1);
+    }
+
+    [Fact]
+    public void Geometry_GroupCorridorWidensOnlyThatBoundary()
+    {
+        var settings = new SeatChartSettings { Groups = 3, Rows = 1, Columns = 1, CellScalePercent = 100 };
+        settings.Canvas = SeatChartCanvas.Empty.WithGroupCorridor(1, 0.5f);
+        var layout = settings.GetLayout();
+
+        var offsets = SeatChartGeometry.Measure(layout, settings, ViewMode.Teacher);
+
+        var first = offsets.Group[1] - offsets.Group[0];
+        var second = offsets.Group[2] - offsets.Group[1];
+        Assert.True(second > first, $"第 2 条组距 {second} 应大于第 1 条 {first}");
+    }
+
+    [Fact]
+    public void Geometry_RowOffsetsFollowDisplayOrderInStudentView()
+    {
+        var settings = new SeatChartSettings { Groups = 1, Rows = 3, Columns = 1, CellScalePercent = 100 };
+        settings.Canvas = SeatChartCanvas.Empty.WithRowCorridor(0, 0.5f);
+        var layout = settings.GetLayout();
+
+        var teacher = SeatChartGeometry.Measure(layout, settings, ViewMode.Teacher);
+        var student = SeatChartGeometry.Measure(layout, settings, ViewMode.Student);
+
+        // 物理第 1 排（Row=0）之后有 0.5 格过道。
+        // 教师视角讲台在下：显示序是倒的（物理第 3 排 → 第 1 排），所以过道落在最后一段。
+        Assert.True(teacher.Row[3] - teacher.Row[2] > teacher.Row[1] - teacher.Row[0]);
+        // 学生视角讲台在上：显示序 = 物理序，过道落在第一段。
+        Assert.True(student.Row[1] - student.Row[0] > student.Row[3] - student.Row[2]);
+    }
+
+    [Fact]
+    public void Geometry_ZeroCorridorKeepsGridWidthUnchanged()
+    {
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2, CellScalePercent = 100 };
+        var layout = settings.GetLayout();
+
+        var offsets = SeatChartGeometry.Measure(layout, settings, ViewMode.Teacher);
+
+        // 两组各 165.6 宽 + 组距 max(16, 0.28*80=22.4) = 22.4 → 353.6。
+        Assert.Equal(353.6f, offsets.GridWidth, 1);
+    }
+
+    [Fact]
+    public void Renderer_PngWidthGrowsWithGroupCorridor()
+    {
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2, CellScalePercent = 100 };
+        var document = SeatChartComposer.Compose(settings, new Dictionary<SeatPosition, Student>(), 0);
+
+        var plain = Path.Combine(_root, "plain.png");
+        SeatChartRenderer.RenderPng(document, plain, 1.0);
+        using var plainCodec = SKCodec.Create(plain);
+
+        settings.Canvas = SeatChartCanvas.Empty.WithGroupCorridor(0, 0.8f);
+        var wide = SeatChartComposer.Compose(settings, new Dictionary<SeatPosition, Student>(), 0);
+        var widePath = Path.Combine(_root, "wide.png");
+        SeatChartRenderer.RenderPng(wide, widePath, 1.0);
+        using var wideCodec = SKCodec.Create(widePath);
+
+        Assert.True(wideCodec!.Info.Width > plainCodec!.Info.Width);
+    }
+
+    [Fact]
+    public void Renderer_AislePixelsStayWhite()
+    {
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 0), true);
+        var settings = new SeatChartSettings
+        {
+            Groups = 1, Rows = 1, Columns = 2, CellScalePercent = 100, Canvas = canvas,
+            ShowGroupRowHints = false, Title = "t",
+        };
+        var students = MakeStudents(1);
+        var assignments = new Dictionary<SeatPosition, Student> { [new SeatPosition(0, 0, 1)] = students[0] };
+        var document = SeatChartComposer.Compose(settings, assignments, 1);
+
+        var path = Path.Combine(_root, "aisle.png");
+        SeatChartRenderer.RenderPng(document, path, 1.0);
+
+        using var bitmap = SKBitmap.Decode(path);
+        Assert.NotNull(bitmap);
+
+        // 左侧过道格的中心应当接近纯白（不画底色、不画边框）。
+        var offsets = SeatChartGeometry.Measure(document.Layout, settings, ViewMode.Teacher);
+        var x = (int)(28 + 44 + offsets.Column[0] + offsets.Cell / 2);
+        var y = (int)(28 + 40 + 24 + offsets.Row[0] + offsets.Cell / 2);
+        var pixel = bitmap!.GetPixel(x, y);
+        Assert.True(pixel.Red > 250 && pixel.Green > 250 && pixel.Blue > 250,
+            $"过道格中心像素为 {pixel}，应为白色");
+    }
+
+    [Fact]
+    public void Excel_NoCorridorKeepsLegacyColumnLayout()
+    {
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2, ShowGroupRowHints = true };
+        var students = MakeStudents(2);
+        var assignments = new Dictionary<SeatPosition, Student> { [new SeatPosition(0, 0, 0)] = students[0] };
+        var document = SeatChartComposer.Compose(settings, assignments, students.Count);
+
+        var path = Path.Combine(_root, "no-corridor.xlsx");
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path);
+
+        using var workbook = new XLWorkbook(path);
+        var sheet = workbook.Worksheet("座位表");
+
+        // 不设过道时，列布局必须与旧版一致：座位紧邻排号列，组间只有 1 列空档。
+        Assert.Contains("同学1", sheet.CellsUsed().Select(c => c.GetString()));
+        Assert.Contains("第1组", sheet.CellsUsed().Select(c => c.GetString()));
+
+        var seatCell = sheet.CellsUsed().First(c => c.GetString() == "同学1");
+        Assert.Equal(2, seatCell.Address.ColumnNumber);   // 排号列(1) → 第 1 组第 1 列 = 2
+    }
+
+    [Fact]
+    public void Excel_AisleCellHasNoFillOrBorder()
+    {
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(0, 0, 0), true);
+        var settings = new SeatChartSettings
+        {
+            Groups = 1, Rows = 1, Columns = 2, ShowGroupRowHints = true, Canvas = canvas,
+        };
+        var students = MakeStudents(1);
+        var assignments = new Dictionary<SeatPosition, Student> { [new SeatPosition(0, 0, 1)] = students[0] };
+        var document = SeatChartComposer.Compose(settings, assignments, 1);
+
+        var path = Path.Combine(_root, "aisle.xlsx");
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path);
+
+        using var workbook = new XLWorkbook(path);
+        var sheet = workbook.Worksheet("座位表");
+        var aisleCell = sheet.Cell(5, 3);
+
+        Assert.Equal(string.Empty, aisleCell.GetString());
+
+        // ClosedXML 的 OutsideBorder 只有 setter，读不回来；用「无底色」证明过道格没被画成座位。
+        Assert.NotEqual(XLColor.FromHtml("#FFFFFF"), aisleCell.Style.Fill.BackgroundColor);
+    }
+
+    [Fact]
+    public void Config_RoundTripsDoors()
+    {
+        var students = MakeStudents(2);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+        settings.Canvas = SeatChartCanvas.Empty.WithDoors(System.Collections.Immutable.ImmutableArray.Create(
+            new RoomDoor(RoomEdge.Front, 0.15, "前门"),
+            new RoomDoor(RoomEdge.Back, 0.85, "后门")));
+
+        var path = Path.Combine(_root, "doors.xlsx");
+        SeatGridConfigIO.Export(path, settings, students, new Dictionary<SeatPosition, Student>());
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.Equal(2, imported.Settings.Canvas.Doors.Length);
+        Assert.Contains(imported.Settings.Canvas.Doors, d => d.Label == "前门" && d.Edge == RoomEdge.Front);
+        Assert.Contains(imported.Settings.Canvas.Doors, d => d.Label == "后门" && d.Edge == RoomEdge.Back);
+    }
+
+    [Fact]
+    public void Canvas_NormalizeClampsDoorRatio()
+    {
+        var canvas = SeatChartCanvas.Empty.WithDoors(System.Collections.Immutable.ImmutableArray.Create(
+            new RoomDoor(RoomEdge.Front, 1.4, "前门")));
+
+        var normalized = canvas.Normalize(new SeatChartLayout(2, 2, 2));
+
+        Assert.Equal(1.0, normalized.Doors[0].OffsetRatio);
+    }
+
+    [Fact]
+    public void Renderer_PngHeightGrowsWithPodiumHeight()
+    {
+        var settings = new SeatChartSettings { Groups = 1, Rows = 1, Columns = 1, PodiumHeight = 40 };
+        var document = SeatChartComposer.Compose(settings, new Dictionary<SeatPosition, Student>(), 0);
+        var tall = SeatChartComposer.Compose(
+            new SeatChartSettings { Groups = 1, Rows = 1, Columns = 1, PodiumHeight = 80 },
+            new Dictionary<SeatPosition, Student>(), 0);
+
+        var a = Path.Combine(_root, "p40.png");
+        var b = Path.Combine(_root, "p80.png");
+        SeatChartRenderer.RenderPng(document, a, 1.0);
+        SeatChartRenderer.RenderPng(tall, b, 1.0);
+
+        using var codecA = SKCodec.Create(a);
+        using var codecB = SKCodec.Create(b);
+        Assert.True(codecB!.Info.Height > codecA!.Info.Height);
+    }
+
+    [Fact]
+    public void Excel_PodiumLabelIsConfigurable()
+    {
+        var settings = new SeatChartSettings
+        {
+            Groups = 1, Rows = 1, Columns = 1, PodiumLabel = "讲台 / 黑板", ShowGroupRowHints = false,
+        };
+        var students = MakeStudents(1);
+        var assignments = new Dictionary<SeatPosition, Student> { [new SeatPosition(0, 0, 0)] = students[0] };
+        var document = SeatChartComposer.Compose(settings, assignments, 1);
+
+        var path = Path.Combine(_root, "podium-label.xlsx");
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path);
+
+        using var workbook = new XLWorkbook(path);
+        Assert.Contains("讲台 / 黑板",
+            workbook.Worksheet("座位表").CellsUsed().Select(c => c.GetString()));
+    }
+
+    [Fact]
+    public void Settings_PodiumLabelFallsBackWhenBlank()
+    {
+        var settings = new SeatChartSettings { PodiumLabel = "   " };
+        settings.Normalize();
+
+        Assert.Equal("讲　台", settings.PodiumLabel);
+    }
+
+    private static List<Student> MakeStudents(int count) =>
+        Enumerable.Range(0, count)
             .Select(i => new Student { Name = $"同学{i + 1}", Gender = i % 2 == 0 ? Gender.Male : Gender.Female })
             .ToList();
 
