@@ -30,13 +30,14 @@ $$\text{v}\{Major\}.\{Minor\}.\{Patch\}[-\text{preview}.\{RunNumber\}]$$
 
 | 触发 | 版本号 | 发布形态 |
 | :--- | :--- | :--- |
-| 推送 git tag（如 `v1.1.0`） | `v1.1.0` | 正式 Release，`prerelease: false` |
-| push `main` | `v{Version}-preview.{github.run_number}` | 公开 Pre-release |
-| `workflow_dispatch` | 同上 | 公开 Pre-release |
+| 推送 git tag（如 `v1.30.0`） | `v1.30.0` | 正式 Release，`prerelease: false` |
+| `workflow_dispatch` | `v{Version}-preview.{github.run_number}` | 公开 Pre-release |
+| push `main` | `v{Version}-build.{github.run_number}` | **不创建 Release**，产物只作为 CI artifact |
 
-- 预览版标签由 `softprops/action-gh-release` 自动创建。
-- 预览版会保留在 Releases 中，不再自动转草稿；由维护者按需清理。
-- 版本脚本：`scripts/version.ps1`，读取 `GITHUB_REF_TYPE` / `GITHUB_REF_NAME` / `GITHUB_RUN_NUMBER`。
+- **push `main` 不再发布预览版。** 此前每提交一次就多一个预览版，发布页被淹没，且编号复用 `run_number` 而不连续（失败或跳过的运行会占号）。现在 push `main` 仍跑测试与 14 个包的构建——那能证明每个平台都构建得出来——但产物只留作 artifact。
+- push `main` 的版本串带 `-build.` 而不是 `-preview.`：它不发布，但身份仍不能显示成正式版号，否则有人手动下载 artifact 装上会被「检查更新」误判。
+- 预览版只在手动触发时产生，标签由 `softprops/action-gh-release` 自动创建；预览版保留在 Releases 中，由维护者按需清理。
+- 版本脚本：`scripts/version.ps1`，读取 `GITHUB_REF_TYPE` / `GITHUB_REF_NAME` / `GITHUB_EVENT_NAME` / `GITHUB_RUN_NUMBER`，输出 `VERSION_TAG` / `IS_RELEASE` / `SHOULD_PUBLISH`。
 
 ### 3. 晋级规则
 

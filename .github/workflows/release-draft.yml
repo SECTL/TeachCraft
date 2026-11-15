@@ -153,6 +153,11 @@ jobs:
   publish-release:
     name: Aggregate & Publish Release
     needs: build-matrix
+    # 只有打 tag（正式版）或手动触发才真正发布。
+    # push main 仍会跑测试与 14 个包的构建（那能证明每个平台都构建得出来），
+    # 但产物只作为 CI artifact 留存，不创建 Release——否则每提交一次就多一个预览版，
+    # 发布页会被淹没，编号也会因为复用 run_number 而不连续。
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - name: Checkout Code
