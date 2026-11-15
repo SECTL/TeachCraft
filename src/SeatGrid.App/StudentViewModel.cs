@@ -16,7 +16,11 @@ public partial class StudentViewModel : ObservableObject
     public StudentViewModel(Student model)
     {
         Model = model;
+        (_pinyinFull, _pinyinInitials) = PinyinIndex.Build(model.Name);
     }
+
+    private readonly string _pinyinFull;
+    private readonly string _pinyinInitials;
 
     public Student Model { get; }
 
@@ -48,7 +52,14 @@ public partial class StudentViewModel : ObservableObject
     }
 
     public string SearchKey =>
-        $"{Model.Name} {Model.Number} {Model.OriginalGroup} {Model.Notes} {GenderLabel}".ToLowerInvariant();
+        $"{Model.Name} {Model.Number} {Model.OriginalGroup} {Model.Notes} {GenderLabel} {_pinyinFull} {_pinyinInitials}"
+            .ToLowerInvariant();
+
+    /// <summary>拼音全拼或首字母是否命中。姓名本身仍可搜，拼音只是多一条路。</summary>
+    public bool MatchesPinyin(string keyword) =>
+        keyword.Length > 0 &&
+        (_pinyinFull.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+         _pinyinInitials.Contains(keyword, StringComparison.OrdinalIgnoreCase));
 
     [ObservableProperty] private string _seatLabel = "未排";
     [ObservableProperty] private bool _isAssigned;

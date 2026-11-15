@@ -53,21 +53,34 @@ public static class SeatingEngine
             issues.Add(new SeatIssue(SeatIssueKind.ScoreMissing,
                 Array.Empty<string>(), "名单里没有成绩，已按名单顺序排座。"));
 
+        // 导师制：组长目标座（纯软约束，只进 SoftCost）。
+        var mentorSeats = new Dictionary<Guid, SeatPosition>();
+        if (constraints.MentorEnabled)
+        {
+            var groupOf = targets.Count > 0
+                ? targets
+                : AssignGroupsByOrder(students, layout);
+
+            var leaders = MentorPlanner.Leaders(students, groupOf, issues);
+            foreach (var (group, leaderId) in leaders)
+                mentorSeats[leaderId] = MentorPlanner.LeaderSeat(layout, group, constraints.MentorSeat);
+        }
+
         var seats = layout.FillOrder().ToList();
         foreach (var unit in units)
         {
             if (unit.Members.All(m => placed.Contains(m.Id))) continue;
 
-            var strict = FirstFreeAnchor(unit, seats, layout, assigned, constraints, allowed, targets);
+            var strict = FirstFreeAnchor(unit, seats, layout, assigned, constraints, allowed, targets, mentorSeats);
             var relaxed = strict is null;
             var seat = strict ?? FirstFreeAnchor(unit, seats, layout, assigned, constraints, allowed, targets,
-                relax: true);
+                mentorSeats, relax: true);
 
             // 结对在单列布局里根本没有双人桌：退化为两人各自单人入座，保证一个都不丢。
             if (seat is null && unit.Members.Count == 2)
             {
                 var firstSeat = FirstFreeAnchor(new SeatUnit(new[] { unit.Members[0] }), seats, layout,
-                    assigned, constraints, allowed, targets, relax: true);
+                    assigned, constraints, allowed, targets, mentorSeats, relax: true);
                 if (firstSeat is not null)
                 {
                     // 先占座，再给第二个人找——否则两人会拿到同一个空位。
@@ -75,7 +88,7 @@ public static class SeatingEngine
                     placed.Add(unit.Members[0].Id);
 
                     var mateSeat = FirstFreeAnchor(new SeatUnit(new[] { unit.Members[1] }), seats, layout,
-                        assigned, constraints, allowed, targets, relax: true);
+                        assigned, constraints, allowed, targets, mentorSeats, relax: true);
                     if (mateSeat is not null)
                     {
                         assigned[mateSeat.Value] = unit.Members[1];
@@ -197,6 +210,7 @@ public static class SeatingEngine
         Dictionary<SeatPosition, Student> assigned, ArrangeConstraints constraints,
         Dictionary<Guid, HashSet<SeatPosition>> allowed,
         IReadOnlyDictionary<Guid, int> targets,
+        IReadOnlyDictionary<Guid, SeatPosition> mentorSeats,
         bool relax = false)
     {
         SeatPosition? best = null;
@@ -218,7 +232,7 @@ public static class SeatingEngine
                 continue;
             }
 
-            var cost = SoftCost(unit, seat, constraints, targets);
+            var cost = SoftCost(unit, seat, constraints, targets, mentorSeats);
             if (cost == 0) return seat;                 // 早停：零代价座
             if (cost < bestCost)
             {
@@ -274,13 +288,17 @@ public static class SeatingEngine
 
     private static int SoftCost(
         SeatUnit unit, SeatPosition seat, ArrangeConstraints constraints,
-        IReadOnlyDictionary<Guid, int> targets)
+        IReadOnlyDictionary<Guid, int> targets,
+        IReadOnlyDictionary<Guid, SeatPosition> mentorSeats)
     {
         var cost = 0;
 
         foreach (var member in unit.Members)
         {
             if (targets.TryGetValue(member.Id, out var target) && target != seat.Group) cost += 1;
+
+            // 组长目标座：+2，高于成绩目标组、低于所有硬约束。
+            if (mentorSeats.TryGetValue(member.Id, out var leaderSeat) && leaderSeat != seat) cost += 2;
         }
 
         return cost;
@@ -453,6 +471,18 @@ public static class SeatingEngine
         foreach (var (position, student) in assigned)
             if (student.Id == id) return position;
         return null;
+    }
+
+    /// <summary>非成绩模式下也要有「组」的概念给导师制用：按名单顺序轮流分配。</summary>
+    private static Dictionary<Guid, int> AssignGroupsByOrder(
+        IReadOnlyList<Student> students, SeatChartLayout layout)
+    {
+        var result = new Dictionary<Guid, int>(students.Count);
+        if (layout.Groups <= 0) return result;
+
+        for (var i = 0; i < students.Count; i++)
+            result[students[i].Id] = i % layout.Groups;
+        return result;
     }
 
     // ----------------------------- 区域与单元 -----------------------------

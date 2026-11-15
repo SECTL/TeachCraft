@@ -345,6 +345,10 @@
                             IsEnabled="{Binding CanEnterExam}" AutomationProperties.Name="进入考场模式" />
                     <Button Classes="ghost top" Content="桌贴" Click="OnExportStickers"
                             IsEnabled="{Binding IsExamMode}" AutomationProperties.Name="打印考场桌贴" />
+                    <Button Classes="ghost top" Content="投影" Click="OnProjection"
+                            IsEnabled="{Binding CanExport}" AutomationProperties.Name="全屏投影" />
+                    <Button Classes="ghost top" Content="PPTX" Click="OnExportPptx"
+                            IsEnabled="{Binding CanExport}" AutomationProperties.Name="导出 PPTX 幻灯片" />
                     <Button Classes="ghost top" Content="预览" Click="OnPreview"
                             IsEnabled="{Binding CanExport}" />
                     <Button Classes="ghost top" Content="打印" Click="OnPrint"
@@ -873,6 +877,21 @@
 
                                 <Button Classes="ghost tool" Content="+ 添加规则" Click="OnAddConstraint"
                                         AutomationProperties.Name="添加互斥或结对规则" />
+
+                                <StackPanel Spacing="5">
+                                    <CheckBox IsChecked="{Binding MentorEnabled, Mode=TwoWay}"
+                                              Content="小组导师制 · 组内成绩第一任组长" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                        <TextBlock Text="组长座位" Classes="field-label" VerticalAlignment="Center" />
+                                        <ComboBox Grid.Column="1" Classes="field" Width="92" FontSize="10.5"
+                                                  SelectedIndex="{Binding MentorSeatIndex, Mode=TwoWay}">
+                                            <ComboBoxItem Content="组中心" />
+                                            <ComboBoxItem Content="第一排" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="导师制只影响谁更优先拿到候选座，不会推翻锁定、区域、互斥与结对。" />
+                                </StackPanel>
 
                                 <StackPanel Spacing="5">
                                     <TextBlock Classes="field-label" Text="区域限制（对选中的学生）" />

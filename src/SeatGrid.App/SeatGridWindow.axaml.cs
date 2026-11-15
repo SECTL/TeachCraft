@@ -394,6 +394,19 @@ public partial class SeatGridWindow : Window
         if (ViewModel.IsBusy) return;
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
 
+        // 双击座位：打开快速换人（输入姓名或拼音首字母）。
+        if (e.ClickCount == 2)
+        {
+            var seat = FindSeatFromSource(e.Source);
+            if (seat is not null)
+            {
+                _suppressSeatClick = true;
+                _dragMode = DragMode.None;
+                _ = ShowQuickSwapAsync(seat);
+                return;
+            }
+        }
+
         // 座位卡片与行列把手都是 Button；在窗口层按 Tag 分流拖拽模式。
         var button = (e.Source as Visual)?.FindAncestorOfType<Button>(true);
         switch (button?.Tag)
@@ -953,6 +966,59 @@ public partial class SeatGridWindow : Window
 
     private void OnToggleIssues(object? sender, RoutedEventArgs e) =>
         ViewModel.Constraints.IssuesExpanded = !ViewModel.Constraints.IssuesExpanded;
+
+    private async Task ShowQuickSwapAsync(SeatCellViewModel seat)
+    {
+        if (seat.IsEmpty)
+        {
+            ViewModel.SetStatus("这个座位是空的，双击有人的座位可以快速换人。", true);
+            return;
+        }
+
+        var dialog = new QuickSwapWindow(ViewModel, seat);
+        await dialog.ShowDialog(this);
+        if (dialog.Applied) RefreshAll();
+    }
+
+    private void RefreshAll()
+    {
+        ViewModel.RefreshSeatVisualsPublic();
+        ViewModel.RefreshStudentsPublic();
+    }
+
+    private async void OnExportPptx(object? sender, RoutedEventArgs e)
+    {
+        var path = await PickSaveAsync("导出 PPTX 幻灯片", SafeFileName(".pptx"), ".pptx",
+            new FilePickerFileType("PowerPoint 幻灯片") { Patterns = new[] { "*.pptx" } });
+        if (path is null) return;
+        if (IsSamePath(path, _rosterPath))
+        {
+            ViewModel.SetStatus("导出路径不能覆盖已导入的名单文件。", true);
+            return;
+        }
+
+        ViewModel.BeginBusy("正在导出 PPTX…", "生成 16:9 单页幻灯片，文件只写在本机。");
+        try
+        {
+            var document = ViewModel.ComposeDocument();
+            await Task.Run(() => SeatChartPptxExporter.Export(document, path));
+            ViewModel.SetStatus($"已导出 PPTX：{Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "导出 PPTX 失败");
+        }
+        finally
+        {
+            ViewModel.EndBusy();
+        }
+    }
+
+    private void OnProjection(object? sender, RoutedEventArgs e)
+    {
+        var window = new SeatProjectionWindow(ViewModel);
+        window.ShowDialog(this);
+    }
 
     private void OnTogglePin(object? sender, RoutedEventArgs e) => ViewModel.ToggleSelectedSeatPin();
 

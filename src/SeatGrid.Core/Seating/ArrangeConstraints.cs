@@ -41,9 +41,14 @@ public sealed class ArrangeConstraints
     /// <summary>随机模式的种子；为空时用 Random.Shared（测试应显式给种子）。</summary>
     public int? Seed { get; init; }
 
+    /// <summary>小组导师制：组内成绩第一任组长。纯软约束。</summary>
+    public bool MentorEnabled { get; init; }
+
+    public MentorSeat MentorSeat { get; init; } = MentorSeat.Center;
+
     public bool IsEmpty =>
         Pins.Count == 0 && Mutex.Count == 0 && Deskmates.Count == 0 &&
-        AvoidDeskmates.Count == 0 && Zones.Count == 0;
+        AvoidDeskmates.Count == 0 && Zones.Count == 0 && !MentorEnabled;
 
     private HashSet<(Guid, Guid)>? _mutexKeys;
     private HashSet<(Guid, Guid)>? _deskmateKeys;

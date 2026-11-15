@@ -136,6 +136,26 @@ public static class RosterImporter
         var hasGender = false;
         var startRow = hasHeader ? map.HeaderRow + 1 : 0;
 
+        // 有表头时把认不出的列名列出来：老师至少知道哪些信息被忽略了，而不是静默丢。
+        if (hasHeader)
+        {
+            var known = new HashSet<int>
+            {
+                map.Name, map.Gender, map.Number, map.Height, map.Vision, map.Score, map.Notes, map.Group,
+            };
+            var unknown = new List<string>();
+            var header = grid[map.HeaderRow];
+            for (var i = 0; i < header.Length; i++)
+            {
+                if (known.Contains(i)) continue;
+                var text = CleanText(header[i]);
+                if (text.Length > 0 && unknown.Count < 6) unknown.Add(text);
+            }
+
+            if (unknown.Count > 0)
+                warnings.Add($"这些列没有识别：{string.Join("、", unknown)}（不影响导入）。");
+        }
+
         for (var rowIndex = startRow; rowIndex < grid.Count; rowIndex++)
         {
             var row = grid[rowIndex];
@@ -229,7 +249,8 @@ public static class RosterImporter
                 continue;
             }
 
-            if (map.Number < 0 && (header.Contains("学号") || header.Contains("编号") || header.Contains("考号")))
+            if (map.Number < 0 && (header.Contains("学号") || header.Contains("编号") ||
+                                   header.Contains("考号") || header.Contains("座号")))
             {
                 map.Number = column;
                 map.Matched++;
@@ -257,7 +278,9 @@ public static class RosterImporter
                 continue;
             }
 
-            if (map.Score < 0 && (header.Contains("总分") || header == "成绩" || header.Contains("分数")))
+            if (map.Score < 0 && (header.Contains("总分") || header.Contains("总成绩") ||
+                                  header == "成绩" || header.Contains("分数") ||
+                                  header.Contains("得分") || header == "score"))
             {
                 map.Score = column;
                 map.Matched++;
@@ -271,7 +294,8 @@ public static class RosterImporter
                 continue;
             }
 
-            if (map.Group < 0 && (header.Contains("小组") || header.Contains("组别")))
+            if (map.Group < 0 && (header.Contains("小组") || header.Contains("组别") ||
+                                  header.Contains("分组") || header == "原组"))
             {
                 map.Group = column;
                 map.Matched++;
@@ -366,7 +390,8 @@ public static class RosterImporter
                || header == "名字"
                || header == "学生"
                || header == "名称"
-               || header == "学生名单";
+               || header == "学生名单"
+               || header == "name";
     }
 
     private static string NormalizeHeader(string? value)

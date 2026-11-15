@@ -109,6 +109,14 @@ public partial class SeatGridViewModel : ObservableObject
     [ObservableProperty] private double _podiumWidthPercent = 55;
     [ObservableProperty] private double _podiumHeightValue = 40;
 
+    /// <summary>小组导师制：组内成绩第一任组长，组员环绕。</summary>
+    [ObservableProperty] private bool _mentorEnabled;
+
+    /// <summary>组长座位：组中心 / 第一排。</summary>
+    [ObservableProperty] private int _mentorSeatIndex;
+
+    public string MentorSeatLabel => MentorSeatIndex == 1 ? "第一排" : "组中心";
+
     /// <summary>座位表内容宽度（含行首把手列），门窗定位用。</summary>
     public double ChartContentWidth    {
         get
@@ -803,7 +811,18 @@ public partial class SeatGridViewModel : ObservableObject
         // 布局可能刚缩过：先把指向不存在座位的锁清掉，否则引擎会拿幽灵锁去排。
         Constraints.DropInvalidPins(layout, _students.Select(s => s.Id).ToHashSet());
 
-        var result = SeatingEngine.Arrange(models, layout, mode, Constraints.Build(layout));
+        var built = Constraints.Build(layout);
+        var constraints = new ArrangeConstraints
+        {
+            Pins = built.Pins,
+            Mutex = built.Mutex,
+            Deskmates = built.Deskmates,
+            AvoidDeskmates = built.AvoidDeskmates,
+            Zones = built.Zones,
+            MentorEnabled = MentorEnabled,
+            MentorSeat = MentorSeatIndex == 1 ? MentorSeat.FrontRow : MentorSeat.Center,
+        };
+        var result = SeatingEngine.Arrange(models, layout, mode, constraints);
         var byId = _students.ToDictionary(s => s.Model.Id);
 
         _assignments.Clear();
@@ -1097,6 +1116,66 @@ public partial class SeatGridViewModel : ObservableObject
     public void SetGroupCorridor(int group, double cells) =>
         ApplyCanvas(Canvas.WithGroupCorridor(group, (float)cells),
             cells <= 0 ? $"已去掉第 {group + 1} 组之后的过道。" : $"第 {group + 1} 组之后加了过道。");
+
+    /// <summary>按姓名或拼音找人；返回最多若干条候选，供快速换座浮窗使用。</summary>
+    public IReadOnlyList<StudentViewModel> FindStudents(string keyword, int limit = 8)
+    {
+        var text = (keyword ?? string.Empty).Trim();
+        if (text.Length == 0) return Array.Empty<StudentViewModel>();
+
+        var lowered = text.ToLowerInvariant();
+        return _students
+            .Where(s => s.SearchKey.Contains(lowered) || s.MatchesPinyin(text))
+            .Take(limit)
+            .ToList();
+    }
+
+    /// <summary>把某座位上的学生与按关键字找到的学生对调。找不到或锁定则拒绝。</summary>
+    public void QuickSwapByName(SeatCellViewModel source, string keyword)
+    {
+        if (!_assignments.TryGetValue(source.Position, out var current))
+        {
+            SetStatus("这个座位是空的，双击有人的座位可以快速换人。", true);
+            return;
+        }
+
+        var candidates = FindStudents(keyword);
+        if (candidates.Count == 0)
+        {
+            SetStatus($"没有找到「{keyword}」。", true);
+            return;
+        }
+
+        if (candidates.Count > 1)
+        {
+            SetStatus($"找到 {candidates.Count} 人，请再输入几个字缩小范围。", true);
+            return;
+        }
+
+        var target = candidates[0];
+        if (target.Id == current.Id)
+        {
+            SetStatus($"{current.Name} 已经坐在这里了。");
+            return;
+        }
+
+        var targetSeat = _seats.Values.FirstOrDefault(s =>
+            _assignments.TryGetValue(s.Position, out var occupant) && occupant.Id == target.Id);
+
+        if (targetSeat is null)
+        {
+            SetStatus($"{target.Name} 还没有座位，可以先用「放入所选学生」。", true);
+            return;
+        }
+
+        if (Constraints.IsPinned(current.Id) || Constraints.IsPinned(target.Id))
+        {
+            SetStatus("其中一位的座位已锁定，先解除锁定再换。", true);
+            return;
+        }
+
+        MoveSeatStudent(source, targetSeat);
+    }
 
     /// <summary>切换当前选中座位的锁定状态。锁的是「学生-座位绑定」。</summary>
     public void ToggleSelectedSeatPin()
@@ -1399,6 +1478,9 @@ public partial class SeatGridViewModel : ObservableObject
     /// <summary>约束变更后由窗口层调用的刷新入口。</summary>
     public void RefreshSeatVisualsPublic() => RefreshSeatVisuals();
 
+    /// <summary>名单变更后由窗口层调用的刷新入口。</summary>
+    public void RefreshStudentsPublic() => RefreshStudents();
+
     /// <summary>整班座位沿当前视角平移一格：dx 向右、dy 向下，超出边缘自动绕回。</summary>
     public void ShiftAllSeats(int dx, int dy)
     {
@@ -1638,13 +1720,25 @@ public partial class SeatGridViewModel : ObservableObject
         PodiumLabel = PodiumLabel,
         PodiumWidthPercent = (int)Math.Round(PodiumWidthPercent),
         PodiumHeight = (int)Math.Round(PodiumHeightValue),
+        MentorEnabled = MentorEnabled,
+        MentorSeat = MentorSeatIndex == 1 ? MentorSeat.FrontRow : MentorSeat.Center,
     };
 
     /// <summary>导出用的约束快照；无约束时返回 null，让配置里不多出一张空表。</summary>
     public ArrangeConstraints? GetCoreConstraints()
     {
         var built = Constraints.Build(CurrentLayout);
-        return built.IsEmpty ? null : built;
+        var withMentor = new ArrangeConstraints
+        {
+            Pins = built.Pins,
+            Mutex = built.Mutex,
+            Deskmates = built.Deskmates,
+            AvoidDeskmates = built.AvoidDeskmates,
+            Zones = built.Zones,
+            MentorEnabled = MentorEnabled,
+            MentorSeat = MentorSeatIndex == 1 ? MentorSeat.FrontRow : MentorSeat.Center,
+        };
+        return withMentor.IsEmpty ? null : withMentor;
     }
 
     public SeatChartDocument ComposeDocument() =>
@@ -1697,6 +1791,8 @@ public partial class SeatGridViewModel : ObservableObject
         PodiumLabel = config.Settings.PodiumLabel;
         PodiumWidthPercent = config.Settings.PodiumWidthPercent;
         PodiumHeightValue = config.Settings.PodiumHeight;
+        MentorEnabled = config.Settings.MentorEnabled;
+        MentorSeatIndex = config.Settings.MentorSeat == MentorSeat.FrontRow ? 1 : 0;
         _suppressRebuild = false;
 
         _students.Clear();

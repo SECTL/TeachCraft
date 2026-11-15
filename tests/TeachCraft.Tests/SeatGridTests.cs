@@ -1994,6 +1994,213 @@ public sealed class SeatGridTests : IDisposable
         return null;
     }
 
+    // ----------------------------- 1.29.0 交互与格式 -----------------------------
+
+    [Fact]
+    public void MentorPlanner_PicksHighestScorePerGroup()
+    {
+        var students = MakeStudents(8);
+        for (var i = 0; i < students.Count; i++) students[i].Score = 60 + i * 5;
+
+        var groupOf = students.ToDictionary(s => s.Id, s => students.IndexOf(s) % 2);
+        var issues = new List<SeatIssue>();
+        var leaders = MentorPlanner.Leaders(students, groupOf, issues);
+
+        Assert.Equal(2, leaders.Count);
+        foreach (var (group, leaderId) in leaders)
+        {
+            var leader = students.Single(s => s.Id == leaderId);
+            var groupMax = students.Where(s => groupOf[s.Id] == group).Max(s => s.Score!.Value);
+            Assert.Equal(groupMax, leader.Score);
+        }
+    }
+
+    [Fact]
+    public void MentorPlanner_GroupWithoutScoresHasNoLeader()
+    {
+        var students = MakeStudents(4);
+        students[0].Score = 90;   // 组 0 只有一人有成绩
+        students[1].Score = 80;   // 组 1 只有一人有成绩
+
+        var groupOf = students.ToDictionary(s => s.Id, s => students.IndexOf(s) % 2);
+        var issues = new List<SeatIssue>();
+        var leaders = MentorPlanner.Leaders(students, groupOf, issues);
+
+        Assert.Equal(2, leaders.Count);
+        Assert.DoesNotContain(issues, i => i.Kind == SeatIssueKind.MentorSkipped);
+    }
+
+    [Fact]
+    public void MentorPlanner_GroupWithNoScoredMembersIsSkipped()
+    {
+        var students = MakeStudents(4);
+        // 只给组 0 的两人成绩，组 1 无人有成绩。
+        students[0].Score = 90;
+        students[2].Score = 80;
+
+        var groupOf = students.ToDictionary(s => s.Id, s => students.IndexOf(s) % 2);
+        var issues = new List<SeatIssue>();
+        var leaders = MentorPlanner.Leaders(students, groupOf, issues);
+
+        Assert.Single(leaders);
+        Assert.Contains(issues, i => i.Kind == SeatIssueKind.MentorSkipped);
+    }
+
+    [Fact]
+    public void MentorPlanner_LeaderSeatIsGroupCenter()
+    {
+        var layout = new SeatChartLayout(4, 6, 2);
+
+        var center = MentorPlanner.LeaderSeat(layout, 1, MentorSeat.Center);
+        Assert.Equal(1, center.Group);
+        Assert.Equal(3, center.Row);   // 6 排 → 第 4 排（0 基 3）
+        Assert.Equal(0, center.Column);
+
+        var front = MentorPlanner.LeaderSeat(layout, 1, MentorSeat.FrontRow);
+        Assert.Equal(0, front.Row);
+    }
+
+    [Fact]
+    public void SeatingEngine_MentorDoesNotBreakPins()
+    {
+        var students = MakeStudents(8);
+        for (var i = 0; i < students.Count; i++) students[i].Score = 60 + i * 5;
+
+        var layout = new SeatChartLayout(2, 4, 2);
+        var pin = new SeatPosition(1, 3, 1);
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[7].Id] = pin },
+            MentorEnabled = true,
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.ScoreSnake, constraints);
+
+        Assert.Equal("同学8", result.Assignments[pin].Name);
+    }
+
+    [Fact]
+    public void SeatingEngine_MentorWithAllNullScoresIsNoOp()
+    {
+        var students = MakeStudents(6);
+        var layout = new SeatChartLayout(2, 3, 2);
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder,
+            new ArrangeConstraints { MentorEnabled = true });
+
+        Assert.Equal(6, result.Assignments.Count);
+        Assert.Contains(result.Issues, i => i.Kind == SeatIssueKind.MentorSkipped);
+    }
+
+    [Fact]
+    public void RosterImporter_ReadsExtendedColumnAliases()
+    {
+        var path = Path.Combine(_root, "aliases.xlsx");
+        using (var workbook = new XLWorkbook())
+        {
+            var sheet = workbook.Worksheets.Add("六班");
+            string[] headers = { "学生姓名", "性别", "学号", "总成绩", "分组" };
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "陈思远"; sheet.Cell(2, 2).Value = "男";
+            sheet.Cell(2, 3).Value = "2024001"; sheet.Cell(2, 4).Value = 560; sheet.Cell(2, 5).Value = "第 2 组";
+            workbook.SaveAs(path);
+        }
+
+        var result = RosterImporter.Import(path);
+
+        Assert.Single(result.Students);
+        Assert.Equal("陈思远", result.Students[0].Name);
+        Assert.Equal(560, result.Students[0].Score);
+        Assert.Equal("第 2 组", result.Students[0].OriginalGroup);
+    }
+
+    [Fact]
+    public void RosterImporter_ReportsUnknownColumns()
+    {
+        var path = Path.Combine(_root, "unknown.xlsx");
+        using (var workbook = new XLWorkbook())
+        {
+            var sheet = workbook.Worksheets.Add("六班");
+            string[] headers = { "姓名", "性别", "家长电话" };
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "陈思远"; sheet.Cell(2, 2).Value = "男"; sheet.Cell(2, 3).Value = "13800000000";
+            workbook.SaveAs(path);
+        }
+
+        var result = RosterImporter.Import(path);
+
+        Assert.Contains(result.Warnings, w => w.Contains("家长电话"));
+    }
+
+    [Fact]
+    public void Pptx_ExportsValidPresentation()
+    {
+        var (settings, students, assignments) = ChartFixture();
+        var document = SeatChartComposer.Compose(settings, assignments, students.Count);
+
+        var path = Path.Combine(_root, "seats.pptx");
+        SeatChartPptxExporter.Export(document, path);
+
+        Assert.True(File.Exists(path));
+        // 单页 PPTX 只有几 KB（文字为主、无图片）；门槛按「能打开且有一页」判断，不按体积。
+        Assert.True(new FileInfo(path).Length > 1000);
+
+        using var presentation = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false);
+        var slideParts = presentation.PresentationPart!.SlideParts.ToList();
+        Assert.Single(slideParts);
+    }
+
+    [Fact]
+    public void Pptx_ContainsEveryStudentName()
+    {
+        var (settings, students, assignments) = ChartFixture();
+        var document = SeatChartComposer.Compose(settings, assignments, students.Count);
+
+        var path = Path.Combine(_root, "names.pptx");
+        SeatChartPptxExporter.Export(document, path);
+
+        using var presentation = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false);
+        var text = string.Concat(presentation.PresentationPart!.SlideParts
+            .Select(p => p.Slide!.Descendants<DocumentFormat.OpenXml.Drawing.Text>())
+            .SelectMany(t => t)
+            .Select(t => t.Text ?? string.Empty));
+
+        // PPTX 只画座位表，不含未排座的学生——所以只断言「已排座的人都在」。
+        foreach (var seat in document.Groups.SelectMany(g => g.Rows).SelectMany(r => r.Seats))
+        {
+            if (seat.IsEmpty) continue;
+            Assert.Contains(seat.Name.Replace(" ", string.Empty), text.Replace(" ", string.Empty));
+        }
+    }
+
+    [Fact]
+    public void Pptx_SeatOrderMatchesComposer()
+    {
+        var settings = new SeatChartSettings
+        {
+            Groups = 2, Rows = 2, Columns = 2, SpaceTwoCharNames = false, View = ViewMode.Teacher,
+        };
+        var students = new List<Student>
+        {
+            new() { Name = "甲一" }, new() { Name = "乙二" },
+            new() { Name = "丙三" }, new() { Name = "丁四" },
+        };
+        var assignments = SeatingEngine.Arrange(students, settings.GetLayout(), ArrangeMode.RosterOrder);
+        var document = SeatChartComposer.Compose(settings, assignments, students.Count);
+
+        var path = Path.Combine(_root, "order.pptx");
+        SeatChartPptxExporter.Export(document, path);
+
+        using var presentation = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, false);
+        var texts = presentation.PresentationPart!.SlideParts
+            .SelectMany(p => p.Slide!.Descendants<DocumentFormat.OpenXml.Drawing.Text>())
+            .Select(t => t.Text ?? string.Empty).ToList();
+
+        // 按 Composer 的显示序，第一组第一排第一个座位应是「甲一」。
+        var expectedFirst = document.Groups[0].Rows[0].Seats[0].Name;
+        Assert.Contains(expectedFirst, texts);
+    }
+
     private static List<Student> MakeStudents(int count) =>
         Enumerable.Range(0, count)
             .Select(i => new Student { Name = $"同学{i + 1}", Gender = i % 2 == 0 ? Gender.Male : Gender.Female })

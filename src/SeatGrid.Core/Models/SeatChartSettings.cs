@@ -100,6 +100,12 @@ public sealed class SeatChartSettings
     /// <summary>成绩模式的组内顺序。</summary>
     public Seating.WithinGroupOrder WithinGroup { get; set; } = Seating.WithinGroupOrder.Fold;
 
+    /// <summary>小组导师制：组内成绩第一任组长，组员环绕。</summary>
+    public bool MentorEnabled { get; set; }
+
+    /// <summary>组长坐哪：组中心 / 第一排。</summary>
+    public Seating.MentorSeat MentorSeat { get; set; } = Seating.MentorSeat.Center;
+
     public SeatChartLayout GetLayout() => new(Groups, Rows, Columns, Canvas);
 
     public SeatChartSettings Clone() => (SeatChartSettings)MemberwiseClone();
