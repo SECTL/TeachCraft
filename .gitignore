@@ -49,3 +49,6 @@ outputs/
 
 # IDE 生成的发布配置（每位开发机一套，不进仓库）
 **/Properties/PublishProfiles/
+
+# Claude Code 会话工具配置（本机）
+.claude/
