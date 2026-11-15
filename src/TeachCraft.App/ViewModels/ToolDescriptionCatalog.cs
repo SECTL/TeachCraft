@@ -44,6 +44,7 @@ public static class ToolDescriptionCatalog
     private static readonly Dictionary<string, ToolDescription> Tools = new(StringComparer.Ordinal)
     {
         ["image-convert"] = new ToolDescription(
+            "图片格式转换",
             "把 PNG、JPG、WebP 互相转一遍。手机拍的竖图按 EXIF 方向摆正；透明背景转 JPG 时先铺白底，不会压出一块黑。",
             new[] { "三格式互转", "EXIF 摆正", "白底兜底", "画质可调" },
             "PNG / JPG / WebP / BMP / GIF",
@@ -57,6 +58,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["image-resize"] = new ToolDescription(
+            "图片尺寸调整",
             "按宽高、按百分比或等比缩放，一次把像素尺寸改到位；EXIF 方向照样摆正，竖拍的照片不会躺倒。",
             new[] { "宽高像素", "等比缩放", "百分比", "方向摆正" },
             "任意常见图片（PNG / JPG / WebP / BMP / GIF）",
@@ -70,6 +72,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["image-compress"] = new ToolDescription(
+            "图片压缩",
             "在画质与体积之间找平衡：JPG / WebP 调画质，所有格式都能限制最长边；完成后直接告诉你从多少 KB 压到多少 KB。",
             new[] { "画质 40–100", "最长边限制", "体积对比", "PNG 无损" },
             "PNG / JPG / WebP",
@@ -83,6 +86,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["image-watermark"] = new ToolDescription(
+            "图片加水印",
             "给图片压一行文字水印：五个落点、字号与不透明度都可调；深色图自动用白字、浅色图自动用墨字，并加一层反色阴影保证可读。",
             new[] { "五档位置", "自动黑白字", "反色阴影", "字号倍率" },
             "任意常见图片（PNG / JPG / WebP / BMP / GIF）",
@@ -96,6 +100,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["pdf-word"] = new ToolDescription(
+            "PDF 转 Word",
             "两种转换方式：要改文字选「可编辑文字」，要保版式选「保留版面」。前者按内容顺序抽出段落，后者把每页渲成图片嵌进 DOCX。",
             new[] { "文字可编辑", "版面保真", "DPI 72–300", "分页保留" },
             "PDF（加密文档需先解除密码）",
@@ -109,6 +114,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["word-pdf"] = new ToolDescription(
+            "Word 转 PDF",
             "把 DOCX 排成 A4 PDF：标题层级、加粗斜体下划线、居左居右与表格边框都保留，页脚带页码。",
             new[] { "A4 自动排版", "表格保留", "页脚页码", "无需装 Word" },
             ".docx（Word 文档）",
@@ -122,6 +128,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["images-pdf"] = new ToolDescription(
+            "图片合成 PDF",
             "多张图片按你排的顺序合成一份 PDF，一页一张；A4 按图片横竖自动切换，长边适配、内容居中。",
             new[] { "顺序可控", "横竖自适应", "A4 居中", "一页一图" },
             "多张图片（可一次多选，也可以追加）",
@@ -135,6 +142,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["pdf-images"] = new ToolDescription(
+            "PDF 转图片",
             "把 PDF 逐页导成 PNG，DPI 可从 72 调到 300；输出到指定文件夹，长文档会在进度条上显示「第 N 页 / 共 M 页」。",
             new[] { "逐页 PNG", "DPI 72–300", "进度可见", "输出到文件夹" },
             "PDF 文档",
@@ -148,6 +156,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["pdf-merge"] = new ToolDescription(
+            "PDF 合并",
             "两份以上的 PDF 按你排的顺序拼成一份；列表顺序就是页序，排错了可以上移下移再合并。",
             new[] { "顺序可调", "至少两份", "原文件不动", "输出保护" },
             "多份 PDF（至少 2 份）",
@@ -161,6 +170,7 @@ public static class ToolDescriptionCatalog
             }),
 
         ["pdf-split"] = new ToolDescription(
+            "PDF 拆分提取",
             "填一段页码范围就能抽出想要的那几页，写成 1-3,5 就够；留空表示整份原样另存一份。",
             new[] { "页码范围", "中英文逗号", "越界即报错", "原文件不动" },
             "PDF 文档",
@@ -177,6 +187,7 @@ public static class ToolDescriptionCatalog
     private static readonly Dictionary<string, ToolDescription> Apps = new(StringComparer.Ordinal)
     {
         [GradeStripKey] = new ToolDescription(
+            "分晓",
             "一位老师从智学网导出总表，到手里攥着一叠裁好的成绩条，中间只隔着一次拖放。多场考试按顺序排好，进退步、学科诊断与学生画像一并计算。",
             new[] { "成绩条导出", "多考对比", "学科诊断", "学生画像" },
             ".xlsx / .xlsm / .xls（成绩总表与智学网分析报表）",
@@ -190,6 +201,7 @@ public static class ToolDescriptionCatalog
             }),
 
         [SeatGridKey] = new ToolDescription(
+            "归位",
             "导入班级名单，自动识别姓名、性别、身高与视力；可锁定座位、设互斥与结对，支持过道门窗、考场模式与桌贴打印。",
             new[] { "名单自动识别", "八种排法", "考场与桌贴", "教室画布" },
             ".xlsx / .xls / .csv（带表头或不带表头的名单都认）",
@@ -203,6 +215,7 @@ public static class ToolDescriptionCatalog
             }),
 
         [ClassBlockKey] = new ToolDescription(
+            "时序",
             "导入课程总表，自动认出年级、学期、月份与全部班级；选中一个班，就能得到一张可直接打印的课程表。",
             new[] { "只收 xlsx", "班级自动识别", "作息模板", "PNG + PDF" },
             ".xlsx 课程总表（带分工表、午学、课服 / 晚修更好）",
@@ -216,6 +229,7 @@ public static class ToolDescriptionCatalog
             }),
 
         [GradeWeaveKey] = new ToolDescription(
+            "织序",
             "时序的上游：先把全年级的课排出来，再交给时序排版。教研、走班、会议先定，剩下的一次排清冲突。",
             new[] { "五步流程", "自动编排", "七类冲突", "Excel / PNG / PDF" },
             "年级工作簿 .xlsx（分工表 / 确认表 / 课程表 / 会议备注）或 .weave.json 工程",
@@ -229,6 +243,7 @@ public static class ToolDescriptionCatalog
             }),
 
         [MeetRosterKey] = new ToolDescription(
+            "竞名",
             "一份秩序册也能整本导进来：名单、日程与分组表一次读齐，选中班级即高亮，还能导出只含该班选手的参赛手册。",
             new[] { "秩序册整本导入", "规则体检", "单班高亮", "导出参赛手册" },
             "班级报名表 .xlsx（可多选）、秩序册 .xlsx，或往届「竞赛日程 / 项目分组表」",

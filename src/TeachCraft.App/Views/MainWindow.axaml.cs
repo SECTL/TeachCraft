@@ -40,6 +40,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         SearchBox.KeyDown += OnSearchKeyDown;
+
+        // 仓库里其余 16 个窗口都在 Opened 时把自己钳进工作区，唯独主窗口一直没做：
+        // 1366×768 @125% 下工作区只有约 590 DIP 高，而窗口固定 840，底栏会落在屏幕外。
+        Opened += (_, _) => WindowFit.Clamp(this);
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext!;
@@ -135,6 +139,35 @@ public partial class MainWindow : Window
         {
             ViewModel.IsUpdateBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 引导第 4 页的三个入口。刻意复用侧栏与常备卡的同一批处理器，
+    /// 不另写一套「打开应用」逻辑——否则引导与主界面迟早分叉。
+    /// </summary>
+    private void OnOobeActionRequested(TeachCraft.App.ViewModels.OobeActionKind kind)
+    {
+        switch (kind)
+        {
+            case TeachCraft.App.ViewModels.OobeActionKind.OpenGradeStrip:
+                OnLaunchGradeStrip(this, new RoutedEventArgs());
+                break;
+            case TeachCraft.App.ViewModels.OobeActionKind.OpenSeatGrid:
+                OnLaunchSeatGrid(this, new RoutedEventArgs());
+                break;
+            case TeachCraft.App.ViewModels.OobeActionKind.OpenUpdatePanel:
+                // 只打开面板，不触发联网检查（AGENTS.md 八.3 与 UpdateWiringTests 都守着这条）。
+                _ = ShowPanelAsync(ViewModel.IsPanelOpen);
+                ViewModel.OpenUpdatePanel();
+                break;
+        }
+    }
+
+    /// <summary>侧栏底部「首次引导」：从第一页重新看一遍。</summary>
+    private void OnOpenOobeClick(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.Oobe.OpenAt(1);
+        ViewModel.SetStatus("正在查看 首次引导");
     }
 
     /// <summary>更新页里的「跳过这版」。</summary>
@@ -421,6 +454,7 @@ public partial class MainWindow : Window
 
     private void OnAppCardKeyDown(object? sender, KeyEventArgs e)
     {
+        if (ViewModel.Oobe.IsOpen) return;
         if (e.Key is not (Key.Enter or Key.Space)) return;
         if ((sender as Control)?.Tag is not AppCardViewModel card) return;
 
@@ -826,6 +860,9 @@ public partial class MainWindow : Window
 
     private void OnSearchKeyDown(object? sender, KeyEventArgs e)
     {
+        // 从侧栏重开引导时搜索框可能仍持有焦点；不拦住的话 Enter 会在遮罩背后打开抽屉。
+        if (ViewModel.Oobe.IsOpen) return;
+
         if (e.Key != Key.Enter) return;
 
         // 搜索框回车 = 打开第一个命中工具，而不是把按键吞掉什么也不做。
@@ -844,6 +881,10 @@ public partial class MainWindow : Window
     protected override async void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+
+        // 引导打开时键盘全部交给遮罩：OnKeyDown 末尾会无条件消费 Escape，
+        // 不早退的话遮罩自己的 Esc 处理永远轮不到（这是仓库里既有的行为，不是猜测）。
+        if (ViewModel.Oobe.IsOpen) return;
 
         var control = (e.KeyModifiers & KeyModifiers.Control) != 0 || (e.KeyModifiers & KeyModifiers.Meta) != 0;
         if (control && e.Key == Key.K)
@@ -864,6 +905,12 @@ public partial class MainWindow : Window
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
+        if (ViewModel.Oobe.IsOpen)
+        {
+            e.DragEffects = DragDropEffects.None;
+            return;
+        }
+
         var hasFiles = e.DataTransfer.Contains(DataFormat.File);
         e.DragEffects = hasFiles && ViewModel.IsToolPanelOpen
             ? DragDropEffects.Copy
@@ -875,6 +922,9 @@ public partial class MainWindow : Window
 
     private void OnDrop(object? sender, DragEventArgs e)
     {
+        // 引导期间拖进来的文件既不能挂到工具上，也不该在状态栏留提示。
+        if (ViewModel.Oobe.IsOpen) return;
+
         if (!ViewModel.IsToolPanelOpen || ViewModel.SelectedTool is null)
         {
             if (e.DataTransfer.Contains(DataFormat.File)) ViewModel.SetStatus(NoPanelDragHint);

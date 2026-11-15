@@ -1,0 +1,117 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             x:Class="TeachCraft.App.Controls.OobeOverlayView"
+             x:DataType="vm:OobeViewModel"
+             Focusable="True"
+             KeyboardNavigation.TabNavigation="Cycle"
+             Background="{StaticResource PaperBrush}">
+    <!-- 遮罩根必须不透明且吃点击：主内容区在引导打开时被 IsEnabled=false 整条置灰，
+         只有这层不透明背景盖住它，置灰才看不见；同时它挡住所有点击穿透。 -->
+
+    <Grid RowDefinitions="*,Auto" Margin="40,36,40,28">
+        <!-- 中央白卡 -->
+        <Border Grid.Row="0" Classes="oobe-card card" MaxWidth="720"
+                VerticalAlignment="Center" HorizontalAlignment="Center"
+                CornerRadius="12" Padding="40,30,40,26">
+            <StackPanel Spacing="0">
+
+                <!-- 页眉：等宽小标 -->
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Border Width="18" Height="1" Background="{StaticResource AccentBrush}"
+                            VerticalAlignment="Center" Opacity="0.8" />
+                    <TextBlock Text="{Binding CurrentStep.Eyebrow}" FontFamily="{StaticResource MonoFont}"
+                               FontSize="9.5" LetterSpacing="2.2" Foreground="{StaticResource MutedBrush}" />
+                </StackPanel>
+
+                <!-- 标题 -->
+                <TextBlock Text="{Binding CurrentStep.Title}" FontFamily="{StaticResource SerifFont}"
+                           FontSize="30" LetterSpacing="-0.4" Foreground="{StaticResource InkBrush}"
+                           TextWrapping="Wrap" Margin="0,12,0,0" />
+
+                <!-- 导语 -->
+                <TextBlock Text="{Binding CurrentStep.Lead}" FontSize="13.5" LineHeight="24"
+                           Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap"
+                           Margin="0,12,0,0" />
+
+                <!-- 正文 -->
+                <TextBlock Text="{Binding CurrentStep.Body}" FontSize="12.5" LineHeight="22"
+                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                           Margin="0,10,0,0" IsVisible="{Binding CurrentStep.Body, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                <!-- 要点 -->
+                <ItemsControl ItemsSource="{Binding CurrentStep.Bullets}" Margin="0,15,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,8">
+                                <Border Grid.Column="0" Width="4" Height="4" CornerRadius="2"
+                                        Background="{StaticResource AccentBrush}" Margin="0,8,11,0"
+                                        VerticalAlignment="Top" />
+                                <TextBlock Grid.Column="1" Text="{Binding}" FontSize="12.5" LineHeight="21"
+                                           Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- 第 4 页的可点击入口 -->
+                <ItemsControl ItemsSource="{Binding CurrentStep.Actions}" Margin="0,14,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:OobeAction">
+                            <!-- 三个入口错开 60ms 出现：让「有三件事可以做」这个事实被看见，
+                                 而不是一次性砸出来。只动透明度与 6px 位移，不动布局。 -->
+                            <Button Classes="ghost oobe-action" Content="{Binding Label}" FontSize="12"
+                                    HorizontalAlignment="Left" Margin="0,0,0,7"
+                                    Tag="{Binding Kind}" Click="OnActionClick"
+                                    AttachedToVisualTree="OnActionAttached"
+                                    AutomationProperties.Name="{Binding Label}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+            </StackPanel>
+        </Border>
+
+        <!-- 操作条：跳过 / 进度轨 / 上一步 + 下一步 -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,22,0,0" MaxWidth="720"
+              HorizontalAlignment="Center" Width="720">
+            <Button Grid.Column="0" Classes="link" Content="跳过"
+                    FontSize="11.5" VerticalAlignment="Center"
+                    Click="OnSkipClick" AutomationProperties.Name="跳过首次引导" />
+
+            <!-- 进度：细轨 + 已填充段。宽度随翻页过渡，让「我在哪」读得出来 -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="96" Height="2" CornerRadius="1"
+                        Background="{StaticResource LineBrush}" VerticalAlignment="Center">
+                    <Border HorizontalAlignment="Left" CornerRadius="1"
+                            Background="{StaticResource AccentBrush}">
+                        <Border.Transitions>
+                            <Transitions>
+                                <DoubleTransition Property="Width" Duration="0:0:0.2"
+                                                  Easing="CubicEaseOut" />
+                            </Transitions>
+                        </Border.Transitions>
+                        <Border.Width>
+                            <MultiBinding Converter="{x:Static vm:OobeProgressConverter.Instance}">
+                                <Binding Path="CurrentIndex" />
+                                <Binding Path="Steps.Count" />
+                            </MultiBinding>
+                        </Border.Width>
+                    </Border>
+                </Border>
+                <TextBlock Text="{Binding ProgressText}" FontFamily="{StaticResource MonoFont}"
+                           FontSize="9" LetterSpacing="1.2" Foreground="{StaticResource MutedBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Classes="ghost" Content="上一步" FontSize="12"
+                        IsVisible="{Binding !IsFirstStep}"
+                        Click="OnBackClick" AutomationProperties.Name="上一步" />
+                <Button Classes="primary" Content="{Binding PrimaryButtonText}" FontSize="12"
+                        Click="OnPrimaryClick" AutomationProperties.Name="下一步或开始使用" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

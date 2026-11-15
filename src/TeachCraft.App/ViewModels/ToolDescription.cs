@@ -11,6 +11,7 @@ namespace TeachCraft.App.ViewModels;
 public sealed class ToolDescription
 {
     public ToolDescription(
+        string name,
         string tagline,
         IReadOnlyList<string> highlights,
         string inputDetail,
@@ -18,6 +19,8 @@ public sealed class ToolDescription
         string processingDetail,
         IReadOnlyList<string> features)
     {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("名称不能为空。", nameof(name));
         if (string.IsNullOrWhiteSpace(tagline))
             throw new ArgumentException("工具说明不能为空。", nameof(tagline));
         if (highlights.Count == 0)
@@ -25,6 +28,7 @@ public sealed class ToolDescription
         if (features.Count == 0)
             throw new ArgumentException("至少要有一条功能摘要。", nameof(features));
 
+        Name = name;
         Tagline = tagline;
         Highlights = highlights;
         InputDetail = inputDetail;
@@ -32,6 +36,12 @@ public sealed class ToolDescription
         ProcessingDetail = processingDetail;
         Features = features;
     }
+
+    /// <summary>
+    /// 展示名称，必须与 MainViewModel 里的卡片名称逐字相同。
+    /// 引导页要列全部工具与常备应用，名称若在这里缺席，那边就只能硬编码一份副本。
+    /// </summary>
+    public string Name { get; }
 
     /// <summary>一句话定位，说清「给谁用、解决什么、哪些坑已经填好」。</summary>
     public string Tagline { get; }

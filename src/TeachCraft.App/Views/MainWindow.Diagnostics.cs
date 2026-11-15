@@ -665,4 +665,250 @@ public partial class MainWindow
         lines.Add($"合计绑定错误={missing}（期望 0）");
         File.WriteAllLines(path, lines);
     }
+    // ----------------------------- 首次引导走查 -----------------------------
+
+    /// <summary>
+    /// 走查：把引导摆到第 n 步。只改内存，不写状态文件。
+    /// force=true 时无条件打开（--oobe / --oobe-shot 等取证通道）；
+    /// force=false 时**尊重启动判定**（--oobe-metrics 用它验证「按真实状态该不该弹」）。
+    /// </summary>
+    public void ShowOobeForShot(int step, bool force = true)
+    {
+        if (force || ViewModel.Oobe.IsOpen) ViewModel.Oobe.OpenAt(step);
+        UpdateLayout();
+    }
+
+    /// <summary>走查：回读引导遮罩的版式数值，证明一屏放得下、没有滚动条。</summary>
+    public void DumpOobeMetrics(string path)
+    {
+        var lines = new List<string>();
+        var overlay = this.GetVisualDescendants().OfType<Controls.OobeOverlayView>().FirstOrDefault();
+        lines.Add($"open={ViewModel.Oobe.IsOpen} step={ViewModel.Oobe.CurrentIndex} " +
+                  $"progress={ViewModel.Oobe.ProgressText}");
+
+        if (overlay is null)
+        {
+            lines.Add("overlay=missing");
+            File.WriteAllLines(path, lines);
+            return;
+        }
+
+        var scrolls = overlay.GetVisualDescendants().OfType<ScrollViewer>().Count();
+        var card = overlay.GetVisualDescendants().OfType<Border>()
+            .FirstOrDefault(b => b.Classes.Contains("oobe-card"));
+
+
+        // 卡片里的 StackPanel 才是真正的内容；用它的自然高度判断有没有被裁。
+        var content = overlay.GetVisualDescendants().OfType<StackPanel>()
+            .FirstOrDefault(sp => sp.TemplatedParent is Border b && b.Classes.Contains("oobe-card"))
+            ?? overlay.GetVisualDescendants().OfType<StackPanel>().FirstOrDefault();
+
+        lines.Add($"scrollviewer_count={scrolls}");
+        lines.Add($"card_width={(card?.Bounds.Width ?? 0):F1}");
+        lines.Add($"overlay_height={overlay.Bounds.Height:F1}");
+
+        if (content is not null && card is not null)
+        {
+            var needed = content.DesiredSize.Height;
+            var available = card.Bounds.Height - card.Padding.Top - card.Padding.Bottom;
+            // 内容自然高度超过卡片可用高度即视为被裁。
+            var clipped = needed > available + 0.5;
+            lines.Add($"content={needed:F1} available={available:F1} clipped={(clipped ? "yes" : "no")}");
+        }
+        else
+        {
+            lines.Add("content=missing clipped=unknown");
+        }
+
+        // 主内容区是否被禁用（焦点隔离成立的前提）。
+        var appContent = this.GetVisualDescendants().OfType<Panel>()
+            .FirstOrDefault(p => p.Name == "AppContent");
+        lines.Add($"app_content_disabled={(appContent is { IsEnabled: false } ? "True" : "False")}");
+
+        File.WriteAllLines(path, lines);
+    }
+
+    /// <summary>走查：回读输入隔离的五项结果（键盘、搜索框、拖放、焦点）。</summary>
+    public void DumpOobeInteraction(string path)
+    {
+        var lines = new List<string>();
+        var vm = ViewModel;
+
+        lines.Add($"overlay_open={vm.Oobe.IsOpen}");
+        lines.Add($"focus_inside_overlay={IsFocusInsideOobe()}");
+        lines.Add($"ctrl_k_did_not_focus_search={!SearchBox.IsFocused}");
+        lines.Add($"search_enter_did_not_open_panel={!vm.IsToolPanelOpen}");
+        lines.Add($"drop_ignored={!vm.IsToolPanelOpen}");
+        lines.Add($"escape_skips_and_records={vm.Oobe.IsOpen}");
+
+        File.WriteAllLines(path, lines);
+    }
+
+    /// <summary>走查：用真实路由事件回读键位表七项，证明键盘能走完整个引导。</summary>
+    public void DumpOobeKeys(string path)
+    {
+        var lines = new List<string>();
+        var vm = ViewModel.Oobe;
+        var overlay = this.GetVisualDescendants().OfType<Controls.OobeOverlayView>().FirstOrDefault();
+
+        if (overlay is null)
+        {
+            File.WriteAllLines(path, new[] { "overlay=missing" });
+            return;
+        }
+
+        void Press(Key key)
+        {
+            var args = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key };
+            overlay.RaiseEvent(args);
+        }
+
+        vm.OpenAt(1);
+        var start = vm.CurrentIndex;
+
+        Press(Key.Right);
+        lines.Add($"right_advanced={vm.CurrentIndex == start + 1}");
+
+        Press(Key.Left);
+        lines.Add($"left_went_back={vm.CurrentIndex == start}");
+
+        Press(Key.Left);
+        lines.Add($"left_stops_at_first={vm.CurrentIndex == 1}");
+
+        Press(Key.Enter);
+        lines.Add($"enter_advanced={vm.CurrentIndex == 2}");
+
+        Press(Key.Space);
+        lines.Add($"space_advanced={vm.CurrentIndex == 3}");
+
+        Press(Key.Right);
+        lines.Add($"at_last={vm.CurrentIndex == 4}");
+
+        Press(Key.Enter);
+        lines.Add($"enter_on_last_finished={!vm.IsOpen}");
+
+        File.WriteAllLines(path, lines);
+    }
+
+    /// <summary>
+    /// 走查：翻页动效在两种模式下各跑一次。
+    /// 减弱动效时必须位移为 0、立即到位；正常模式应有可观测的位移中间态。
+    /// </summary>
+    public async Task DumpOobeMotionAsync(string path)
+    {
+        var lines = new List<string>();
+        var vm = ViewModel.Oobe;
+        var overlay = this.GetVisualDescendants().OfType<Controls.OobeOverlayView>().FirstOrDefault();
+        if (overlay is null)
+        {
+            File.WriteAllLines(path, new[] { "overlay=missing" });
+            return;
+        }
+
+        var card = overlay.GetVisualDescendants().OfType<Border>()
+            .FirstOrDefault(b => b.Classes.Contains("oobe-card"));
+
+        // 进场：卡片从 opacity 0 + scale 0.97 + 8px 下移浮上来。
+        // 走查通道已经把遮罩打开了，进场早就播完；这里显式重播一次再采样。
+        // 必须在任何 OpenAt / Next 之前测——那些会把 RenderTransform 换成纯平移，缩放就测不到。
+        overlay.ReplayEnterForDiagnostics();
+        var enterSamples = 0;
+        var minEnterOpacity = 1.0;
+        var minEnterScale = 1.0;
+        for (var i = 0; i < 12; i++)
+        {
+            await Task.Delay(16);
+            var op = card?.Opacity ?? 1;
+            var sc = (card?.RenderTransform as TransformGroup)?.Children
+                .OfType<ScaleTransform>().FirstOrDefault()?.ScaleX ?? 1;
+            if (op < 0.999 || sc < 0.999) enterSamples++;
+            minEnterOpacity = Math.Min(minEnterOpacity, op);
+            minEnterScale = Math.Min(minEnterScale, sc);
+        }
+        lines.Add($"enter_midframe_samples={enterSamples}");
+        lines.Add($"enter_min_opacity={minEnterOpacity:F2}");
+        lines.Add($"enter_min_scale={minEnterScale:F3}");
+        await Task.Delay(320);
+        lines.Add($"enter_final_opacity={(card?.Opacity ?? 0):F2}");
+
+        async Task<(double X, double Opacity, int Samples)> MeasureAsync()
+        {
+            vm.OpenAt(1);
+            await Task.Delay(120);
+            vm.Next();
+            var samples = 0;
+            double maxX = 0, minOpacity = 1;
+            for (var i = 0; i < 14; i++)
+            {
+                var x = (card?.RenderTransform as TranslateTransform)?.X ?? 0;
+                maxX = Math.Max(maxX, Math.Abs(x));
+                minOpacity = Math.Min(minOpacity, card?.Opacity ?? 1);
+                if (Math.Abs(x) > 0.5 || (card?.Opacity ?? 1) < 0.999) samples++;
+                await Task.Delay(16);
+            }
+            await Task.Delay(260);
+            return ((card?.RenderTransform as TranslateTransform)?.X ?? 0, card?.Opacity ?? 1, samples);
+        }
+
+        TeachCraft.Shared.MotionPreference.OverrideForDiagnostics(true);
+        try
+        {
+            var reduced = await MeasureAsync();
+            lines.Add($"reduced_final_x={reduced.X:F2}");
+            lines.Add($"reduced_final_opacity={reduced.Opacity:F2}");
+            lines.Add($"reduced_midframe_samples={reduced.Samples}");
+        }
+        finally
+        {
+            TeachCraft.Shared.MotionPreference.OverrideForDiagnostics(null);
+        }
+
+        var normal = await MeasureAsync();
+        lines.Add($"normal_final_x={normal.X:F2}");
+        lines.Add($"normal_final_opacity={normal.Opacity:F2}");
+        lines.Add($"normal_midframe_samples={normal.Samples}");
+
+        // 方向感：前进应从正侧进来，后退应从负侧进来。
+        // 两个方向同号就是「上一步看起来像下一步」——这是本轮要修的核心缺陷。
+        // 位移在翻页开始后 16ms 才落下第一帧，读单点会撞上终点。改为连续采样取峰值。
+        async Task<double> PeakXAsync(bool forward)
+        {
+            // OpenAt 本身也会触发翻页动画（它改 CurrentIndex）。等它彻底落定再起手，
+            // 否则测到的是「被打断后续接」的中间值，不是这一次翻页的真实峰值。
+            vm.OpenAt(forward ? 1 : 4);
+            await Task.Delay(420);
+            if (forward) vm.Next(); else vm.Back();
+            var peak = 0.0;
+            for (var i = 0; i < 16; i++)
+            {
+                await Task.Delay(16);
+                var x = (card?.RenderTransform as TranslateTransform)?.X ?? 0;
+                if (Math.Abs(x) > Math.Abs(peak)) peak = x;
+            }
+            await Task.Delay(200);
+            return peak;
+        }
+
+        var forwardX = await PeakXAsync(true);
+        var backX = await PeakXAsync(false);
+        lines.Add($"forward_first_x={forwardX:F2} (期望 > 0)");
+        lines.Add($"back_first_x={backX:F2} (期望 < 0)");
+        lines.Add($"direction_reversed={(forwardX > 0 && backX < 0 ? "yes" : "no")}");
+
+        File.WriteAllLines(path, lines);
+    }
+
+    private bool IsFocusInsideOobe()
+    {
+        var focused = FocusManager?.GetFocusedElement();
+        var overlay = this.GetVisualDescendants().OfType<Controls.OobeOverlayView>().FirstOrDefault();
+        var inside = focused is Visual v &&
+                     (ReferenceEquals(v, overlay) || v.GetVisualAncestors().OfType<Controls.OobeOverlayView>().Any());
+        File.AppendAllText("outputs/focus-debug.txt",
+            $"focused={focused?.GetType().Name ?? "null"} " +
+            $"isOverlay={ReferenceEquals(focused, overlay)} inside={inside} " +
+            $"overlayFocusable={overlay?.Focusable} overlayVisible={overlay?.IsVisible} " +
+            $"overlayFocused={overlay?.IsFocused}\n");
+        return inside;
+    }
 }

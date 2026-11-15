@@ -21,6 +21,11 @@
     </Design.DataContext>
 
     <Grid ColumnDefinitions="232,*">
+
+        <!-- 引导打开时整块内容区被禁用：Avalonia 没有焦点陷阱控件，
+             只有禁用底层才能保证 Tab / Ctrl+K / 点击都不跑到遮罩背后。 -->
+        <Panel x:Name="AppContent" Grid.ColumnSpan="2" IsEnabled="{Binding !Oobe.IsOpen}">
+            <Grid ColumnDefinitions="232,*">
         <!-- ==================== 侧栏 ==================== -->
         <Border Grid.Column="0" Background="{StaticResource SidebarBrush}"
                 BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
@@ -335,6 +340,17 @@
                                   Stroke="{StaticResource InkSoftBrush}" StrokeThickness="1.3"
                                   StrokeLineCap="Round" StrokeJoin="Round" />
                             <TextBlock Text="检查更新" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <!-- 首次引导：与「检查更新」同属「关于这只盒子」的操作，不占主区版面 -->
+                    <Button Classes="nav nav-action" Margin="-6,0,-6,0" Padding="6,7" HorizontalAlignment="Stretch"
+                            Click="OnOpenOobeClick" AutomationProperties.Name="首次引导">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"
+                                  Data="M 2,3.2 L 8,1.4 L 14,3.2 L 14,12.6 L 8,14.4 L 2,12.6 Z M 8,1.4 L 8,14.4"
+                                  Stroke="{StaticResource InkSoftBrush}" StrokeThickness="1.2"
+                                  StrokeLineCap="Round" StrokeJoin="Round" />
+                            <TextBlock Text="首次引导" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                     <TextBlock Text="{Binding VersionText}" FontFamily="{StaticResource MonoFont}" FontSize="9"
@@ -941,6 +957,15 @@
                 </Grid>
             </Border>
         </Grid>
+
+            </Grid>
+        </Panel>
+
+        <!-- ==================== 首次引导遮罩 ==================== -->
+        <controls:OobeOverlayView x:Name="OobeOverlay" Grid.ColumnSpan="2" ZIndex="20"
+                                  DataContext="{Binding Oobe}"
+                                  IsVisible="{Binding IsOpen}"
+                                  ActionRequested="OnOobeActionRequested" />
 
         <!-- ==================== 抽屉 ==================== -->
         <Grid Grid.ColumnSpan="2" IsVisible="{Binding IsPanelOpen}" ZIndex="10">

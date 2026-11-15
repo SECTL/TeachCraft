@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
+using TeachCraft.Core.Oobe;
 using TeachCraft.Core.Tools;
 using TeachCraft.Core.Updating;
 
@@ -50,6 +51,9 @@ public partial class MainViewModel : ObservableObject
     public string VersionText { get; }
 
     public string VersionLine => $"{VersionText} · 10 TOOLS · 5 APPS";
+
+    /// <summary>首次引导的遮罩状态。挂在 MainViewModel 上，因为 MainWindow 的绑定都解析到这里。</summary>
+    public OobeViewModel Oobe { get; }
 
     public ObservableCollection<ToolItemViewModel> VisibleImageTools { get; } = new();
     public ObservableCollection<ToolItemViewModel> VisibleFileTools { get; } = new();
@@ -107,7 +111,9 @@ public partial class MainViewModel : ObservableObject
         InstallInfo? installInfo = null,
         IUpdateStateStore? stateStore = null,
         Func<UpdateDownloader>? downloaderFactory = null,
-        Func<UpdateSource, IUpdateCheckService>? checkServiceFactory = null)
+        Func<UpdateSource, IUpdateCheckService>? checkServiceFactory = null,
+        IOobeStateStore? oobeStateStore = null,
+        bool? showOobe = null)
     {
         _identity = identity ?? BuildIdentity.Current(typeof(MainViewModel));
         _checkService = checkService;
@@ -125,6 +131,19 @@ public partial class MainViewModel : ObservableObject
         if (_identity.Rid is null && info.Rid is not null) _identity = _identity.WithRid(info.Rid);
 
         VersionText = $"V{_identity.Describe()}";
+
+        // 引导状态：默认走真实存储；测试与走查通过参数注入替身，
+        // 否则每个用例都会去读写开发者本机的 %LOCALAPPDATA%。
+        Oobe = new OobeViewModel(oobeStateStore ?? new OobeStateStore());
+
+        // showOobe：null = 按状态自行判断（默认）；true = 强制打开；false = 强制不打开。
+        // 判定本身是只读的——不管打开与否都算一遍，这样 --oobe-metrics 能如实反映「该不该弹」。
+        var decision = OobePlanner.Decide(oobeStateStore?.Load() ?? OobeState.Empty);
+        var shouldShow = showOobe ?? decision.Show;
+        if (showOobe == false) shouldShow = false;
+
+
+        if (shouldShow) Oobe.OpenAt(decision.StartAt);
 
         // 上次手动选过的更新源要恢复，否则每次重启都回到默认，用户的选择形同虚设。
         _updateSource = _stateStore.Load().PreferredSource ?? UpdateSource.GitHub;

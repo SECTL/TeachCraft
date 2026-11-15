@@ -10,6 +10,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using TeachCraft.App.ViewModels;
 using TeachCraft.App.Views;
+using TeachCraft.Core.Oobe;
 using TeachCraft.Core.Updating;
 
 namespace TeachCraft.App;
@@ -61,7 +62,33 @@ public partial class App : Application
                 }
             }
 
-            var viewModel = new MainViewModel();
+            // 首次引导：走查参数默认抑制，但 --oobe 与 --oobe-* 自己例外
+            // （只写精确匹配 --oobe 会让 --oobe-shot 截到一张没有遮罩的图）。
+            // --oobe-reset 不算——它只删状态、不开窗口。
+            // 「强制打开遮罩」只认 --oobe 与真正要取证的通道；
+            // --oobe-metrics 与 --oobe-reset 不在其中——前者要如实反映「按状态该不该弹」，
+            // 后者只删状态。否则前缀匹配会把它们也算成强制，判定就永远测不出来。
+            var forceOobe = args.Contains("--oobe") ||
+                args.Contains("--oobe-shot") ||
+                args.Contains("--oobe-keys") ||
+                args.Contains("--oobe-motion") ||
+                args.Contains("--oobe-interact");
+            var showOobe = forceOobe || !isWalkthrough;
+
+            // 走查路径一律注入空存储：否则在 --oobe-shot 里按一次 Esc
+            // 就会把 Skipped 写进开发者真实的 %LOCALAPPDATA%。
+            // 走查一律注入空存储，**除了** --oobe-metrics：那条通道的用途正是验证「按真实状态该不该弹」，
+            // 用空存储会让它永远读到「首次运行」。它只读不写，且 --oobe 仍会强制覆盖判定。
+            // --oobe-metrics 尊重启动判定；--oobe-shot / --oobe-keys 等仍强制打开（它们要取证界面本身）。
+        var readsRealState = args.Contains("--oobe-metrics") && !forceOobe && !args.Contains("--oobe-shot");
+            var oobeStore = isWalkthrough && !readsRealState
+                ? (IOobeStateStore)new NoopOobeStateStore()
+                : new OobeStateStore();
+
+            // --oobe-metrics 把判定权交回 MainViewModel（传 null），其余走查抑制；
+            // 正常启动也传 null，由状态决定。
+            var oobeOverride = readsRealState ? (bool?)null : showOobe;
+            var viewModel = new MainViewModel(oobeStateStore: oobeStore, showOobe: oobeOverride);
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
 
@@ -1320,6 +1347,8 @@ public partial class App : Application
     {
         var args = desktop.Args ?? Array.Empty<string>();
 
+        if (CaptureOobeIfRequested(desktop, window, args)) return;
+
         var selfTestIndex = Array.IndexOf(args, "--selftest");
         if (selfTestIndex >= 0 && selfTestIndex + 4 < args.Length)
         {
@@ -1517,5 +1546,109 @@ public partial class App : Application
                 desktop.Shutdown(exitCode);
             }
         });
+    }
+
+    /// <summary>
+    /// 首次引导的走查通道：
+    ///   --oobe-shot &lt;png&gt;      截图（配合 --oobe-step 指定页）
+    ///   --oobe-step &lt;n&gt;        指定页，1–4，越界钳制
+    ///   --oobe-metrics &lt;txt&gt;   回读版式数值（卡宽 / 是否裁切 / 滚动条数 / 内容区是否禁用）
+    ///   --oobe-interact &lt;txt&gt;  回读输入隔离五项
+    ///   --oobe-reset            删除本机引导状态后退出（唯一允许碰真实状态的参数）
+    /// 参数不存在时返回 false，交回既有的走查分支。
+    /// </summary>
+    private static bool CaptureOobeIfRequested(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        MainWindow window,
+        string[] args)
+    {
+        var resetIndex = Array.IndexOf(args, "--oobe-reset");
+        if (resetIndex >= 0)
+        {
+            try
+            {
+                var path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "TeachCraft", "Oobe", "state.json");
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception)
+            {
+                // 删不掉就当作本来就没有；退出码仍为 0。
+            }
+
+            Environment.Exit(0);
+            return true;
+        }
+
+        var shotIndex = Array.IndexOf(args, "--oobe-shot");
+        var metricsIndex = Array.IndexOf(args, "--oobe-metrics");
+        var interactIndex = Array.IndexOf(args, "--oobe-interact");
+        var keysIndex = Array.IndexOf(args, "--oobe-keys");
+        var motionIndex = Array.IndexOf(args, "--oobe-motion");
+        var hasStep = Array.IndexOf(args, "--oobe-step") >= 0;
+        var forceOpen = args.Contains("--oobe");
+
+        if (shotIndex < 0 && metricsIndex < 0 && interactIndex < 0 && keysIndex < 0 &&
+            motionIndex < 0 && !forceOpen && !hasStep)
+            return false;
+
+        var shot = shotIndex >= 0 && shotIndex + 1 < args.Length ? args[shotIndex + 1] : null;
+        var metrics = metricsIndex >= 0 && metricsIndex + 1 < args.Length ? args[metricsIndex + 1] : null;
+        var interact = interactIndex >= 0 && interactIndex + 1 < args.Length ? args[interactIndex + 1] : null;
+        var keys = keysIndex >= 0 && keysIndex + 1 < args.Length ? args[keysIndex + 1] : null;
+        var motion = motionIndex >= 0 && motionIndex + 1 < args.Length ? args[motionIndex + 1] : null;
+
+        var stepIndex = Array.IndexOf(args, "--oobe-step");
+        var step = 1;
+        if (stepIndex >= 0 && stepIndex + 1 < args.Length)
+            int.TryParse(args[stepIndex + 1], out step);
+        step = Math.Clamp(step, 1, 4);
+
+        var widthIndex = Array.IndexOf(args, "--oobe-width");
+        var heightIndex = Array.IndexOf(args, "--oobe-height");
+
+        Dispatcher.UIThread.Post(async () =>
+        {
+            var exitCode = 0;
+            try
+            {
+                await Task.Delay(900);
+                if (widthIndex >= 0 && widthIndex + 1 < args.Length &&
+                    double.TryParse(args[widthIndex + 1], out var w) && w > 0)
+                    window.Width = w;
+                if (heightIndex >= 0 && heightIndex + 1 < args.Length &&
+                    double.TryParse(args[heightIndex + 1], out var h) && h > 0)
+                    window.Height = h;
+                if (widthIndex >= 0 || heightIndex >= 0) await Task.Delay(400);
+
+                var respectDecision = metrics is not null && shot is null && !args.Contains("--oobe");
+                window.ShowOobeForShot(step, force: !respectDecision);
+                // 焦点是在 IsVisible 变 true 之后异步抢的，读数前要让它落定。
+                await Task.Delay(700);
+                window.UpdateLayout();
+
+                if (metrics is not null) window.DumpOobeMetrics(metrics);
+                if (interact is not null) window.DumpOobeInteraction(interact);
+                if (keys is not null) window.DumpOobeKeys(keys);
+                if (motion is not null) await window.DumpOobeMotionAsync(motion);
+                if (shot is not null) window.CaptureTo(shot);
+            }
+            catch (Exception ex)
+            {
+                exitCode = 2;
+                try
+                {
+                    File.WriteAllText((shot ?? metrics ?? interact ?? "oobe") + ".error.txt", ex.ToString());
+                }
+                catch (Exception) { }
+            }
+            finally
+            {
+                desktop.Shutdown(exitCode);
+            }
+        });
+
+        return true;
     }
 }
