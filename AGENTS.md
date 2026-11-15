@@ -137,11 +137,14 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 
 - 归位以独立 Avalonia 窗口运行，但**由工具箱同进程打开**（`SeatGridWindow`），单实例复用；不要改成外部 exe。
 - 数据管线固定为：`RosterImporter` → `SeatingEngine` → `SeatChartComposer` → `SeatChartRenderer` / `SeatChartExcelExporter` / `SeatGridConfigIO`。界面、PNG、PDF、Excel 共用同一个 `SeatChartDocument`，不得各自写一套布局。
+- **同桌与邻座语义单源**（1.25.0 起）：`SeatChartLayout.DeskmateOf / AreDeskmates`（同组同排、同一对双人桌，不跨组不跨排，`Columns=1` 无同桌、`Columns=3` 第 3 列落单）与 `NeighborsOf / AreAdjacent`（前后左右，不跨组、不含对角）。`GenderPair` 必须用它成对，不得再依赖 `FillOrder` 的列循环。
+- **排座约束**（1.25.0 起）：`SeatingEngine.Arrange(students, layout, mode, ArrangeConstraints)` 返回 `ArrangeResult`（座位 + `Issues` + 未排座学生）；旧的 3 参重载保留为薄包装。约束四步：固定点预占 → 约束感知贪心 → 局部修复（≤4 轮）→ 报告，不做通用 CSP。锁的是「学生-座位绑定」；手动移动 / 平移 / 整排整列对调遇锁定整体拒绝；`ClearSeats` 保留锁定；`BuildGrid` 丢弃越界座位必须报数（`!_interactiveLayoutEdit` 守卫）。排座说明进状态栏首条 + 右侧「排座约束」节 Expander，不新建窗口。
 - 名单识别必须同时支持 **带表头** 与 **无表头** 的 xlsx / xls / csv；不得要求用户套用固定模板。识别字段：姓名、性别、学号、身高、视力、成绩、原小组、备注。
 - 座位坐标统一用 `SeatPosition(Group, Row, Column)`；`Row=0` 永远表示靠近讲台的第一排。教师视角 / 学生视角只改变展示顺序，不改变物理座位。屏幕摆放顺序只由 `SeatChartComposer.GroupOrder / ColumnOrder / RowOrder` 给出，界面、PNG / PDF / Excel 与整班平移共用，不得各写一套；学生视角是教师视角整体旋转 180°，组序、组内列序、排序一起反转。
 - 打印 PDF 采用「高分辨率 PNG 嵌入 A4」的方案（QuestPDF），不要改回 SkiaSharp 矢量 PDF：后者会把整个中文字体内嵌，单张座位表可达 23MB。
 - 导出路径不得覆盖已导入的名单文件；UI 层必须做 `IsSamePath` 检查。
 - 「导出 Excel」与「导出配置」共用 `SeatGridConfigIO.WriteSettingsSheet / WriteRosterSheet`：座位表附一张隐藏的「座位设置」（A1 为 `SeatGrid Config v1` 标记），名单页的组 / 排 / 列为 1 基物理座位，未排座的学生三列留空（不得写成 1/1/1）。「导入名单」先用 `SeatGridConfigIO.TryImport` 探测：是本软件导出的座位表或配置就整体还原、不重新自动排座，否则按普通名单识别。
+- **约束持久化**（1.25.0 起）：锁定 / 互斥 / 结对 / 上期同桌 / 区域写进隐藏的「座位约束」表（12 列，学生按「名单序号 + 姓名」双校验定位——`Student.Id` 每次导入都重新生成，**绝不能当持久键**）。**Marker 仍为 `SeatGrid Config v1`**：判据是「旧版读者读到新文件会不会产出错误结果」，而不是「有没有新增字段」；升 v2 反而会让旧版掉进 `InferLegacyChartSettings` 误推布局。
 - 新增第 11 件小工具或归位的新导出格式时，按 Minor 版本晋级，并同步 `.memory/09-归位座位表.md`。
 - 归位的默认格子缩放为 85%（68px），保证 1440 宽窗口能完整显示 4 组 × 2 列；用户可在设置里改回 100%（80px）。
 

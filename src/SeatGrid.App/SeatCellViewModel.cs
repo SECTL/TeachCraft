@@ -22,6 +22,7 @@ public partial class SeatCellViewModel : ObservableObject
     [ObservableProperty] private bool _isEmpty = true;
     [ObservableProperty] private bool _isFemale;
     [ObservableProperty] private bool _isSelected;
+    [ObservableProperty] private bool _isPinned;
     [ObservableProperty] private bool _showEmptyFrame;
     [ObservableProperty] private double _width = 80;
     [ObservableProperty] private double _height = 80;
@@ -45,6 +46,7 @@ public partial class SeatCellViewModel : ObservableObject
         bool isEmpty,
         bool isFemale,
         bool isSelected,
+        bool isPinned,
         double size,
         double fontSize,
         bool bold,
@@ -59,6 +61,7 @@ public partial class SeatCellViewModel : ObservableObject
         IsEmpty = isEmpty;
         IsFemale = isFemale;
         IsSelected = isSelected;
+        IsPinned = isPinned;
         Width = size;
         Height = size;
         FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal;
@@ -72,7 +75,7 @@ public partial class SeatCellViewModel : ObservableObject
         _isDropTarget = false;
         AutomationName = isEmpty
             ? $"空座位 {PositionLabel}"
-            : $"{PositionLabel} {displayName}";
+            : $"{PositionLabel} {displayName}" + (isPinned ? "（已锁定）" : string.Empty);
     }
 
     /// <summary>

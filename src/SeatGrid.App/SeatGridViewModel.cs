@@ -45,15 +45,20 @@ public partial class SeatGridViewModel : ObservableObject
 
     public ObservableCollection<GroupViewModel> Groups { get; } = new();
 
+    /// <summary>排座约束（锁定 / 互斥 / 结对 / 上期同桌 / 区域）与排座说明。</summary>
+    public SeatConstraintsViewModel Constraints { get; private set; }
+
     public IReadOnlyList<string> ArrangeModes { get; } = new[]
     {
         "名单顺序", "男女交替", "同性同桌", "随机", "按身高", "按视力",
+        "成绩均衡", "成绩分层",
     };
 
     public IReadOnlyList<string> GenderOptions { get; } = new[] { "未知", "男", "女" };
 
     public SeatGridViewModel()
     {
+        Constraints = new SeatConstraintsViewModel(_students);
         BuildGrid();
         SelectedStudent = null;
     }
@@ -497,12 +502,19 @@ public partial class SeatGridViewModel : ObservableObject
 
         var layout = CurrentLayout;
         var previous = new Dictionary<SeatPosition, StudentViewModel>(_assignments);
+        var dropped = 0;
 
         _assignments.Clear();
         foreach (var (position, student) in previous)
         {
             if (layout.Contains(position)) _assignments[position] = student;
+            else dropped++;
         }
+
+        // 布局缩小会让越界座位上的学生退回未排：必须报数，不能静默丢人。
+        // 拖滑块时状态栏会被刷屏，所以只在非交互编辑时报。
+        if (dropped > 0 && !_interactiveLayoutEdit)
+            SetStatus($"布局缩小后有 {dropped} 名学生退回未排。", true);
 
         _seats.Clear();
         Groups.Clear();
@@ -563,6 +575,7 @@ public partial class SeatGridViewModel : ObservableObject
                 student is null,
                 student?.Model.Gender == Gender.Female,
                 seat == SelectedSeat,
+                student is not null && Constraints.IsPinned(student.Id),
                 size,
                 fontSize,
                 BoldNames,
@@ -629,6 +642,10 @@ public partial class SeatGridViewModel : ObservableObject
         foreach (var student in result.Students)
             _students.Add(new StudentViewModel(student));
 
+        // 名单整体换掉：旧约束指向的人已经不在了，一并清空。
+        Constraints = new SeatConstraintsViewModel(_students);
+        OnPropertyChanged(nameof(Constraints));
+
         ImportSource = result.SourceName;
         RosterHint = string.Join("；", result.Warnings);
 
@@ -687,27 +704,82 @@ public partial class SeatGridViewModel : ObservableObject
             return;
         }
 
-        var mode = (ArrangeMode)Math.Clamp(ArrangeModeIndex, 0, 5);
+        var mode = (ArrangeMode)Math.Clamp(ArrangeModeIndex, 0, ArrangeModes.Count - 1);
         var models = _students.Select(s => s.Model).ToList();
-        var arranged = SeatingEngine.Arrange(models, CurrentLayout, mode);
+        var layout = CurrentLayout;
+
+        // 布局可能刚缩过：先把指向不存在座位的锁清掉，否则引擎会拿幽灵锁去排。
+        Constraints.DropInvalidPins(layout, _students.Select(s => s.Id).ToHashSet());
+
+        var result = SeatingEngine.Arrange(models, layout, mode, Constraints.Build(layout));
         var byId = _students.ToDictionary(s => s.Model.Id);
 
         _assignments.Clear();
-        foreach (var (position, model) in arranged)
+        foreach (var (position, model) in result.Assignments)
         {
             if (byId.TryGetValue(model.Id, out var student))
                 _assignments[position] = student;
         }
 
+        Constraints.SetIssues(result.Issues.Select(i => i.Message));
         RefreshSeatVisuals();
-        SetStatus($"已按「{ArrangeModes[ArrangeModeIndex]}」排座：{AssignedCount} 人 / {SeatCount} 座");
+
+        var summary = $"已按「{ArrangeModes[ArrangeModeIndex]}」排座：{AssignedCount} 人 / {SeatCount} 座";
+        SetStatus(result.Issues.Count == 0
+            ? summary
+            : $"{summary} · {result.Issues[0].Message}" +
+              (result.Issues.Count > 1 ? $"（另有 {result.Issues.Count - 1} 条）" : string.Empty),
+            error: result.Issues.Count > 0);
+    }
+
+    /// <summary>切换当前选中座位的锁定状态。锁的是「学生-座位绑定」。</summary>
+    public void ToggleSelectedSeatPin()
+    {
+        if (SelectedSeat is null)
+        {
+            SetStatus("先选中一个座位，再锁定。", true);
+            return;
+        }
+
+        if (!_assignments.TryGetValue(SelectedSeat.Position, out var student))
+        {
+            SetStatus("空座位不用锁定；锁定的是学生，重新排座时这位同学不动。", true);
+            return;
+        }
+
+        var pinned = Constraints.IsPinned(student.Id);
+        Constraints.TogglePin(student, SelectedSeat.Position);
+        RefreshSeatVisuals();
+        SetStatus(pinned
+            ? $"已解除 {student.Name} 的座位锁定。"
+            : $"已锁定 {student.Name} 的座位，重新排座时不会移动。");
+    }
+
+    /// <summary>整班平移前检查：任一被移动的学生处于锁定状态就整体拒绝。</summary>
+    private bool RefuseIfPinned(IEnumerable<StudentViewModel> students, string action)
+    {
+        var pinned = students.FirstOrDefault(s => Constraints.IsPinned(s.Id));
+        if (pinned is null) return false;
+
+        SetStatus($"{pinned.Name} 的座位已锁定，先解除锁定再{action}。", true);
+        return true;
     }
 
     public void ClearSeats()
     {
-        _assignments.Clear();
+        var pinned = Constraints.Pins.Count;
+        var removed = 0;
+        foreach (var (position, student) in _assignments.ToList())
+        {
+            if (Constraints.IsPinned(student.Id)) continue;
+            _assignments.Remove(position);
+            removed++;
+        }
+
         RefreshSeatVisuals();
-        SetStatus("已清空座位，可以重新排座或手动放置。");
+        SetStatus(pinned == 0
+            ? $"已清空 {removed} 个座位，可以重新排座或手动放置。"
+            : $"已清空 {removed} 个未锁定座位，保留 {pinned} 个锁定座位。");
     }
 
     public void SelectSeat(SeatCellViewModel seat)
@@ -726,6 +798,19 @@ public partial class SeatGridViewModel : ObservableObject
         var student = SelectedStudent;
         var target = SelectedSeat;
 
+        // 锁定的学生不能被「放入」覆盖，目标座上的人若锁定也不能被挤走。
+        if (Constraints.IsPinned(student.Id))
+        {
+            SetStatus($"{student.Name} 的座位已锁定，先解除锁定再移动。", true);
+            return;
+        }
+
+        if (_assignments.TryGetValue(target.Position, out var occupant) && Constraints.IsPinned(occupant.Id))
+        {
+            SetStatus($"{occupant.Name} 的座位已锁定，先解除锁定再移动。", true);
+            return;
+        }
+
         foreach (var pair in _assignments.Where(kv => kv.Value == student).ToList())
             _assignments.Remove(pair.Key);
 
@@ -739,6 +824,10 @@ public partial class SeatGridViewModel : ObservableObject
     {
         if (source == target) return;
         if (!_assignments.TryGetValue(source.Position, out var moving)) return;
+
+        var involved = new List<StudentViewModel> { moving };
+        if (_assignments.TryGetValue(target.Position, out var targetOccupant)) involved.Add(targetOccupant);
+        if (RefuseIfPinned(involved, "移动")) return;
 
         if (_assignments.TryGetValue(target.Position, out var occupying))
         {
@@ -771,6 +860,12 @@ public partial class SeatGridViewModel : ObservableObject
     /// <summary>所有座位视图模型，供拖拽高亮遍历。</summary>
     public IEnumerable<SeatCellViewModel> Seats => _seats.Values;
 
+    /// <summary>完整名单（不受搜索过滤影响），供配对弹窗的选择器使用。</summary>
+    public IReadOnlyList<StudentViewModel> AllStudents => _students;
+
+    /// <summary>约束变更后由窗口层调用的刷新入口。</summary>
+    public void RefreshSeatVisualsPublic() => RefreshSeatVisuals();
+
     /// <summary>整班座位沿当前视角平移一格：dx 向右、dy 向下，超出边缘自动绕回。</summary>
     public void ShiftAllSeats(int dx, int dy)
     {
@@ -779,6 +874,8 @@ public partial class SeatGridViewModel : ObservableObject
             SetStatus("还没有已安排的座位，先自动排座或手动放入。", true);
             return;
         }
+
+        if (RefuseIfPinned(_assignments.Values, "整体平移")) return;
 
         // 方向按屏幕换算，与 BuildGrid / 导出共用同一份摆放顺序。
         var shifted = SeatChartComposer.ShiftOnScreen(_assignments, CurrentLayout, CurrentView, dx, dy);
@@ -803,6 +900,8 @@ public partial class SeatGridViewModel : ObservableObject
             return;
         }
 
+        if (RefuseIfPinned(_assignments.Values, "整排对调")) return;
+
         for (var group = 0; group < layout.Groups; group++)
             for (var column = 0; column < layout.Columns; column++)
                 SwapAssignments(new SeatPosition(group, rowA, column), new SeatPosition(group, rowB, column));
@@ -823,6 +922,8 @@ public partial class SeatGridViewModel : ObservableObject
             SetStatus("还没有已安排的座位。", true);
             return;
         }
+
+        if (RefuseIfPinned(_assignments.Values, "整列对调")) return;
 
         for (var row = 0; row < layout.Rows; row++)
             SwapAssignments(new SeatPosition(groupA, row, columnA), new SeatPosition(groupB, row, columnB));
@@ -921,6 +1022,14 @@ public partial class SeatGridViewModel : ObservableObject
         foreach (var pair in _assignments.Where(kv => kv.Value == student).ToList())
             _assignments.Remove(pair.Key);
 
+        // 删学生要连带删掉他的锁与规则，否则会留下指向不存在学生的幽灵约束。
+        Constraints.Pins.Remove(student.Id);
+        Constraints.Mutex.RemoveAll(p => p.A == student.Id || p.B == student.Id);
+        Constraints.Deskmates.RemoveAll(p => p.A == student.Id || p.B == student.Id);
+        Constraints.AvoidDeskmates.RemoveAll(p => p.A == student.Id || p.B == student.Id);
+        Constraints.Zones.Remove(student.Id);
+        Constraints.RefreshRows();
+
         _students.Remove(student);
         SelectedStudent = null;
         RefreshSeatVisuals();
@@ -986,7 +1095,15 @@ public partial class SeatGridViewModel : ObservableObject
         GroupLabel = Hex(GroupLabelColor),
         RowLabel = Hex(RowLabelColor),
         FemaleMark = Hex(FemaleMarkColor),
+        ArrangeMode = (ArrangeMode)Math.Clamp(ArrangeModeIndex, 0, ArrangeModes.Count - 1),
     };
+
+    /// <summary>导出用的约束快照；无约束时返回 null，让配置里不多出一张空表。</summary>
+    public ArrangeConstraints? GetCoreConstraints()
+    {
+        var built = Constraints.Build(CurrentLayout);
+        return built.IsEmpty ? null : built;
+    }
 
     public SeatChartDocument ComposeDocument() =>
         SeatChartComposer.Compose(ToSettings(), GetCoreAssignments(), _students.Count);
@@ -1028,12 +1145,17 @@ public partial class SeatGridViewModel : ObservableObject
         GroupLabelColor = Color.Parse(config.Settings.GroupLabel);
         RowLabelColor = Color.Parse(config.Settings.RowLabel);
         FemaleMarkColor = Color.Parse(config.Settings.FemaleMark);
+        ArrangeModeIndex = (int)config.Settings.ArrangeMode;
         _suppressRebuild = false;
 
         _students.Clear();
         _assignments.Clear();
         foreach (var student in config.Students)
             _students.Add(new StudentViewModel(student));
+
+        Constraints = new SeatConstraintsViewModel(_students);
+        Constraints.Apply(config.Constraints);
+        OnPropertyChanged(nameof(Constraints));
 
         SelectedStudent = null;
         SelectedSeat = null;

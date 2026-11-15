@@ -119,6 +119,27 @@ public partial class SeatGridWindow : Window
         ViewModel.SetStatus("演示名单 · 已按男女交替自动排座");
     }
 
+    /// <summary>设计走查：在演示名单上叠一组约束（锁定 / 互斥 / 结对 / 成绩均衡），用于检查面板与角标。</summary>
+    public void LoadDemoConstraints()
+    {
+        LoadDemoData();
+
+        var students = ViewModel.AllStudents;
+        if (students.Count < 6) return;
+
+        // 锁一位、配一对互斥、配一对同桌，再切到成绩均衡。
+        var pinnedSeat = ViewModel.Seats.First(s => !s.IsEmpty);
+        ViewModel.SelectSeat(pinnedSeat);
+        ViewModel.ToggleSelectedSeatPin();
+
+        ViewModel.Constraints.AddPairRule(students[2], students[3], mustBeDeskmates: false);
+        ViewModel.Constraints.AddPairRule(students[4], students[5], mustBeDeskmates: true);
+        ViewModel.ArrangeModeIndex = 6;
+        ViewModel.AutoArrange();
+        ViewModel.RefreshSeatVisualsPublic();
+        ViewModel.SetStatus("演示：1 个锁定座位 · 1 对互斥 · 1 对结对 · 成绩均衡");
+    }
+
     public void CaptureTo(string path)
     {
         var pixelSize = new PixelSize((int)Bounds.Width, (int)Bounds.Height);
@@ -854,7 +875,149 @@ public partial class SeatGridWindow : Window
         {
             _ = DeleteSelectedStudentAsync();
             e.Handled = true;
+            return;
         }
+
+        // L 锁定 / 解锁当前选中座位，与织序「选中课程格按 L 锁定」保持同一肌肉记忆。
+        if (e.Key == Key.L && ViewModel.SelectedSeat is not null)
+        {
+            ViewModel.ToggleSelectedSeatPin();
+            e.Handled = true;
+        }
+    }
+
+    private void OnUnpinAll(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel.Constraints.PinnedCount == 0) return;
+        ViewModel.Constraints.UnpinAll();
+        ViewModel.RefreshSeatVisualsPublic();
+        ViewModel.SetStatus("已解除全部座位锁定。");
+    }
+
+    private void OnRemoveConstraint(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ConstraintRowViewModel row) return;
+        ViewModel.Constraints.RemoveRule(row);
+        ViewModel.RefreshSeatVisualsPublic();
+        ViewModel.SetStatus($"已删除规则「{row.Label}」。");
+    }
+
+    private void OnAddConstraint(object? sender, RoutedEventArgs e) =>
+        _ = ShowPairRuleDialogAsync();
+
+    private void OnToggleIssues(object? sender, RoutedEventArgs e) =>
+        ViewModel.Constraints.IssuesExpanded = !ViewModel.Constraints.IssuesExpanded;
+
+    private void OnTogglePin(object? sender, RoutedEventArgs e) => ViewModel.ToggleSelectedSeatPin();
+
+    /// <summary>添加互斥 / 结对规则：两个可搜索的学生选择器 + 类型单选。</summary>
+    private async Task ShowPairRuleDialogAsync()
+    {
+        if (ViewModel.StudentCount < 2)
+        {
+            ViewModel.SetStatus("名单里至少要有两位学生才能添加配对规则。", true);
+            return;
+        }
+
+        var dialog = new Window
+        {
+            Title = "添加排座规则",
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = DialogPaper,
+        };
+
+        var first = new ComboBox { ItemsSource = ViewModel.AllStudents, FontSize = 11.5, MinHeight = 30 };
+        var second = new ComboBox { ItemsSource = ViewModel.AllStudents, FontSize = 11.5, MinHeight = 30 };
+        var mutex = new RadioButton { Content = "绝不相邻 · 前后左右都不挨着", IsChecked = true, FontSize = 11.5 };
+        var deskmate = new RadioButton { Content = "必须同桌 · 坐同一张双人桌", FontSize = 11.5 };
+        var error = new TextBlock { FontSize = 10.5, Foreground = DialogTerracotta, TextWrapping = TextWrapping.Wrap };
+        var applied = false;
+
+        var confirm = new Button
+        {
+            Content = "添加",
+            IsDefault = true,
+            Padding = new Thickness(16, 7),
+            Background = DialogInk,
+            Foreground = DialogPaper,
+            BorderThickness = new Thickness(0),
+        };
+        var cancel = new Button
+        {
+            Content = "取消",
+            IsCancel = true,
+            Padding = new Thickness(16, 7),
+            Background = DialogCard,
+            Foreground = DialogInkSoft,
+            BorderBrush = DialogLine,
+            BorderThickness = new Thickness(1),
+        };
+
+        confirm.Click += (_, _) =>
+        {
+            if (first.SelectedItem is not StudentViewModel a || second.SelectedItem is not StudentViewModel b)
+            {
+                error.Text = "请选择两名学生。";
+                return;
+            }
+
+            if (a.Id == b.Id)
+            {
+                error.Text = "不能和自己配对。";
+                return;
+            }
+
+            ViewModel.Constraints.AddPairRule(a, b, mustBeDeskmates: deskmate.IsChecked == true);
+            ViewModel.RefreshSeatVisualsPublic();
+            applied = true;
+            dialog.Close();
+        };
+        cancel.Click += (_, _) => dialog.Close();
+
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "添加排座规则",
+            FontSize = 17,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = DialogInk,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "配对规则会在自动排座时生效；与锁定冲突时以锁定为准。",
+            FontSize = 12,
+            Foreground = DialogMuted,
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 19,
+        });
+
+        panel.Children.Add(new TextBlock { Text = "第一位学生", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(first);
+        panel.Children.Add(new TextBlock { Text = "第二位学生", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(second);
+        panel.Children.Add(mutex);
+        panel.Children.Add(deskmate);
+        panel.Children.Add(error);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+        };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(confirm);
+        panel.Children.Add(buttons);
+
+        dialog.Content = panel;
+        await dialog.ShowDialog(this);
+
+        if (applied)
+            ViewModel.SetStatus("已添加排座规则。");
     }
 
     private void OnResetStyle(object? sender, RoutedEventArgs e) => ViewModel.ResetStyle();
@@ -959,7 +1122,9 @@ public partial class SeatGridWindow : Window
             var document = ViewModel.ComposeDocument();
             var assignments = ViewModel.GetCoreAssignments();
             var students = ViewModel.GetModels();
-            await Task.Run(() => SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path));
+            var constraints = ViewModel.GetCoreConstraints();
+            await Task.Run(() => SeatChartExcelExporter.ExportSeatChart(
+                document, assignments, students, path, constraints));
             ViewModel.SetStatus($"已导出 Excel：{Path.GetFileName(path)}");
         }
         catch (Exception ex)
@@ -989,7 +1154,8 @@ public partial class SeatGridWindow : Window
             var settings = ViewModel.ToSettings();
             var assignments = ViewModel.GetCoreAssignments();
             var students = ViewModel.GetModels();
-            await Task.Run(() => SeatGridConfigIO.Export(path, settings, students, assignments));
+            var constraints = ViewModel.GetCoreConstraints();
+            await Task.Run(() => SeatGridConfigIO.Export(path, settings, students, assignments, constraints));
             ViewModel.SetStatus($"已导出配置：{Path.GetFileName(path)}");
         }
         catch (Exception ex)

@@ -5,6 +5,7 @@ using System.Linq;
 using ClosedXML.Excel;
 using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
+using SeatGrid.Core.Seating;
 
 namespace SeatGrid.Core.Export;
 
@@ -15,7 +16,9 @@ public static class SeatChartExcelExporter
         SeatChartDocument document,
         IReadOnlyDictionary<SeatPosition, Student> assignments,
         IReadOnlyList<Student> students,
-        string path)
+        string path,
+        ArrangeConstraints? constraints = null,
+        bool includeSettingsSheet = true)
     {
         var settings = document.Settings;
         using var workbook = new XLWorkbook();
@@ -162,7 +165,10 @@ public static class SeatChartExcelExporter
         // 名单页与配置共用写法；再附一张隐藏的「座位设置」，导回时布局、配色与座位都能还原。
         // 隐藏表放在最后，打开文件时停在座位表上。
         SeatGridConfigIO.WriteRosterSheet(workbook, students, assignments, withIndex: true);
-        SeatGridConfigIO.WriteSettingsSheet(workbook, settings).Hide();
+        if (includeSettingsSheet)
+            SeatGridConfigIO.WriteSettingsSheet(workbook, settings).Hide();
+        if (constraints is { IsEmpty: false })
+            SeatGridConfigIO.WriteConstraintSheet(workbook, constraints, students);
 
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

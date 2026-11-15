@@ -17,6 +17,10 @@ public enum ArrangeMode
     Random,
     Height,
     Vision,
+
+    // 只能追加在末尾：界面用 (ArrangeMode)ArrangeModeIndex 强转。
+    ScoreSnake,
+    ScoreLayers,
 }
 
 /// <summary>座位表的所有可调参数。颜色统一以 #RRGGBB 保存，便于 Excel / PDF 共用。</summary>
@@ -60,6 +64,12 @@ public sealed class SeatChartSettings
     public int CellSizePx =>
         Math.Max(40, (int)Math.Round(BaseCellSize * (CellScalePercent / 100.0)));
 
+    /// <summary>上次使用的排座方式。此前不持久化，导出配置后重开总回到「名单顺序」。</summary>
+    public ArrangeMode ArrangeMode { get; set; } = ArrangeMode.RosterOrder;
+
+    /// <summary>成绩模式的组内顺序。</summary>
+    public Seating.WithinGroupOrder WithinGroup { get; set; } = Seating.WithinGroupOrder.Fold;
+
     public SeatChartLayout GetLayout() => new(Groups, Rows, Columns);
 
     public SeatChartSettings Clone() => (SeatChartSettings)MemberwiseClone();
@@ -83,6 +93,9 @@ public sealed class SeatChartSettings
         GroupLabel = NormalizeColor(GroupLabel, "#C6613F");
         RowLabel = NormalizeColor(RowLabel, "#85806F");
         FemaleMark = NormalizeColor(FemaleMark, "#C6613F");
+
+        if (!Enum.IsDefined(ArrangeMode)) ArrangeMode = ArrangeMode.RosterOrder;
+        if (!Enum.IsDefined(WithinGroup)) WithinGroup = Seating.WithinGroupOrder.Fold;
     }
 
     public static string NormalizeColor(string? value, string fallback)

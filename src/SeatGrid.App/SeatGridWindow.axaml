@@ -424,11 +424,15 @@
                         <StackPanel Spacing="6">
                             <TextBlock Text="{Binding SelectedSeatLabel}" FontFamily="{StaticResource MonoFont}"
                                        FontSize="9.5" Foreground="{StaticResource AccentDeepBrush}" />
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="5">
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5">
                                 <Button Classes="primary" Content="放入所选学生" Padding="8,5" FontSize="10.5"
                                         Click="OnAssign" IsEnabled="{Binding CanAssign}" />
                                 <Button Grid.Column="1" Classes="ghost" Content="清空座位" Padding="8,5"
                                         FontSize="10.5" Click="OnClearSeat" IsEnabled="{Binding CanClearSeat}" />
+                                <Button Grid.Column="2" Classes="ghost" Content="锁定" Padding="8,5"
+                                        FontSize="10.5" Click="OnTogglePin" IsEnabled="{Binding CanClearSeat}"
+                                        ToolTip.Tip="锁定后重新排座时这位同学不动（快捷键 L）"
+                                        AutomationProperties.Name="锁定或解锁所选座位" />
                             </Grid>
                             <TextBlock Text="先点座位，再选左侧学生，最后点「放入」。"
                                        Classes="helper" />
@@ -569,12 +573,21 @@
                                                                                     Click="OnSeatClick"
                                                                                     ToolTip.Tip="{Binding PositionLabel}"
                                                                                     AutomationProperties.Name="{Binding AutomationName}">
-                                                                                <TextBlock Text="{Binding DisplayName}"
-                                                                                           FontSize="{Binding FontSize}"
-                                                                                           FontWeight="{Binding FontWeight}"
-                                                                                           Foreground="{Binding NameBrush}"
-                                                                                           HorizontalAlignment="Center"
-                                                                                           VerticalAlignment="Center" />
+                                                                                <Panel>
+                                                                                    <TextBlock Text="{Binding DisplayName}"
+                                                                                               FontSize="{Binding FontSize}"
+                                                                                               FontWeight="{Binding FontWeight}"
+                                                                                               Foreground="{Binding NameBrush}"
+                                                                                               HorizontalAlignment="Center"
+                                                                                               VerticalAlignment="Center" />
+                                                                                    <Ellipse Width="6" Height="6"
+                                                                                             Fill="#C6613F"
+                                                                                             HorizontalAlignment="Right"
+                                                                                             VerticalAlignment="Top"
+                                                                                             Margin="0,3,3,0"
+                                                                                             IsVisible="{Binding IsPinned}"
+                                                                                             ToolTip.Tip="已锁定 · 重新排座时不动" />
+                                                                                </Panel>
                                                                             </Button>
                                                                         </DataTemplate>
                                                                     </ItemsControl.ItemTemplate>
@@ -695,6 +708,89 @@
                                     </Grid>
                                     <Slider Minimum="50" Maximum="200" TickFrequency="1" IsSnapToTickEnabled="True"
                                             Value="{Binding CellScale, Mode=TwoWay}" AutomationProperties.Name="格子大小" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="inspector-divider" />
+
+                        <!-- 排座约束 -->
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="排座约束" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="CONSTRAINTS" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding Constraints.PinnedSummary}" Classes="helper"
+                                               VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Classes="link" Content="全部解锁"
+                                            Click="OnUnpinAll" FontSize="10.5"
+                                            Foreground="{StaticResource MutedBrush}"
+                                            AutomationProperties.Name="解除全部座位锁定" />
+                                </Grid>
+
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="规则" />
+                                    <ItemsControl ItemsSource="{Binding Constraints.Rules}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="app:ConstraintRowViewModel">
+                                                <Border Background="{StaticResource WashBrush}"
+                                                        BorderBrush="{StaticResource LineBrush}"
+                                                        BorderThickness="1" CornerRadius="5"
+                                                        Padding="7,4" Margin="0,0,0,4">
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                        <TextBlock Text="{Binding Label}" FontSize="10.5"
+                                                                   Foreground="{StaticResource InkBrush}"
+                                                                   ToolTip.Tip="{Binding Detail}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center" />
+                                                        <Button Grid.Column="1" Classes="link" Content="×"
+                                                                FontSize="12" Padding="4,0"
+                                                                Foreground="{StaticResource MutedBrush}"
+                                                                Tag="{Binding}" Click="OnRemoveConstraint"
+                                                                AutomationProperties.Name="删除这条规则" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="还没有互斥或结对规则" Classes="helper"
+                                               IsVisible="{Binding !Constraints.HasRules}" />
+                                </StackPanel>
+
+                                <Button Classes="ghost tool" Content="+ 添加规则" Click="OnAddConstraint"
+                                        AutomationProperties.Name="添加互斥或结对规则" />
+
+                                <TextBlock Classes="helper"
+                                           Text="锁定：选中座位后按 L 或点上方按钮；互斥 = 前后左右都不挨着，结对 = 坐同一张双人桌。" />
+
+                                <!-- 排座说明：与规则行同款的行按钮，展开后列出每条未满足的规则 -->
+                                <StackPanel Spacing="6" IsVisible="{Binding Constraints.HasIssues}">
+                                    <Button Classes="ghost tool" Click="OnToggleIssues"
+                                            HorizontalContentAlignment="Stretch"
+                                            AutomationProperties.Name="展开或收起排座说明">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Constraints.IssuesTitle}" FontSize="11" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Constraints.IssuesChevron}"
+                                                       FontSize="9" Foreground="{StaticResource MutedBrush}"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                    <Border Background="{StaticResource WashBrush}"
+                                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                            CornerRadius="5" Padding="8,6"
+                                            IsVisible="{Binding Constraints.IssuesExpanded}">
+                                        <ItemsControl ItemsSource="{Binding Constraints.Issues}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" FontSize="10" LineHeight="15"
+                                                               Foreground="{StaticResource AccentDeepBrush}"
+                                                               TextWrapping="Wrap" Margin="0,0,0,4" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
                                 </StackPanel>
                             </StackPanel>
                         </Border>

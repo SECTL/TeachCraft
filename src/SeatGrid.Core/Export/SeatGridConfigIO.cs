@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using SeatGrid.Core.Models;
+using SeatGrid.Core.Seating;
 
 namespace SeatGrid.Core.Export;
 
@@ -13,7 +14,8 @@ public sealed record SeatGridConfig(
     SeatChartSettings Settings,
     List<Student> Students,
     Dictionary<SeatPosition, Student> Assignments,
-    List<string> Warnings);
+    List<string> Warnings,
+    ArrangeConstraints? Constraints = null);
 
 /// <summary>
 /// 「导出配置 / 导入配置」使用的 xlsx：设置项 + 名单 + 座位。
@@ -27,21 +29,97 @@ public static class SeatGridConfigIO
     internal const string SettingsSheetName = "座位设置";
     internal const string RosterSheetName = "名单";
     internal const string ChartSheetName = "座位表";
+    internal const string ConstraintSheetName = "座位约束";
 
     public static void Export(
         string path,
         SeatChartSettings settings,
         IReadOnlyList<Student> students,
-        IReadOnlyDictionary<SeatPosition, Student> assignments)
+        IReadOnlyDictionary<SeatPosition, Student> assignments,
+        ArrangeConstraints? constraints = null)
     {
         using var workbook = new XLWorkbook();
         WriteSettingsSheet(workbook, settings);
         WriteRosterSheet(workbook, students, assignments, withIndex: false);
+        if (constraints is { IsEmpty: false })
+            WriteConstraintSheet(workbook, constraints, students);
 
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         workbook.SaveAs(path);
+    }
+
+    /// <summary>
+    /// 写「座位约束」表（隐藏）。12 列：类型 / 学生A / 学生B / 组起止 / 排起止 / 列起止 / 说明 / 名单序号。
+    /// 学生用「名单序号 + 姓名」双校验定位——Student.Id 每次导入都重新生成，绝不能当持久键。
+    /// </summary>
+    internal static IXLWorksheet WriteConstraintSheet(
+        XLWorkbook workbook, ArrangeConstraints constraints, IReadOnlyList<Student> students)
+    {
+        var sheet = workbook.Worksheets.Add(ConstraintSheetName);
+        var indexOf = new Dictionary<Guid, int>();
+        for (var i = 0; i < students.Count; i++) indexOf[students[i].Id] = i + 1;
+        var nameOf = students.ToDictionary(s => s.Id, s => s.Name);
+
+        string[] headers =
+        {
+            "类型", "学生A", "学生B", "组起", "组止", "排起", "排止", "列起", "列止", "说明", "序号A", "序号B",
+        };
+        for (var c = 0; c < headers.Length; c++)
+        {
+            var cell = sheet.Cell(1, c + 1);
+            cell.Value = headers[c];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#F4F2EC");
+        }
+
+        var row = 1;
+        void Add(string type, Guid? a, Guid? b, string note, SeatRect? rect = null)
+        {
+            row++;
+            sheet.Cell(row, 1).Value = type;
+            if (a is Guid idA)
+            {
+                sheet.Cell(row, 2).Value = nameOf.GetValueOrDefault(idA, string.Empty);
+                sheet.Cell(row, 11).Value = indexOf.GetValueOrDefault(idA, 0);
+            }
+
+            if (b is Guid idB)
+            {
+                sheet.Cell(row, 3).Value = nameOf.GetValueOrDefault(idB, string.Empty);
+                sheet.Cell(row, 12).Value = indexOf.GetValueOrDefault(idB, 0);
+            }
+
+            if (rect is SeatRect r)
+            {
+                sheet.Cell(row, 4).Value = r.GroupFrom + 1;
+                sheet.Cell(row, 5).Value = r.GroupTo + 1;
+                sheet.Cell(row, 6).Value = r.RowFrom + 1;
+                sheet.Cell(row, 7).Value = r.RowTo + 1;
+                sheet.Cell(row, 8).Value = r.ColumnFrom + 1;
+                sheet.Cell(row, 9).Value = r.ColumnTo + 1;
+            }
+
+            sheet.Cell(row, 10).Value = note;
+        }
+
+        foreach (var (id, seat) in constraints.Pins)
+            Add("lock", id, null, "锁定座位",
+                new SeatRect(seat.Group, seat.Group, seat.Row, seat.Row, seat.Column, seat.Column));
+
+        foreach (var pair in constraints.Mutex) Add("mutex", pair.A, pair.B, "绝不相邻");
+        foreach (var pair in constraints.Deskmates) Add("deskmate", pair.A, pair.B, "必须同桌");
+        foreach (var pair in constraints.AvoidDeskmates) Add("avoid-deskmate", pair.A, pair.B, "上期同桌");
+
+        foreach (var (id, zone) in constraints.Zones)
+        {
+            foreach (var rect in zone.Allowed) Add("zone-allow", id, null, "允许区域", rect);
+            foreach (var rect in zone.Denied) Add("zone-deny", id, null, "禁止区域", rect);
+        }
+
+        sheet.Hide();
+        return sheet;
     }
 
     /// <summary>写「座位设置」表（A1 为版本标记）。座位表导出也调用它，并把它隐藏起来。</summary>
@@ -108,6 +186,8 @@ public static class SeatGridConfigIO
         Add("GroupLabel", source.GroupLabel);
         Add("RowLabel", source.RowLabel);
         Add("FemaleMark", source.FemaleMark);
+        Add("ArrangeMode", source.ArrangeMode.ToString());
+        Add("WithinGroupOrder", source.WithinGroup.ToString());
 
         sheet.Column(1).Width = 26;
         sheet.Column(2).Width = 34;
@@ -216,7 +296,8 @@ public static class SeatGridConfigIO
         {
             var settings = ReadSettings(sheet);
             var (students, assignments) = ReadRoster(workbook, settings.GetLayout(), warnings, accept: null);
-            return new SeatGridConfig(settings, students, assignments, warnings);
+            var constraints = ReadConstraints(workbook, students, settings.GetLayout(), warnings);
+            return new SeatGridConfig(settings, students, assignments, warnings, constraints);
         }
 
         if (InferLegacyChartSettings(workbook, warnings) is { } legacy)
@@ -230,6 +311,155 @@ public static class SeatGridConfigIO
 
     private static bool HasMarker(IXLWorksheet sheet) =>
         string.Equals(sheet.Cell(1, 1).GetFormattedString().Trim(), Marker, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 读「座位约束」表。学生按「序号 + 姓名」双校验定位；序号对不上就按姓名唯一匹配；
+    /// 仍找不到就整行丢弃并 warning——绝不把规则挂到错的人头上。
+    /// </summary>
+    private static ArrangeConstraints? ReadConstraints(
+        XLWorkbook workbook, IReadOnlyList<Student> students, SeatChartLayout layout, List<string> warnings)
+    {
+        var sheet = workbook.Worksheets.FirstOrDefault(w => w.Name == ConstraintSheetName);
+        if (sheet is null) return null;
+
+        var byIndex = students.ToList();
+        var byName = new Dictionary<string, List<Student>>(StringComparer.Ordinal);
+        foreach (var student in students)
+        {
+            if (!byName.TryGetValue(student.Name, out var list))
+                byName[student.Name] = list = new List<Student>();
+            list.Add(student);
+        }
+
+        Student? Resolve(int indexCell, string name)
+        {
+            if (indexCell >= 1 && indexCell <= byIndex.Count)
+            {
+                var candidate = byIndex[indexCell - 1];
+                if (string.Equals(candidate.Name, name, StringComparison.Ordinal)) return candidate;
+            }
+
+            return byName.TryGetValue(name, out var list) && list.Count == 1 ? list[0] : null;
+        }
+
+        var pins = new Dictionary<Guid, SeatPosition>();
+        var mutex = new List<StudentPair>();
+        var deskmates = new List<StudentPair>();
+        var avoid = new List<StudentPair>();
+        var zones = new Dictionary<Guid, StudentZone>();
+        var allowed = new Dictionary<Guid, List<SeatRect>>();
+        var denied = new Dictionary<Guid, List<SeatRect>>();
+
+        var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
+        for (var row = 2; row <= lastRow; row++)
+        {
+            var type = sheet.Cell(row, 1).GetFormattedString().Trim();
+            if (type.Length == 0) continue;
+
+            var nameA = sheet.Cell(row, 2).GetFormattedString().Trim();
+            var nameB = sheet.Cell(row, 3).GetFormattedString().Trim();
+            var indexA = (int)(Number(sheet, row, 11) ?? 0);
+            var indexB = (int)(Number(sheet, row, 12) ?? 0);
+
+            var studentA = nameA.Length == 0 ? null : Resolve(indexA, nameA);
+            var studentB = nameB.Length == 0 ? null : Resolve(indexB, nameB);
+
+            if (nameA.Length > 0 && studentA is null)
+            {
+                warnings.Add($"「{nameA}」已不在名单里，相关约束已忽略。");
+                continue;
+            }
+
+            if (nameB.Length > 0 && studentB is null)
+            {
+                warnings.Add($"「{nameB}」已不在名单里，相关约束已忽略。");
+                continue;
+            }
+
+            switch (type)
+            {
+                case "lock" when studentA is not null:
+                {
+                    var rect = ReadRect(sheet, row, layout);
+                    if (rect is not null)
+                        pins[studentA.Id] = new SeatPosition(rect.Value.GroupFrom, rect.Value.RowFrom,
+                            rect.Value.ColumnFrom);
+                    break;
+                }
+
+                case "mutex" when studentA is not null && studentB is not null:
+                    mutex.Add(StudentPair.Create(studentA.Id, studentB.Id));
+                    break;
+
+                case "deskmate" when studentA is not null && studentB is not null:
+                    deskmates.Add(StudentPair.Create(studentA.Id, studentB.Id));
+                    break;
+
+                case "avoid-deskmate" when studentA is not null && studentB is not null:
+                    avoid.Add(StudentPair.Create(studentA.Id, studentB.Id));
+                    break;
+
+                case "zone-allow" when studentA is not null:
+                    if (ReadRect(sheet, row, layout) is { } allowRect)
+                    {
+                        if (!allowed.TryGetValue(studentA.Id, out var list))
+                            allowed[studentA.Id] = list = new List<SeatRect>();
+                        list.Add(allowRect);
+                    }
+
+                    break;
+
+                case "zone-deny" when studentA is not null:
+                    if (ReadRect(sheet, row, layout) is { } denyRect)
+                    {
+                        if (!denied.TryGetValue(studentA.Id, out var list))
+                            denied[studentA.Id] = list = new List<SeatRect>();
+                        list.Add(denyRect);
+                    }
+
+                    break;
+            }
+        }
+
+        foreach (var id in allowed.Keys.Union(denied.Keys))
+        {
+            zones[id] = new StudentZone(
+                allowed.GetValueOrDefault(id, new List<SeatRect>()),
+                denied.GetValueOrDefault(id, new List<SeatRect>()));
+        }
+
+        if (pins.Count == 0 && mutex.Count == 0 && deskmates.Count == 0 && avoid.Count == 0 && zones.Count == 0)
+            return null;
+
+        return new ArrangeConstraints
+        {
+            Pins = pins,
+            Mutex = mutex,
+            Deskmates = deskmates,
+            AvoidDeskmates = avoid,
+            Zones = zones,
+        };
+    }
+
+    /// <summary>读 1 基的组/排/列六格并转成 0 基矩形；全空返回 null。</summary>
+    private static SeatRect? ReadRect(IXLWorksheet sheet, int row, SeatChartLayout layout)
+    {
+        var groupFrom = Number(sheet, row, 4);
+        var groupTo = Number(sheet, row, 5);
+        var rowFrom = Number(sheet, row, 6);
+        var rowTo = Number(sheet, row, 7);
+        var columnFrom = Number(sheet, row, 8);
+        var columnTo = Number(sheet, row, 9);
+
+        if (groupFrom is null && rowFrom is null && columnFrom is null) return null;
+
+        var rect = new SeatRect(
+            (int)(groupFrom ?? 1) - 1, (int)(groupTo ?? groupFrom ?? 1) - 1,
+            (int)(rowFrom ?? 1) - 1, (int)(rowTo ?? rowFrom ?? 1) - 1,
+            (int)(columnFrom ?? 1) - 1, (int)(columnTo ?? columnFrom ?? 1) - 1);
+
+        return rect.Normalize(layout);
+    }
 
     private static SeatChartSettings ReadSettings(IXLWorksheet sheet)
     {
@@ -272,6 +502,8 @@ public static class SeatGridConfigIO
             GroupLabel = Get(values, "GroupLabel", "#C6613F"),
             RowLabel = Get(values, "RowLabel", "#85806F"),
             FemaleMark = Get(values, "FemaleMark", "#C6613F"),
+            ArrangeMode = GetEnum(values, "ArrangeMode", ArrangeMode.RosterOrder),
+            WithinGroup = GetEnum(values, "WithinGroupOrder", WithinGroupOrder.Fold),
         };
         settings.Normalize();
         return settings;
@@ -484,6 +716,12 @@ public static class SeatGridConfigIO
             _ => fallback,
         };
     }
+
+    /// <summary>读枚举：按名字解析（不依赖数值，避免枚举顺序变化时错位），失败回落默认值。</summary>
+    private static T GetEnum<T>(Dictionary<string, string> values, string key, T fallback) where T : struct, Enum =>
+        Enum.TryParse<T>(Get(values, key), ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : fallback;
 
     private sealed class RosterColumns
     {

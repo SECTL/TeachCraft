@@ -744,7 +744,8 @@ public partial class App : Application
         if (index < 0 || index + 1 >= args.Length) return false;
 
         var target = args[index + 1];
-        var empty = index + 2 < args.Length && args[index + 2] == "empty";
+        var mode = index + 2 < args.Length ? args[index + 2] : string.Empty;
+        var empty = mode == "empty";
 
         Dispatcher.UIThread.Post(async () =>
         {
@@ -753,6 +754,7 @@ public partial class App : Application
                 await Task.Delay(500);
                 var window = new SeatGrid.App.SeatGridWindow();
                 if (!empty) window.LoadDemoData();
+                if (mode == "constraints") window.LoadDemoConstraints();
                 window.Show();
                 await Task.Delay(1600);
                 window.CaptureTo(target);

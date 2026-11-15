@@ -471,4 +471,627 @@ public sealed class SeatGridTests : IDisposable
         var sheet = workbook.Worksheet("座位表");
         Assert.Contains("同学1", sheet.CellsUsed().Select(c => c.GetFormattedString()));
     }
+
+    // ----------------------------- 1.25.0 约束引擎 -----------------------------
+
+    [Fact]
+    public void Layout_AreAdjacentIsFourNeighborhoodAndNeverCrossesGroups()
+    {
+        var layout = new SeatChartLayout(2, 3, 2);
+
+        Assert.True(layout.AreAdjacent(new SeatPosition(0, 0, 0), new SeatPosition(0, 0, 1)));
+        Assert.True(layout.AreAdjacent(new SeatPosition(0, 0, 0), new SeatPosition(0, 1, 0)));
+
+        // 组与组之间是过道，物理上不相邻。
+        Assert.False(layout.AreAdjacent(new SeatPosition(0, 0, 0), new SeatPosition(1, 0, 0)));
+
+        // 对角不算相邻。
+        Assert.False(layout.AreAdjacent(new SeatPosition(0, 0, 0), new SeatPosition(0, 1, 1)));
+    }
+
+    [Fact]
+    public void Layout_NeighborsOfHasAtMostFourAndClampsAtEdges()
+    {
+        var layout = new SeatChartLayout(1, 3, 3);
+
+        Assert.Equal(4, layout.NeighborsOf(new SeatPosition(0, 1, 1)).Count());
+        Assert.Equal(2, layout.NeighborsOf(new SeatPosition(0, 0, 0)).Count());
+        Assert.Equal(3, layout.NeighborsOf(new SeatPosition(0, 0, 1)).Count());
+    }
+
+    [Fact]
+    public void Layout_DeskmateOfPairsEvenColumns()
+    {
+        var two = new SeatChartLayout(1, 1, 2);
+        Assert.Equal(new SeatPosition(0, 0, 1), two.DeskmateOf(new SeatPosition(0, 0, 0)));
+        Assert.Equal(new SeatPosition(0, 0, 0), two.DeskmateOf(new SeatPosition(0, 0, 1)));
+
+        var four = new SeatChartLayout(1, 1, 4);
+        Assert.Equal(new SeatPosition(0, 0, 1), four.DeskmateOf(new SeatPosition(0, 0, 0)));
+        Assert.Equal(new SeatPosition(0, 0, 3), four.DeskmateOf(new SeatPosition(0, 0, 2)));
+    }
+
+    [Fact]
+    public void Layout_DeskmateOfReturnsNullForSingleColumnAndOddTail()
+    {
+        Assert.Null(new SeatChartLayout(1, 1, 1).DeskmateOf(new SeatPosition(0, 0, 0)));
+        Assert.Null(new SeatChartLayout(1, 1, 3).DeskmateOf(new SeatPosition(0, 0, 2)));
+        Assert.NotNull(new SeatChartLayout(1, 1, 3).DeskmateOf(new SeatPosition(0, 0, 0)));
+    }
+
+    [Fact]
+    public void Layout_AreDeskmatesNeverCrossesGroupOrRow()
+    {
+        var layout = new SeatChartLayout(2, 2, 2);
+
+        Assert.True(layout.AreDeskmates(new SeatPosition(0, 0, 0), new SeatPosition(0, 0, 1)));
+        Assert.False(layout.AreDeskmates(new SeatPosition(0, 0, 1), new SeatPosition(1, 0, 0)));
+        Assert.False(layout.AreDeskmates(new SeatPosition(0, 0, 0), new SeatPosition(0, 1, 1)));
+    }
+
+    [Fact]
+    public void SeatingEngine_PinnedStudentKeepsSeat()
+    {
+        var students = MakeStudents(6);
+        var layout = new SeatChartLayout(1, 3, 2);
+        var pin = new SeatPosition(0, 2, 1);
+
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[0].Id] = pin },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal("同学1", result.Assignments[pin].Name);
+    }
+
+    [Fact]
+    public void SeatingEngine_PinnedSeatIsNotGivenToOthers()
+    {
+        var students = MakeStudents(6);
+        var layout = new SeatChartLayout(1, 3, 2);
+        var pin = new SeatPosition(0, 1, 0);
+
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[3].Id] = pin },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal("同学4", result.Assignments[pin].Name);
+    }
+
+    [Fact]
+    public void SeatingEngine_PinOutsideLayoutIsReportedAndDropped()
+    {
+        var students = MakeStudents(3);
+        var layout = new SeatChartLayout(1, 2, 2);
+
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[0].Id] = new SeatPosition(9, 0, 0) },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Contains(result.Issues, i => i.Kind == SeatIssueKind.PinOutOfLayout);
+        Assert.Equal(3, result.Assignments.Count);
+        Assert.DoesNotContain(new SeatPosition(9, 0, 0), result.Assignments.Keys);
+    }
+
+    [Fact]
+    public void SeatingEngine_TwoPinsToOneSeatKeepsFirstAndReports()
+    {
+        var students = MakeStudents(3);
+        var layout = new SeatChartLayout(1, 2, 2);
+        var seat = new SeatPosition(0, 0, 0);
+
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition>
+            {
+                [students[0].Id] = seat,
+                [students[1].Id] = seat,
+            },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal("同学1", result.Assignments[seat].Name);
+        var issue = Assert.Single(result.Issues, i => i.Kind == SeatIssueKind.PinConflict);
+        Assert.Contains("同学1", issue.Message);
+        Assert.Contains("同学2", issue.Message);
+    }
+
+    [Fact]
+    public void SeatingEngine_MutexPairIsNeverAdjacent()
+    {
+        var students = MakeStudents(16);
+        var layout = new SeatChartLayout(2, 4, 2);
+
+        var constraints = new ArrangeConstraints
+        {
+            Mutex = new[] { StudentPair.Create(students[0].Id, students[1].Id) },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        var seatA = SeatOf(result.Assignments, students[0].Id);
+        var seatB = SeatOf(result.Assignments, students[1].Id);
+        Assert.NotNull(seatA);
+        Assert.NotNull(seatB);
+        Assert.False(layout.AreAdjacent(seatA!.Value, seatB!.Value));
+    }
+
+    [Fact]
+    public void SeatingEngine_MutexUnsatisfiableIsReportedNotThrown()
+    {
+        var students = MakeStudents(2);
+        var layout = new SeatChartLayout(1, 1, 2);   // 只有两个座位，必然相邻
+
+        var constraints = new ArrangeConstraints
+        {
+            Mutex = new[] { StudentPair.Create(students[0].Id, students[1].Id) },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal(2, result.Assignments.Count);
+        var issue = Assert.Single(result.Issues, i => i.Kind == SeatIssueKind.MutexUnsatisfied);
+        Assert.Contains("同学1", issue.Message);
+        Assert.Contains("同学2", issue.Message);
+    }
+
+    [Fact]
+    public void SeatingEngine_DeskmatePairSitsTogether()
+    {
+        var students = MakeStudents(4);
+        var layout = new SeatChartLayout(1, 2, 2);
+
+        var constraints = new ArrangeConstraints
+        {
+            Deskmates = new[] { StudentPair.Create(students[0].Id, students[2].Id) },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        var seatA = SeatOf(result.Assignments, students[0].Id);
+        var seatB = SeatOf(result.Assignments, students[2].Id);
+        Assert.True(layout.AreDeskmates(seatA!.Value, seatB!.Value));
+    }
+
+    [Fact]
+    public void SeatingEngine_DeskmateWithSingleColumnIsReported()
+    {
+        var students = MakeStudents(3);
+        var layout = new SeatChartLayout(1, 3, 1);   // 每组 1 列，没有同桌
+
+        var constraints = new ArrangeConstraints
+        {
+            Deskmates = new[] { StudentPair.Create(students[0].Id, students[1].Id) },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal(3, result.Assignments.Count);
+        Assert.Contains(result.Issues, i => i.Kind == SeatIssueKind.DeskmateUnsatisfied);
+    }
+
+    [Fact]
+    public void SeatingEngine_GenderPairUsesDeskmatePairsWhenThreeColumns()
+    {
+        // 回归：旧实现靠 FillOrder 的列循环碰巧成对，Columns=3 时第 3 列会与下一排第 1 列配成同桌。
+        var students = new List<Student>
+        {
+            new() { Name = "男1", Gender = Gender.Male },
+            new() { Name = "男2", Gender = Gender.Male },
+            new() { Name = "男3", Gender = Gender.Male },
+        };
+        var layout = new SeatChartLayout(1, 2, 3);
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.GenderPair);
+
+        // 第 3 列落单，不能与下一排第 1 列成为同桌。
+        Assert.False(layout.AreDeskmates(new SeatPosition(0, 0, 2), new SeatPosition(0, 1, 0)));
+    }
+
+    [Fact]
+    public void SeatingEngine_ScoreSnakeBalancesAcrossGroups()
+    {
+        var students = Enumerable.Range(0, 40).Select(i => new Student
+        {
+            Name = $"同学{i + 1}",
+            Score = i + 1,
+        }).ToList();
+        var layout = new SeatChartLayout(4, 5, 2);
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.ScoreSnake, ArrangeConstraints.Empty);
+        var averages = ScorePlanner.GroupAverages(result.Assignments, 4);
+
+        var spread = averages.Values.Max() - averages.Values.Min();
+        Assert.True(spread <= 2.0, $"各组均分极差 {spread:F1} 过大：{string.Join(" / ", averages.Values)}");
+    }
+
+    [Fact]
+    public void SeatingEngine_ScoreModeWithAllNullFallsBackToRosterOrder()
+    {
+        var students = MakeStudents(8);
+        var layout = new SeatChartLayout(2, 2, 2);
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.ScoreSnake, ArrangeConstraints.Empty);
+
+        Assert.Contains(result.Issues, i => i.Kind == SeatIssueKind.ScoreMissing);
+        Assert.Equal("同学1", result.Assignments[new SeatPosition(0, 0, 0)].Name);
+    }
+
+    [Fact]
+    public void SeatingEngine_UnknownArrangeModeThrowsInsteadOfSilentlyRosterOrder()
+    {
+        var students = MakeStudents(2);
+        var layout = new SeatChartLayout(1, 1, 2);
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => SeatingEngine.Arrange(students, layout, (ArrangeMode)99));
+    }
+
+    [Fact]
+    public void ScorePlanner_SnakeIsDeterministic()
+    {
+        var students = Enumerable.Range(0, 20).Select(i => new Student
+        {
+            Name = $"同学{i + 1}",
+            Score = (i * 7) % 20,
+        }).ToList();
+        var layout = new SeatChartLayout(4, 5, 1);
+
+        var first = ScorePlanner.TargetGroups(students, layout, ArrangeMode.ScoreSnake);
+        var second = ScorePlanner.TargetGroups(students, layout, ArrangeMode.ScoreSnake);
+
+        Assert.Equal(first.OrderBy(kv => kv.Key), second.OrderBy(kv => kv.Key));
+    }
+
+    [Fact]
+    public void ScorePlanner_NullScoresAreExcludedAndTrailing()
+    {
+        var students = MakeStudents(6);
+        students[0].Score = 90;
+        students[1].Score = 80;
+        var layout = new SeatChartLayout(2, 3, 1);
+
+        var targets = ScorePlanner.TargetGroups(students, layout, ArrangeMode.ScoreSnake);
+
+        Assert.Equal(2, targets.Count);
+        Assert.DoesNotContain(students[2].Id, targets.Keys);
+    }
+
+    [Fact]
+    public void ScorePlanner_FoldAlternatesHighAndLow()
+    {
+        var group = new List<Student>
+        {
+            new() { Name = "高分", Score = 100 },
+            new() { Name = "中分", Score = 60 },
+            new() { Name = "低分", Score = 20 },
+        };
+
+        var ordered = ScorePlanner.OrderWithin(group, WithinGroupOrder.Fold);
+
+        Assert.Equal("高分", ordered[0].Name);
+        Assert.Equal("低分", ordered[1].Name);
+        Assert.Equal("中分", ordered[2].Name);
+    }
+
+    [Fact]
+    public void SeatingEngine_MutexAndDeskmateConflictIsReported()
+    {
+        var students = MakeStudents(4);
+        var layout = new SeatChartLayout(1, 2, 2);
+        var pair = StudentPair.Create(students[0].Id, students[1].Id);
+
+        var constraints = new ArrangeConstraints
+        {
+            Mutex = new[] { pair },
+            Deskmates = new[] { pair },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        // 结对优先成桌，互斥因此无法满足——两条里至少有一条如实报告。
+        Assert.Contains(result.Issues,
+            i => i.Kind is SeatIssueKind.MutexUnsatisfied or SeatIssueKind.DeskmateUnsatisfied);
+    }
+
+    [Fact]
+    public void SeatZone_AllowsHonoursAllowedAndDenied()
+    {
+        var layout = new SeatChartLayout(2, 4, 2);
+        var zone = new StudentZone(
+            new[] { SeatRect.RowBand(layout, 0, 1) },
+            new[] { SeatRect.GroupBand(layout, 0) });
+
+        Assert.True(zone.Allows(new SeatPosition(1, 0, 0)));
+        Assert.False(zone.Allows(new SeatPosition(1, 2, 0)));   // 第 3 排，不在允许区
+        Assert.False(zone.Allows(new SeatPosition(0, 0, 0)));   // 第 1 组，被禁止
+    }
+
+    [Fact]
+    public void SeatZone_RectNormalizesSwappedAndOutOfRange()
+    {
+        var layout = new SeatChartLayout(2, 3, 2);
+        var rect = new SeatRect(5, 0, 2, 0, 0, 9).Normalize(layout);
+
+        Assert.Equal(0, rect.GroupFrom);
+        Assert.Equal(1, rect.GroupTo);
+        Assert.Equal(0, rect.RowFrom);
+        Assert.Equal(2, rect.RowTo);
+        Assert.Equal(1, rect.ColumnTo);
+    }
+
+    [Fact]
+    public void SeatingEngine_ZoneRestrictionKeepsStudentInFrontTwoRows()
+    {
+        var students = MakeStudents(4);
+        var layout = new SeatChartLayout(1, 4, 2);
+
+        var constraints = new ArrangeConstraints
+        {
+            Zones = new Dictionary<Guid, StudentZone>
+            {
+                [students[3].Id] = new StudentZone(
+                    new[] { SeatRect.RowBand(layout, 0, 1) }, Array.Empty<SeatRect>()),
+            },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+        var seat = SeatOf(result.Assignments, students[3].Id);
+
+        Assert.NotNull(seat);
+        Assert.True(seat!.Value.Row <= 1, $"实际落在第 {seat.Value.Row + 1} 排");
+    }
+
+    [Fact]
+    public void SeatingEngine_ZoneAndHeightComposeFrontFirst()
+    {
+        // 区域是候选集裁剪，不参与排序：裁剪后仍按前排优先，矮个子落在允许区的最前排。
+        var students = new List<Student>
+        {
+            new() { Name = "高个", Height = 190 },
+            new() { Name = "最矮", Height = 150 },
+        };
+        var layout = new SeatChartLayout(1, 4, 1);
+        var zone = new StudentZone(new[] { SeatRect.RowBand(layout, 1, 3) }, Array.Empty<SeatRect>());
+
+        var constraints = new ArrangeConstraints
+        {
+            Zones = students.ToDictionary(s => s.Id, _ => zone),
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.Height, constraints);
+
+        Assert.Equal("最矮", result.Assignments[new SeatPosition(0, 1, 0)].Name);
+    }
+
+    [Fact]
+    public void SeatingEngine_ZoneUnsatisfiableRelaxesAndReports()
+    {
+        var students = MakeStudents(3);
+        var layout = new SeatChartLayout(1, 3, 1);
+        var tiny = new StudentZone(new[] { SeatRect.RowBand(layout, 0, 0) }, Array.Empty<SeatRect>());
+
+        var constraints = new ArrangeConstraints
+        {
+            Zones = students.ToDictionary(s => s.Id, _ => tiny),
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal(3, result.Assignments.Count);
+        Assert.Contains(result.Issues, i => i.Kind == SeatIssueKind.ZoneUnsatisfied);
+    }
+
+    [Fact]
+    public void SeatingEngine_AvoidsPreviousDeskmatesWhenPossible()
+    {
+        var students = MakeStudents(4);
+        var layout = new SeatChartLayout(1, 2, 2);
+
+        var constraints = new ArrangeConstraints
+        {
+            AvoidDeskmates = new[] { StudentPair.Create(students[0].Id, students[1].Id) },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        var seatA = SeatOf(result.Assignments, students[0].Id);
+        var seatB = SeatOf(result.Assignments, students[1].Id);
+        Assert.False(layout.AreDeskmates(seatA!.Value, seatB!.Value));
+    }
+
+    [Fact]
+    public void SeatingEngine_RepairNeverMovesPinnedStudent()
+    {
+        var students = MakeStudents(8);
+        var layout = new SeatChartLayout(2, 2, 2);
+        var pin = new SeatPosition(1, 1, 1);
+
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[7].Id] = pin },
+            Mutex = new[]
+            {
+                StudentPair.Create(students[0].Id, students[1].Id),
+                StudentPair.Create(students[2].Id, students[3].Id),
+                StudentPair.Create(students[4].Id, students[5].Id),
+            },
+        };
+
+        var result = SeatingEngine.Arrange(students, layout, ArrangeMode.RosterOrder, constraints);
+
+        Assert.Equal("同学8", result.Assignments[pin].Name);
+    }
+
+    [Fact]
+    public void Config_RoundTripsLocks()
+    {
+        var students = MakeStudents(4);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+        var assignments = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+        };
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[0].Id] = new SeatPosition(0, 0, 0) },
+        };
+
+        var path = Path.Combine(_root, "locks.xlsx");
+        SeatGridConfigIO.Export(path, settings, students, assignments, constraints);
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.NotNull(imported.Constraints);
+        var pin = Assert.Single(imported.Constraints!.Pins);
+        Assert.Equal(students[0].Name, imported.Students.Single(s => s.Id == pin.Key).Name);
+        Assert.Equal(new SeatPosition(0, 0, 0), pin.Value);
+    }
+
+    [Fact]
+    public void Config_RoundTripsMutexAndDeskmateRules()
+    {
+        var students = MakeStudents(4);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+        var constraints = new ArrangeConstraints
+        {
+            Mutex = new[] { StudentPair.Create(students[0].Id, students[1].Id) },
+            Deskmates = new[] { StudentPair.Create(students[2].Id, students[3].Id) },
+            AvoidDeskmates = new[] { StudentPair.Create(students[0].Id, students[2].Id) },
+        };
+
+        var path = Path.Combine(_root, "pairs.xlsx");
+        SeatGridConfigIO.Export(path, settings, students,
+            new Dictionary<SeatPosition, Student>(), constraints);
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.NotNull(imported.Constraints);
+        Assert.Single(imported.Constraints!.Mutex);
+        Assert.Single(imported.Constraints.Deskmates);
+        Assert.Single(imported.Constraints.AvoidDeskmates);
+
+        // 规则按「序号 + 姓名」解析回来，必须仍指向同一对学生（StudentPair 会规范化顺序，不比先后）。
+        var importedNames = imported.Students.Select(s => s.Name).ToList();
+        var pair = imported.Constraints.Mutex[0];
+        var nameA = importedNames[imported.Students.FindIndex(s => s.Id == pair.A)];
+        var nameB = importedNames[imported.Students.FindIndex(s => s.Id == pair.B)];
+        Assert.Equal(
+            new[] { students[0].Name, students[1].Name }.OrderBy(n => n, StringComparer.Ordinal),
+            new[] { nameA, nameB }.OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Config_DropsRuleWhenStudentIsMissingWithWarning()
+    {
+        var students = MakeStudents(3);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+        var constraints = new ArrangeConstraints
+        {
+            Mutex = new[] { StudentPair.Create(students[0].Id, students[1].Id) },
+        };
+
+        var path = Path.Combine(_root, "missing.xlsx");
+        SeatGridConfigIO.Export(path, settings, students,
+            new Dictionary<SeatPosition, Student>(), constraints);
+
+        // 把名单里的第二个人删掉，模拟「学生已转学」。
+        using (var workbook = new XLWorkbook(path))
+        {
+            var roster = workbook.Worksheet("名单");
+            roster.Row(3).Delete();
+            workbook.Save();
+        }
+
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.Null(imported.Constraints);
+        Assert.Contains(imported.Warnings, w => w.Contains("已不在名单里"));
+    }
+
+    [Fact]
+    public void Config_RoundTripsZones()
+    {
+        var students = MakeStudents(2);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 3, Columns = 2 };
+        var layout = settings.GetLayout();
+        var constraints = new ArrangeConstraints
+        {
+            Zones = new Dictionary<Guid, StudentZone>
+            {
+                [students[0].Id] = new StudentZone(
+                    new[] { SeatRect.RowBand(layout, 0, 1) },
+                    new[] { SeatRect.GroupBand(layout, 1) }),
+            },
+        };
+
+        var path = Path.Combine(_root, "zones.xlsx");
+        SeatGridConfigIO.Export(path, settings, students,
+            new Dictionary<SeatPosition, Student>(), constraints);
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.NotNull(imported.Constraints);
+        var zone = Assert.Single(imported.Constraints!.Zones).Value;
+        Assert.Single(zone.Allowed);
+        Assert.Single(zone.Denied);
+        Assert.True(zone.Allows(new SeatPosition(0, 0, 0)));
+        Assert.False(zone.Allows(new SeatPosition(0, 2, 0)));
+    }
+
+    [Fact]
+    public void Config_MissingConstraintSheetReadsNullWithoutWarning()
+    {
+        var students = MakeStudents(2);
+        var settings = new SeatChartSettings { Groups = 2, Rows = 2, Columns = 2 };
+
+        var path = Path.Combine(_root, "plain.xlsx");
+        SeatGridConfigIO.Export(path, settings, students, new Dictionary<SeatPosition, Student>());
+        var imported = SeatGridConfigIO.Import(path);
+
+        Assert.Null(imported.Constraints);
+        Assert.Empty(imported.Warnings);
+    }
+
+    [Fact]
+    public void SeatChartExcel_RoundTripsLocksAndHidesConstraintSheet()
+    {
+        var (settings, students, assignments) = ChartFixture();
+        var constraints = new ArrangeConstraints
+        {
+            Pins = new Dictionary<Guid, SeatPosition> { [students[0].Id] = new SeatPosition(0, 0, 0) },
+        };
+
+        var path = Path.Combine(_root, "chart-locks.xlsx");
+        SeatChartExcelExporter.ExportSeatChart(
+            SeatChartComposer.Compose(settings, assignments, students.Count),
+            assignments, students, path, constraints);
+
+        using (var workbook = new XLWorkbook(path))
+        {
+            Assert.True(workbook.Worksheets.Contains("座位约束"));
+            Assert.Equal(XLWorksheetVisibility.Hidden, workbook.Worksheet("座位约束").Visibility);
+        }
+
+        var imported = SeatGridConfigIO.Import(path);
+        Assert.NotNull(imported.Constraints);
+        Assert.Single(imported.Constraints!.Pins);
+    }
+
+    private static List<Student> MakeStudents(int count) =>        Enumerable.Range(0, count)
+            .Select(i => new Student { Name = $"同学{i + 1}", Gender = i % 2 == 0 ? Gender.Male : Gender.Female })
+            .ToList();
+
+    private static SeatPosition? SeatOf(IReadOnlyDictionary<SeatPosition, Student> assignments, Guid id)
+    {
+        foreach (var (position, student) in assignments)
+            if (student.Id == id) return position;
+        return null;
+    }
 }
