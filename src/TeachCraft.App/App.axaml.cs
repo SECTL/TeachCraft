@@ -756,6 +756,7 @@ public partial class App : Application
                 if (!empty) window.LoadDemoData();
                 if (mode == "constraints") window.LoadDemoConstraints();
                 if (mode == "canvas") window.LoadDemoCanvas();
+                if (mode == "exam") window.LoadDemoExam();
                 window.Show();
                 await Task.Delay(1600);
                 window.CaptureTo(target);

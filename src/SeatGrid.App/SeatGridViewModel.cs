@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SeatGrid.Core.Export;
+using SeatGrid.Core.Exam;
 using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
 using SeatGrid.Core.Roster;
@@ -298,11 +299,13 @@ public partial class SeatGridViewModel : ObservableObject
     public IBrush GroupLabelBrush => _groupLabelBrush ??= new SolidColorBrush(GroupLabelColor);
     public IBrush FemaleMarkBrush => _femaleMarkBrush ??= new SolidColorBrush(FemaleMarkColor);
 
-    private SeatChartLayout CurrentLayout => new(
-        Math.Clamp((int)Math.Round(GroupCount), 1, 8),
-        Math.Clamp((int)Math.Round(RowCount), 1, 10),
-        Math.Clamp((int)Math.Round(ColumnCount), 1, 4),
-        Canvas);
+    private SeatChartLayout CurrentLayout => IsExamMode && _examPlan is not null
+        ? _examPlan.Layout
+        : new SeatChartLayout(
+            Math.Clamp((int)Math.Round(GroupCount), 1, 8),
+            Math.Clamp((int)Math.Round(RowCount), 1, 10),
+            Math.Clamp((int)Math.Round(ColumnCount), 1, 4),
+            Canvas);
 
     private ViewMode CurrentView => IsStudentView ? ViewMode.Student : ViewMode.Teacher;
 
@@ -1033,6 +1036,167 @@ public partial class SeatGridViewModel : ObservableObject
 
     /// <summary>当前画布，供画布编辑器打开时读取。</summary>
     public SeatChartCanvas CurrentCanvas => Canvas;
+
+    // ----------------------------- 考场模式 -----------------------------
+
+    /// <summary>进入考场前对日常座位的完整快照；为空表示当前不在考场模式。</summary>
+    private (SeatChartLayout Layout, Dictionary<SeatPosition, StudentViewModel> Assignments,
+        SeatChartSettings Settings, string Title)? _dailySnapshot;
+
+    private ExamPlan? _examPlan;
+
+    [ObservableProperty] private bool _isExamMode;
+
+    public bool CanEnterExam => HasStudents && !IsBusy && !IsExamMode;
+    public bool CanLeaveExam => IsExamMode;
+    public string ExamSummary => _examPlan is null
+        ? string.Empty
+        : $"考场视图 · {_examPlan.Assignments.Count} 人 · {_examPlan.Layout.Columns} 列 × {_examPlan.Layout.Rows} 排";
+
+    /// <summary>进入考场模式：先存日常快照，再把座位换成单人桌考场。</summary>
+    public void EnterExamMode(ExamLayoutOptions options)
+    {
+        if (_students.Count == 0)
+        {
+            SetStatus("先导入一份名单，再切考场模式。", true);
+            return;
+        }
+
+        _dailySnapshot = (
+            CurrentLayout,
+            new Dictionary<SeatPosition, StudentViewModel>(_assignments),
+            ToSettings(),
+            Title);
+
+        _examPlan = ExamPlanner.FromAssignments(
+            _students.Select(s => s.Model).ToList(), GetCoreAssignments(), options);
+
+        // 考场布局是独立的 layout（CurrentLayout 在考场模式下直接返回它），
+        // 不改日常的组/排/列滑块值——那会让界面显示 4 列而实际是 7 列。
+        IsExamMode = true;
+
+        var byId = _students.ToDictionary(s => s.Id);
+        _assignments.Clear();
+        foreach (var (position, model) in _examPlan.Assignments)
+        {
+            if (byId.TryGetValue(model.Id, out var student)) _assignments[position] = student;
+        }
+
+        BuildGrid();
+        RefreshSeatVisuals();
+        NotifyCounts();
+
+        var notes = _examPlan.Notes.Count > 0 ? $" · {string.Join("；", _examPlan.Notes)}" : string.Empty;
+        SetStatus($"已进入考场模式：{ExamSummary}{notes}");
+    }
+
+    /// <summary>返回日常座位：整体还原布局、座位与设置。</summary>
+    public void LeaveExamMode()
+    {
+        if (_dailySnapshot is not { } snapshot) return;
+
+        // 关模式后 CurrentLayout 自动回到日常的组/排/列与画布。
+        IsExamMode = false;
+        _suppressRebuild = true;
+        Canvas = snapshot.Settings.Canvas;
+        Title = snapshot.Title;
+        _suppressRebuild = false;
+
+        _assignments.Clear();
+        foreach (var (position, student) in snapshot.Assignments) _assignments[position] = student;
+
+        _dailySnapshot = null;
+        _examPlan = null;
+
+        BuildGrid();
+        RefreshSeatVisuals();
+        NotifyCounts();
+        SetStatus("已返回日常座位。");
+    }
+
+    partial void OnIsExamModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanEnterExam));
+        OnPropertyChanged(nameof(CanLeaveExam));
+        OnPropertyChanged(nameof(ExamSummary));
+    }
+
+    /// <summary>当前考场里的座号（座位 → 1 基座号）；不在考场模式时为空。</summary>
+    public IReadOnlyDictionary<SeatPosition, int> ExamSeatNumbers =>
+        _examPlan?.SeatNumbers ?? new Dictionary<SeatPosition, int>();
+
+    /// <summary>构造桌贴文档：按座号顺序，每张含姓名、考号、座号、班级与考场。</summary>
+    public DeskStickerDocument BuildDeskStickers(string className, string examRoom)
+    {
+        var stickers = new List<DeskSticker>();
+
+        if (_examPlan is not null)
+        {
+            foreach (var (position, student) in _assignments
+                         .OrderBy(kv => _examPlan.SeatNumbers.GetValueOrDefault(kv.Key, int.MaxValue)))
+            {
+                stickers.Add(new DeskSticker(
+                    student.Model.Name,
+                    student.Model.Number,
+                    _examPlan.SeatNumbers.GetValueOrDefault(position),
+                    className,
+                    examRoom));
+            }
+        }
+
+        return new DeskStickerDocument(Title, stickers, "本机生成，文件未上传");
+    }
+
+    /// <summary>周轮转：只换组，行列不动；锁定跟随学生。</summary>
+    public void RotateGroups(int dx)
+    {
+        if (IsExamMode)
+        {
+            SetStatus("考场视图下不能周轮转。", true);
+            return;
+        }
+
+        if (_assignments.Count == 0)
+        {
+            SetStatus("还没有已安排的座位，先自动排座。", true);
+            return;
+        }
+
+        var rotated = SeatChartComposer.RotateGroups(_assignments, CurrentLayout, dx);
+
+        var blocked = _assignments.Count - rotated.Count;
+        var kept = 0;
+        foreach (var (position, student) in _assignments)
+        {
+            if (!rotated.ContainsKey(position)) continue;
+            if (rotated[position] != student) continue;
+            kept++;
+        }
+
+        _assignments.Clear();
+        foreach (var (position, student) in rotated) _assignments[position] = student;
+
+        // 锁定跟着学生走：把每条锁的座位按同样的组变换更新。
+        var groups = CurrentLayout.Groups;
+        if (groups > 1 && Constraints.Pins.Count > 0)
+        {
+            var updated = new Dictionary<Guid, SeatPosition>(Constraints.Pins.Count);
+            foreach (var (id, seat) in Constraints.Pins)
+            {
+                var group = ((seat.Group + dx) % groups + groups) % groups;
+                updated[id] = seat with { Group = group };
+            }
+
+            Constraints.ReplacePins(updated);
+        }
+
+        RefreshSeatVisuals();
+        Constraints.RefreshRows();
+
+        var direction = dx > 0 ? "右" : "左";
+        var note = kept > 0 ? $"（{kept} 人因目标格是过道留在原组）" : string.Empty;
+        SetStatus($"已整体轮转一组（向{direction}，最外侧绕回）{note}");
+    }
 
     /// <summary>约束变更后由窗口层调用的刷新入口。</summary>
     public void RefreshSeatVisualsPublic() => RefreshSeatVisuals();

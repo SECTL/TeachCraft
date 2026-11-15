@@ -2,6 +2,8 @@ using ClosedXML.Excel;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
 using SeatGrid.App;
+using SeatGrid.Core;
+using SeatGrid.Core.Exam;
 using SeatGrid.Core.Export;
 using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
@@ -1458,6 +1460,241 @@ public sealed class SeatGridTests : IDisposable
         settings.Normalize();
 
         Assert.Equal("讲　台", settings.PodiumLabel);
+    }
+
+    // ----------------------------- 1.27.0 考务套件 -----------------------------
+
+    [Fact]
+    public void ExamPlanner_ColumnsFollowSquareRootRule()
+    {
+        var thirty = ExamPlanner.Build(MakeStudents(30));
+        Assert.Equal(6, thirty.Layout.Columns);
+        Assert.Equal(5, thirty.Layout.Rows);
+
+        var sixtyFour = ExamPlanner.Build(MakeStudents(64));
+        Assert.Equal(8, sixtyFour.Layout.Columns);
+        Assert.Equal(8, sixtyFour.Layout.Rows);
+    }
+
+    [Fact]
+    public void ExamPlanner_SerpentineNumbersSnakePerRow()
+    {
+        var layout = new SeatChartLayout(1, 2, 3);
+        var numbers = ExamPlanner.NumberSeats(layout, serpentine: true);
+
+        Assert.Equal(1, numbers[new SeatPosition(0, 0, 0)]);
+        Assert.Equal(2, numbers[new SeatPosition(0, 0, 1)]);
+        Assert.Equal(3, numbers[new SeatPosition(0, 0, 2)]);
+        Assert.Equal(6, numbers[new SeatPosition(0, 1, 0)]);
+        Assert.Equal(5, numbers[new SeatPosition(0, 1, 1)]);
+        Assert.Equal(4, numbers[new SeatPosition(0, 1, 2)]);
+    }
+
+    [Fact]
+    public void ExamPlanner_ColumnOrderNumbersStraightDown()
+    {
+        var layout = new SeatChartLayout(1, 2, 3);
+        var numbers = ExamPlanner.NumberSeats(layout, serpentine: false);
+
+        // 按列从上到下：第 1 列 1、2；第 2 列 3、4；第 3 列 5、6。
+        Assert.Equal(1, numbers[new SeatPosition(0, 0, 0)]);
+        Assert.Equal(2, numbers[new SeatPosition(0, 1, 0)]);
+        Assert.Equal(3, numbers[new SeatPosition(0, 0, 1)]);
+        Assert.Equal(4, numbers[new SeatPosition(0, 1, 1)]);
+        Assert.Equal(5, numbers[new SeatPosition(0, 0, 2)]);
+        Assert.Equal(6, numbers[new SeatPosition(0, 1, 2)]);
+    }
+
+    [Fact]
+    public void ExamPlanner_SeatNumbersAreContiguousAndUnique()
+    {
+        var plan = ExamPlanner.Build(MakeStudents(37));
+
+        // 37 人 → 7 列 × 6 排 = 42 座，座号连续覆盖全部座位。
+        var values = plan.SeatNumbers.Values.OrderBy(v => v).ToList();
+        Assert.Equal(Enumerable.Range(1, plan.Layout.SeatCount), values);
+        Assert.Equal(37, plan.Assignments.Count);
+    }
+
+    [Fact]
+    public void ExamPlanner_DailySeatOrderPreservedInExam()
+    {
+        var students = MakeStudents(6);
+        var layout = new SeatChartLayout(2, 3, 1);
+        var daily = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[4],   // 日常第一排最左
+            [new SeatPosition(0, 0, 1)] = students[2],
+        };
+
+        var plan = ExamPlanner.FromAssignments(students, daily);
+        var firstSeat = plan.SeatNumbers.First(kv => kv.Value == 1).Key;
+
+        Assert.Equal(students[4].Name, plan.Assignments[firstSeat].Name);
+    }
+
+    [Fact]
+    public void ExamPlanner_EmptyRosterProducesEmptyPlan()
+    {
+        var plan = ExamPlanner.Build(Array.Empty<Student>());
+
+        Assert.Empty(plan.Assignments);
+        Assert.Contains(plan.Notes, n => n.Contains("名单为空"));
+    }
+
+    [Fact]
+    public void RotateGroups_ShiftsEveryGroupByOneAndWraps()
+    {
+        var students = MakeStudents(4);
+        var layout = new SeatChartLayout(4, 1, 1);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+            [new SeatPosition(3, 0, 0)] = students[3],
+        };
+
+        var rotated = SeatChartComposer.RotateGroups(seats, layout, 1);
+
+        Assert.Equal(students[0].Name, rotated[new SeatPosition(1, 0, 0)].Name);
+        Assert.Equal(students[3].Name, rotated[new SeatPosition(0, 0, 0)].Name);
+    }
+
+    [Fact]
+    public void RotateGroups_KeepsRowAndColumn()
+    {
+        var students = MakeStudents(1);
+        var layout = new SeatChartLayout(3, 2, 2);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 1, 1)] = students[0],
+        };
+
+        var rotated = SeatChartComposer.RotateGroups(seats, layout, 1);
+
+        var position = rotated.Single().Key;
+        Assert.Equal(1, position.Row);
+        Assert.Equal(1, position.Column);
+        Assert.Equal(1, position.Group);
+    }
+
+    [Fact]
+    public void RotateGroups_SingleGroupIsNoOp()
+    {
+        var students = MakeStudents(1);
+        var layout = new SeatChartLayout(1, 2, 2);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+        };
+
+        var rotated = SeatChartComposer.RotateGroups(seats, layout, 1);
+
+        Assert.Equal(new SeatPosition(0, 0, 0), rotated.Single().Key);
+    }
+
+    [Fact]
+    public void RotateGroups_KeepsStudentInPlaceWhenTargetIsAisle()
+    {
+        var students = MakeStudents(1);
+        var canvas = SeatChartCanvas.Empty.WithDisabled(new SeatPosition(1, 0, 0), true);
+        var layout = new SeatChartLayout(2, 1, 1, canvas);
+        var seats = new Dictionary<SeatPosition, Student>
+        {
+            [new SeatPosition(0, 0, 0)] = students[0],
+        };
+
+        var rotated = SeatChartComposer.RotateGroups(seats, layout, 1);
+
+        Assert.Equal(new SeatPosition(0, 0, 0), rotated.Single().Key);
+    }
+
+    [Fact]
+    public void DeskPlan_SameSeatCountNeedsNoMove()
+    {
+        var daily = new SeatChartLayout(4, 6, 2);
+        var exam = new SeatChartLayout(1, 6, 8);
+
+        var plan = DeskMovingPlanCalculator.Build(daily, exam, dailyIsDoubleDesk: true);
+
+        Assert.Equal(0, plan.MoveOutDesks);
+        Assert.Equal(0, plan.MoveInDesks);
+        Assert.Equal(48, plan.KeepDesks);
+    }
+
+    [Fact]
+    public void DeskPlan_ExamSmallerMovesOut()
+    {
+        var daily = new SeatChartLayout(4, 6, 2);   // 48
+        var exam = new SeatChartLayout(1, 5, 8);    // 40
+
+        var plan = DeskMovingPlanCalculator.Build(daily, exam, dailyIsDoubleDesk: false);
+
+        Assert.Equal(8, plan.MoveOutDesks);
+        Assert.Equal(40, plan.KeepDesks);
+    }
+
+    [Fact]
+    public void DeskPlan_ExamLargerMovesIn()
+    {
+        var daily = new SeatChartLayout(4, 6, 2);   // 48
+        var exam = new SeatChartLayout(1, 7, 8);    // 56
+
+        var plan = DeskMovingPlanCalculator.Build(daily, exam, dailyIsDoubleDesk: false);
+
+        Assert.Equal(8, plan.MoveInDesks);
+    }
+
+    [Fact]
+    public void Sticker_PageCountIsCeilOfPerPage()
+    {
+        var options = new DeskStickerOptions { Columns = 3, Rows = 4 };   // 12/页
+
+        Assert.Equal(1, DeskStickerRenderer.PageCount(12, options));
+        Assert.Equal(2, DeskStickerRenderer.PageCount(13, options));
+        Assert.Equal(3, DeskStickerRenderer.PageCount(30, options));
+    }
+
+    [Fact]
+    public void Sticker_RenderProducesPngWithExpectedSize()
+    {
+        var document = new DeskStickerDocument("考场桌贴", new[]
+        {
+            new DeskSticker("同学1", "2026001", 1, "九年级6班", "第 1 考场"),
+        }, string.Empty);
+        var options = new DeskStickerOptions();
+
+        var png = DeskStickerRenderer.Render(document, options, 0, 1.0f);
+
+        using var codec = SKCodec.Create(new MemoryStream(png));
+        Assert.NotNull(codec);
+        Assert.Equal((int)DeskStickerRenderer.PageWidth, codec!.Info.Width);
+        Assert.Equal((int)DeskStickerRenderer.PageHeight, codec.Info.Height);
+    }
+
+    [Fact]
+    public void StickerPdf_ExportsValidMultiPagePdf()
+    {
+        var students = MakeStudents(30);
+        var document = new DeskStickerDocument("考场桌贴",
+            students.Select((s, i) => new DeskSticker(s.Name, s.Number, i + 1, "九年级6班", "第 1 考场")).ToList(),
+            string.Empty);
+        var options = new DeskStickerOptions { Columns = 3, Rows = 4 };
+
+        var path = Path.Combine(_root, "stickers.pdf");
+        DeskStickerPdfExporter.Export(document, options, path);
+
+        Assert.True(File.Exists(path));
+        Assert.Equal("%PDF", File.ReadAllText(path, System.Text.Encoding.ASCII)[..4]);
+        Assert.True(new FileInfo(path).Length > 5000);
+    }
+
+    [Fact]
+    public void StickerPdf_EmptyRosterThrows()
+    {
+        var document = new DeskStickerDocument("考场桌贴", Array.Empty<DeskSticker>(), string.Empty);
+
+        Assert.Throws<SeatGridException>(() =>
+            DeskStickerPdfExporter.Export(document, new DeskStickerOptions(), Path.Combine(_root, "x.pdf")));
     }
 
     private static List<Student> MakeStudents(int count) =>

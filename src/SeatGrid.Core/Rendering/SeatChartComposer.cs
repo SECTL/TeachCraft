@@ -176,6 +176,39 @@ public static class SeatChartComposer
         return shifted;
     }
 
+    /// <summary>
+    /// 周轮转：每组整体移到下一组（dx = +1）或上一组（dx = −1），最外侧绕回。
+    /// 与 <see cref="ShiftOnScreen"/> 的区别：这里只换 Group，Row / Column 不动，
+    /// 方向按物理组号而不是视角——物理上确实整体挪了一组，学生视角看到反向是对的。
+    /// </summary>
+    public static Dictionary<SeatPosition, T> RotateGroups<T>(
+        IReadOnlyDictionary<SeatPosition, T> assignments, SeatChartLayout layout, int dx)
+    {
+        var shifted = new Dictionary<SeatPosition, T>(assignments.Count);
+        var groups = layout.Groups;
+        if (groups <= 1 || dx % groups == 0)
+        {
+            foreach (var (position, value) in assignments) shifted[position] = value;
+            return shifted;
+        }
+
+        foreach (var (position, value) in assignments)
+        {
+            if (!layout.Contains(position))
+            {
+                shifted[position] = value;   // 不在布局内的座位原样保留，不丢人
+                continue;
+            }
+
+            var group = ((position.Group + dx) % groups + groups) % groups;
+            var target = position with { Group = group };
+            if (layout.IsUsable(target)) shifted[target] = value;
+            else shifted[position] = value;   // 目标格是过道：原地不动，由调用方报数
+        }
+
+        return shifted;
+    }
+
     private static int[] Ordered(int count, bool reverse)
     {
         var order = Enumerable.Range(0, count).ToArray();

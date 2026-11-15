@@ -14,6 +14,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using SeatGrid.Core;
+using SeatGrid.Core.Exam;
 using SeatGrid.Core.Export;
 using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
@@ -139,6 +140,13 @@ public partial class SeatGridWindow : Window
         ViewModel.AutoArrange();
         ViewModel.RefreshSeatVisualsPublic();
         ViewModel.SetStatus("演示：1 个锁定座位 · 1 对互斥 · 1 对结对 · 成绩均衡");
+    }
+
+    /// <summary>设计走查：考场模式演示态——单人桌、蛇形座号。</summary>
+    public void LoadDemoExam()
+    {
+        LoadDemoData();
+        ViewModel.EnterExamMode(new ExamLayoutOptions());
     }
 
     /// <summary>设计走查：教室画布演示态——中间两组靠讲台的前两排设为过道，加一条组间走廊与两扇门。</summary>
@@ -1056,6 +1064,151 @@ public partial class SeatGridWindow : Window
 
         if (applied)
             ViewModel.SetStatus("已添加排座规则。");
+    }
+
+    private void OnRotateLeft(object? sender, RoutedEventArgs e) => ViewModel.RotateGroups(-1);
+
+    private void OnRotateRight(object? sender, RoutedEventArgs e) => ViewModel.RotateGroups(1);
+
+    private void OnLeaveExam(object? sender, RoutedEventArgs e) => ViewModel.LeaveExamMode();
+
+    private async void OnExamMode(object? sender, RoutedEventArgs e)
+    {
+        var options = await ShowExamDialogAsync();
+        if (options is null) return;
+        ViewModel.EnterExamMode(options);
+    }
+
+    /// <summary>考场模式设置：列数上限、座号顺序、落座顺序。</summary>
+    private async Task<ExamLayoutOptions?> ShowExamDialogAsync()
+    {
+        var dialog = new Window
+        {
+            Title = "进入考场模式",
+            Width = 440,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = DialogPaper,
+        };
+
+        ExamLayoutOptions? result = null;
+
+        var serpentine = new RadioButton
+        {
+            Content = "座号蛇形（逐排往返）", IsChecked = true, FontSize = 11.5,
+        };
+        var byColumn = new RadioButton { Content = "座号按列（从上到下）", FontSize = 11.5 };
+        var maxColumns = new NumericUpDown
+        {
+            Minimum = 4, Maximum = 12, Value = 8, Increment = 1, FontSize = 11.5, MinHeight = 32,
+        };
+
+        var confirm = new Button
+        {
+            Content = "进入考场",
+            IsDefault = true,
+            Padding = new Thickness(16, 7),
+            Background = DialogInk,
+            Foreground = DialogPaper,
+            BorderThickness = new Thickness(0),
+        };
+        var cancel = new Button
+        {
+            Content = "取消",
+            IsCancel = true,
+            Padding = new Thickness(16, 7),
+            Background = DialogCard,
+            Foreground = DialogInkSoft,
+            BorderBrush = DialogLine,
+            BorderThickness = new Thickness(1),
+        };
+
+        confirm.Click += (_, _) =>
+        {
+            result = new ExamLayoutOptions(
+                (int)(maxColumns.Value ?? 8),
+                serpentine.IsChecked == true);
+            dialog.Close();
+        };
+        cancel.Click += (_, _) => dialog.Close();
+
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "进入考场模式", FontSize = 17, FontWeight = FontWeight.SemiBold, Foreground = DialogInk,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "会把当前座位换成单人桌标准考场：按人数自动算列数，座号依次编排。"
+                   + "日常座位完整保留，点「返回日常座位」可一键还原。",
+            FontSize = 12, Foreground = DialogMuted, TextWrapping = TextWrapping.Wrap, LineHeight = 19,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "考场模式下锁定、互斥、结对与区域限制不生效。",
+            FontSize = 11, Foreground = DialogTerracotta, TextWrapping = TextWrapping.Wrap,
+        });
+
+        panel.Children.Add(new TextBlock { Text = "座号顺序", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(serpentine);
+        panel.Children.Add(byColumn);
+
+        panel.Children.Add(new TextBlock { Text = "最多列数", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(maxColumns);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8,
+        };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(confirm);
+        panel.Children.Add(buttons);
+
+        dialog.Content = panel;
+        await dialog.ShowDialog(this);
+        return result;
+    }
+
+    private async void OnExportStickers(object? sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsExamMode)
+        {
+            ViewModel.SetStatus("先进入考场模式，再导出桌贴。", true);
+            return;
+        }
+
+        var dialog = new DeskStickerOptionsWindow(ViewModel.Title);
+        var request = await dialog.ShowDialog<DeskStickerRequest?>(this);
+        if (request is null) return;
+
+        var path = await PickSaveAsync("导出考场桌贴", $"{SafeFileName("考场桌贴")}.pdf", ".pdf",
+            new FilePickerFileType("PDF 文档") { Patterns = new[] { "*.pdf" } });
+        if (path is null) return;
+
+        if (IsSamePath(path, _rosterPath))
+        {
+            ViewModel.SetStatus("导出路径不能覆盖已导入的名单文件。", true);
+            return;
+        }
+
+        ViewModel.BeginBusy("正在生成桌贴…", "按考场座号排 A4，通常几秒。");
+        try
+        {
+            var document = ViewModel.BuildDeskStickers(request.ClassName, request.ExamRoom);
+            var options = request.Options;
+            await Task.Run(() => DeskStickerPdfExporter.Export(document, options, path));
+            ViewModel.SetStatus($"已导出桌贴：{Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "导出桌贴失败");
+        }
+        finally
+        {
+            ViewModel.EndBusy();
+        }
     }
 
     private void OnResetStyle(object? sender, RoutedEventArgs e) => ViewModel.ResetStyle();

@@ -119,6 +119,15 @@ public sealed partial class SeatConstraintsViewModel : ObservableObject
         NotifyCounts();
     }
 
+    /// <summary>整体替换锁定（周轮转后座位跟着学生走）。</summary>
+    public void ReplacePins(IReadOnlyDictionary<Guid, SeatPosition> pins)
+    {
+        Pins.Clear();
+        foreach (var (id, seat) in pins) Pins[id] = seat;
+        RefreshRows();
+        NotifyCounts();
+    }
+
     /// <summary>布局缩小或删除学生时，把指向已不存在的座位 / 学生的锁清掉。</summary>
     public int DropInvalidPins(SeatChartLayout layout, IReadOnlyCollection<Guid> liveStudentIds)
     {

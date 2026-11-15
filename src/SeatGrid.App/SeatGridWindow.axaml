@@ -341,6 +341,10 @@
                               ToolTip.Tip="自动排座方式" />
                     <Button Classes="accent-outline top" Content="自动排座" Click="OnAutoArrange"
                             IsEnabled="{Binding CanArrange}" AutomationProperties.Name="自动排座" />
+                    <Button Classes="ghost top" Content="考场模式" Click="OnExamMode"
+                            IsEnabled="{Binding CanEnterExam}" AutomationProperties.Name="进入考场模式" />
+                    <Button Classes="ghost top" Content="桌贴" Click="OnExportStickers"
+                            IsEnabled="{Binding IsExamMode}" AutomationProperties.Name="打印考场桌贴" />
                     <Button Classes="ghost top" Content="预览" Click="OnPreview"
                             IsEnabled="{Binding CanExport}" />
                     <Button Classes="ghost top" Content="打印" Click="OnPrint"
@@ -486,6 +490,14 @@
                                VerticalAlignment="Center" HorizontalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Border Classes="chip" IsVisible="{Binding IsExamMode}" VerticalAlignment="Center"
+                                ToolTip.Tip="考场模式下锁定、互斥、结对与区域限制不生效">
+                            <TextBlock Text="{Binding ExamSummary}" FontFamily="{StaticResource MonoFont}"
+                                       FontSize="9.5" Foreground="{StaticResource AccentDeepBrush}" />
+                        </Border>
+                        <Button Classes="ghost" Content="返回日常座位" Click="OnLeaveExam"
+                                IsVisible="{Binding IsExamMode}" FontSize="10.5" Padding="8,4"
+                                AutomationProperties.Name="返回日常座位" />
                         <Border Classes="chip" IsVisible="{Binding ShowGenderLegend}" VerticalAlignment="Center"
                                 ToolTip.Tip="座位表中男 / 女生姓名所用的颜色">
                             <StackPanel Orientation="Horizontal" Spacing="5">
@@ -890,8 +902,7 @@
                                     <TextBlock Classes="field-label" Text="整班平移一格" />
                                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="6">
                                         <Button Classes="ghost tool" Click="OnShiftLeft"
-                                                ToolTip.Tip="整班向左平移一格" AutomationProperties.Name="全部向左平移">
-                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                ToolTip.Tip="整班向左平移一格" AutomationProperties.Name="全部向左平移">                                            <StackPanel Orientation="Horizontal" Spacing="5">
                                                 <Path Classes="shift-icon" Data="M9,5 L1,5 M4.5,1.5 L1,5 L4.5,8.5" />
                                                 <TextBlock Text="左移" />
                                             </StackPanel>
@@ -921,6 +932,29 @@
                                 </StackPanel>
                                 <TextBlock Classes="helper"
                                            Text="方向按当前视角计算，超出边缘自动绕回。行首排号与列尾 ⠿ 把手可按住拖动，与目标整排 / 整列对调。" />
+                                <StackPanel Spacing="6">
+                                    <TextBlock Classes="field-label" Text="周轮转（只换组，行列不动）" />
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                        <Button Classes="ghost tool" Click="OnRotateLeft"
+                                                ToolTip.Tip="每组整体左移一组，最外侧绕回"
+                                                AutomationProperties.Name="周轮转向左">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Classes="shift-icon" Data="M9,5 L1,5 M4.5,1.5 L1,5 L4.5,8.5" />
+                                                <TextBlock Text="轮转 ←" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="1" Classes="ghost tool" Click="OnRotateRight"
+                                                ToolTip.Tip="每组整体右移一组，最外侧绕回"
+                                                AutomationProperties.Name="周轮转向右">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Path Classes="shift-icon" Data="M1,5 L9,5 M5.5,1.5 L9,5 L5.5,8.5" />
+                                                <TextBlock Text="轮转 →" />
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="每周防斜视换组用这个；「整班平移」是屏幕方向平移一格，两者不同。" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                         <Border Classes="inspector-divider" />
