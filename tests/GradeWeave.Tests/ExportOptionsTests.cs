@@ -97,6 +97,64 @@ public sealed class ExportOptionsTests
         Assert.Equal("本机自定义样式", vm.Styles[1].Label);
     }
 
+    [Fact]
+    public void Seewo_Style_IsOfferedAfterReference()
+    {
+        var vm = NewViewModel();
+
+        Assert.Equal(3, vm.Styles.Count);
+        Assert.Equal(WeaveExportStyle.Seewo, vm.Styles[2].Style);
+        Assert.Contains("希沃", vm.Styles[2].Label, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Seewo_Style_IgnoresSheetTogglesAndBuilds()
+    {
+        var vm = NewViewModel();
+        vm.SelectedStyle = vm.Styles.First(s => s.Style == WeaveExportStyle.Seewo);
+        vm.IncludeMaster = false;
+        vm.IncludeAssignment = false;
+        vm.IncludeTeacherPosition = false;
+        vm.IncludeClassSheets = false;
+        vm.IncludeTeacherSheets = false;
+        vm.IncludeConflict = false;
+
+        // 希沃模板只有一张表，分页勾选对它不生效——不该被「至少勾选一页」拦住。
+        Assert.True(vm.TryBuild(out var request, out var error));
+        Assert.Empty(error);
+        Assert.Equal(WeaveExportStyle.Seewo, request!.Options.Style);
+        Assert.True(vm.IsSeewoStyle);
+        Assert.False(vm.ShowSheetChoices);
+        Assert.Equal("全年级", request.TargetLabel);
+    }
+
+    [Fact]
+    public void Seewo_Style_HidesSheetChoicesButShowsExplanation()
+    {
+        var vm = NewViewModel();
+        Assert.True(vm.ShowSheetChoices);
+
+        vm.SelectedStyle = vm.Styles.First(s => s.Style == WeaveExportStyle.Seewo);
+
+        Assert.False(vm.ShowSheetChoices);
+        Assert.Contains("希沃", vm.StyleHint, StringComparison.Ordinal);
+        Assert.Contains("原样保留", vm.StyleHint, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SwitchingToPdf_HidesExcelStyleChoices()
+    {
+        var vm = NewViewModel();
+        vm.SelectedFormat = vm.Formats.First(f => f.Format == WeaveExportFormat.Pdf);
+
+        Assert.False(vm.IsExcel);
+        Assert.False(vm.ShowSheetChoices);
+        Assert.False(vm.ShowReferenceName);
+
+        vm.SelectedFormat = vm.Formats.First(f => f.Format == WeaveExportFormat.Excel);
+        Assert.True(vm.ShowSheetChoices);
+    }
+
     private static ExportOptionsViewModel NewViewModel()
     {
         var project = WeaveSamples.CreateDemo(4);

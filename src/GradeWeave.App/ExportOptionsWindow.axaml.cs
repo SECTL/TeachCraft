@@ -23,7 +23,12 @@ public partial class ExportOptionsWindow : Window
         InitializeComponent();
         _viewModel = new ExportOptionsViewModel(project, selectedClass, selectedTeacher, teacherView);
         DataContext = _viewModel;
-        Opened += (_, _) => WindowFit.Clamp(this);
+        Opened += (_, _) =>
+        {
+            WindowFit.Clamp(this);
+            _viewModel.RequestPreview();
+        };
+        Closed += (_, _) => _viewModel.CancelPendingPreview();
     }
 
     private void OnExport(object? sender, RoutedEventArgs e)

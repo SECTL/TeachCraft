@@ -19,4 +19,10 @@
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.14" />
   </ItemGroup>
 
+  <!-- 希沃全校课表导入模板：希沃官方下发的空表，随程序内置，
+       导出「希沃全校课表」时直接拿它当底板（批注、表头、合并与样式原样保留）。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\希沃全校课表模板.xlsx" LogicalName="GradeWeave.SeewoTemplate.xlsx" />
+  </ItemGroup>
+
 </Project>

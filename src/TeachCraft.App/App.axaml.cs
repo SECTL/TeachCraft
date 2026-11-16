@@ -114,6 +114,7 @@ public partial class App : Application
                 !CaptureGradeWeaveTimetableIfRequested(desktop) &&
                 !CaptureGradeWeaveAssignmentIfRequested(desktop) &&
                 !CaptureGradeWeaveConflictIfRequested(desktop) &&
+                !CaptureGradeWeaveExportIfRequested(desktop) &&
                 !CaptureMeetRosterIfRequested(desktop) &&
                 !RunSliderBenchIfRequested(desktop) &&
                 !RunPerfBenchIfRequested(desktop) &&
@@ -432,6 +433,93 @@ public partial class App : Application
                 using var stream = File.Create(target);
                 bitmap.Save(stream, new PngBitmapEncoderOptions());
                 center.Close();
+                window.Close();
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(target + ".error.txt", ex.ToString());
+            }
+            finally
+            {
+                desktop.Shutdown();
+            }
+        });
+
+        return true;
+    }
+
+    /// <summary>
+    /// 设计走查：打开织序的导出设置弹窗并截图。
+    /// 用法：--gradeweave-export-shot &lt;png&gt; [excel|png|pdf] [software|reference|seewo]
+    /// </summary>
+    private static bool CaptureGradeWeaveExportIfRequested(
+        IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var args = desktop.Args ?? Array.Empty<string>();
+        var index = Array.IndexOf(args, "--gradeweave-export-shot");
+        if (index < 0 || index + 1 >= args.Length) return false;
+
+        var target = args[index + 1];
+        var formatText = index + 2 < args.Length ? args[index + 2] : "excel";
+        var styleText = index + 3 < args.Length ? args[index + 3] : "software";
+
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                await Task.Delay(500);
+                var window = new GradeWeave.App.GradeWeaveWindow
+                {
+                    Width = 1440,
+                    Height = 920,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                };
+                window.Show();
+                await Task.Delay(300);
+
+                window.LoadDemoProject();
+                window.SetStepForCapture(5);
+                if (window.DataContext is GradeWeave.App.GradeWeaveViewModel viewModel &&
+                    viewModel.Project.Lessons.Count == 0)
+                    await window.GenerateForCaptureAsync();
+
+                var project = (window.DataContext as GradeWeave.App.GradeWeaveViewModel)?.Project
+                              ?? new GradeWeave.Core.Models.WeaveProject();
+                // PNG / PDF 导出当前选中的班级，走查时给第一个班，否则预览只能是「未选择」。
+                var demoClass = project.Classes.FirstOrDefault();
+                var dialog = new GradeWeave.App.ExportOptionsWindow(project, demoClass, null, false)
+                {
+                    Width = 1040,
+                    Height = 760,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                };
+                dialog.Show(window);
+                await Task.Delay(300);
+
+                if (dialog.DataContext is GradeWeave.App.ExportOptionsViewModel options)
+                {
+                    options.SelectedFormat = options.Formats.FirstOrDefault(f =>
+                        string.Equals(f.Format.ToString(), formatText, StringComparison.OrdinalIgnoreCase))
+                        ?? options.Formats[0];
+                    options.SelectedStyle = options.Styles.FirstOrDefault(s =>
+                        string.Equals(s.Style.ToString(), styleText, StringComparison.OrdinalIgnoreCase))
+                        ?? options.Styles[0];
+
+                    // 预览是后台渲染 + 200ms 防抖，等它画完再截。
+                    options.RequestPreview();
+                    await Task.Delay(1200);
+                }
+
+                dialog.UpdateLayout();
+                var pixelSize = new PixelSize(
+                    (int)Math.Max(1, dialog.Bounds.Width),
+                    (int)Math.Max(1, dialog.Bounds.Height));
+                using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96, 96));
+                bitmap.Render(dialog);
+
+                using var stream = File.Create(target);
+                bitmap.Save(stream, new PngBitmapEncoderOptions());
+                dialog.Close();
                 window.Close();
             }
             catch (Exception ex)

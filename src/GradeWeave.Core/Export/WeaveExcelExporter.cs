@@ -19,6 +19,11 @@ public sealed partial class WeaveExcelExporter
             var opts = options ?? new ExportOptions();
             WeaveExportSupport.Prepare(project, path);
 
+            // 希沃样式不是「换一套配色」而是「填进别人的模板」，走的是另一个导出器；
+            // 这里必须拒绝，否则会产出一份看着像希沃、其实没有模板结构的普通工作簿。
+            if (opts.Style == WeaveExportStyle.Seewo)
+                throw new GradeWeaveException("希沃全校课表请用希沃预设导出，不能按普通工作簿生成。");
+
             var periods = WeaveExportSupport.PeriodsOf(project);
             var conflictItems = conflicts ?? Array.Empty<WeaveConflict>();
             var names = new SheetNameAllocator();

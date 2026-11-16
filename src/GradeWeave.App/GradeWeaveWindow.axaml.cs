@@ -2266,6 +2266,12 @@ public partial class GradeWeaveWindow : Window
 
     private async Task ExportExcelAsync(WeaveExportRequest request)
     {
+        if (request.Options.Style == WeaveExportStyle.Seewo)
+        {
+            await ExportSeewoAsync(request);
+            return;
+        }
+
         var path = await PickSaveAsync("导出课表 Excel", SafeFileName(".xlsx"), "xlsx",
             new FilePickerFileType("Excel 工作簿") { Patterns = new[] { "*.xlsx" } });
         if (path is null) return;
@@ -2289,6 +2295,42 @@ public partial class GradeWeaveWindow : Window
         catch (Exception ex)
         {
             Report(ex, "导出 Excel 失败");
+        }
+        finally
+        {
+            ViewModel.IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 希沃全校课表：把课表填进希沃官方模板，供老师直接上传希沃平台。
+    /// 与其它 Excel 导出的区别是「不重排版面」——模板的标题、须知、表头批注与合并单元格原样保留。
+    /// </summary>
+    private async Task ExportSeewoAsync(WeaveExportRequest request)
+    {
+        var project = ViewModel.Project;
+        var suggested = SafeFileName($"{project.GradeName}全校课表-希沃.xlsx");
+        var path = await PickSaveAsync("导出希沃全校课表", suggested, "xlsx",
+            new FilePickerFileType("Excel 工作簿") { Patterns = new[] { "*.xlsx" } });
+        if (path is null) return;
+
+        if (IsSamePath(path, project.SourceFile))
+        {
+            ViewModel.SetStatus("导出路径不能覆盖已导入的课表文件。", true);
+            return;
+        }
+
+        ViewModel.IsBusy = true;
+        try
+        {
+            var warnings = new List<string>();
+            await Task.Run(() => WeaveSeewoExporter.Export(project, path, warnings));
+            var note = warnings.Count > 0 ? " " + string.Join(" ", warnings) : string.Empty;
+            ViewModel.SetStatus($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd(), warnings.Count > 0);
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "导出希沃课表失败");
         }
         finally
         {

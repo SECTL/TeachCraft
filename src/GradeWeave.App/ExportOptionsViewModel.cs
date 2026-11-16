@@ -1,7 +1,10 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using GradeWeave.Core.Export;
 using GradeWeave.Core.Models;
 
 namespace GradeWeave.App;
@@ -39,9 +42,13 @@ public sealed record WeaveExportRequest(
     string? TeacherId,
     string TargetLabel);
 
-/// <summary>04 步统一导出设置：格式、Excel 样式、分页内容；PNG / PDF 导出当前选中的班级或教师。</summary>
+/// <summary>
+/// 04 步统一导出设置：格式、Excel 样式、分页内容；PNG / PDF 导出当前选中的班级或教师。
+/// 与竞名导出弹窗同构——左侧设置、右侧实时预览，改设置即刷新且不落盘。
+/// </summary>
 public partial class ExportOptionsViewModel : ObservableObject
 {
+    private readonly WeaveProject _project;
     private readonly SchoolClass? _selectedClass;
     private readonly Teacher? _selectedTeacher;
     private readonly bool _teacherView;
@@ -53,6 +60,7 @@ public partial class ExportOptionsViewModel : ObservableObject
         bool teacherView)
     {
         ArgumentNullException.ThrowIfNull(project);
+        _project = project;
         _selectedClass = selectedClass;
         _selectedTeacher = selectedTeacher;
         _teacherView = teacherView;
@@ -73,6 +81,8 @@ public partial class ExportOptionsViewModel : ObservableObject
             WeaveExportStyle.Software, "软件自带样式", "纸墨色板、雅黑字体、浅色细边"));
         Styles.Add(new ExportStyleOption(
             WeaveExportStyle.Reference, ReferenceStyleName, "宋体 / 楷体、黑色细框、横向课程总表"));
+        Styles.Add(new ExportStyleOption(
+            WeaveExportStyle.Seewo, "希沃全校课表", "填进希沃官方模板，可直接上传希沃平台"));
 
         _selectedFormat = Formats[0];
         _selectedStyle = Styles[0];
@@ -95,11 +105,142 @@ public partial class ExportOptionsViewModel : ObservableObject
     [ObservableProperty] private bool _includeConflict = true;
     [ObservableProperty] private string _error = string.Empty;
 
+    // ---------- 预览 ----------
+
+    /// <summary>预览位图；null 表示还没生成或生成失败。</summary>
+    [ObservableProperty] private Avalonia.Media.Imaging.Bitmap? _previewImage;
+    [ObservableProperty] private string _previewCaption = string.Empty;
+    [ObservableProperty] private string _previewDetail = string.Empty;
+    [ObservableProperty] private bool _isPreviewBusy;
+    [ObservableProperty] private string _previewEmptyText = "选择设置后自动生成预览";
+
+    public bool HasPreview => PreviewImage is not null;
+    public bool ShowPreviewEmpty => PreviewImage is null && !IsPreviewBusy;
+
+    /// <summary>
+    /// 预览位图是整页缩略图（每张几 MB 非托管像素），改设置就会重建一张。
+    /// 只留新图、直接丢掉旧引用的话，GC 感知不到这块原生内存，连点几次设置就能把进程推到几百 MB，
+    /// 所以换值时立即释放旧图。绑定的 <c>Image.Source</c> 在通知到达前已切到新值，释放是安全的。
+    /// </summary>
+    partial void OnPreviewImageChanged(Avalonia.Media.Imaging.Bitmap? oldValue, Avalonia.Media.Imaging.Bitmap? newValue)
+    {
+        oldValue?.Dispose();
+        OnPropertyChanged(nameof(HasPreview));
+        OnPropertyChanged(nameof(ShowPreviewEmpty));
+    }
+
+    partial void OnIsPreviewBusyChanged(bool value) => OnPropertyChanged(nameof(ShowPreviewEmpty));
+
+    private bool _previewQueued;
+    private CancellationTokenSource? _previewCts;
+    private bool _isClosed;
+
+    /// <summary>防抖窗口：连续改设置时只画最后一次。</summary>
+    private static readonly TimeSpan PreviewDebounce = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>由窗口在打开时调用一次，并在设置变化时调用。</summary>
+    public void RequestPreview()
+    {
+        if (_isClosed) return;
+        if (_previewQueued) return;
+        _previewQueued = true;
+
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _previewCts, cts);
+        previous?.Cancel();
+        previous?.Dispose();
+
+        _ = RefreshPreviewDebouncedAsync(cts);
+    }
+
+    private async Task RefreshPreviewDebouncedAsync(CancellationTokenSource cts)
+    {
+        var token = cts.Token;
+        try
+        {
+            // 防抖：停手 200ms 才画。取消时抛 OperationCanceledException，直接走 catch。
+            await Task.Delay(PreviewDebounce, token).ConfigureAwait(true);
+
+            if (_project.Classes.Count == 0)
+            {
+                _previewQueued = false;
+                return;
+            }
+
+            IsPreviewBusy = true;
+
+            // 渲染在后台线程：SkiaSharp 画布 + PNG 编码是纯 CPU 工作，不该占 UI 线程。
+            var style = SelectedStyle.Style;
+            var isWorkbook = IsExcel;
+            var target = ResolveTarget();
+            var preview = await Task.Run(
+                () => isWorkbook
+                    ? WeaveExportPreviewRenderer.Render(_project, style)
+                    : WeaveExportPreviewRenderer.RenderSingle(_project, target.ClassId, target.TeacherId),
+                token)
+                .ConfigureAwait(true);
+
+            // 期间可能已经又改过设置：这份结果作废，别覆盖更新的那张。
+            if (token.IsCancellationRequested || _isClosed) return;
+
+            using var stream = new MemoryStream(preview.Png);
+            PreviewImage = new Avalonia.Media.Imaging.Bitmap(stream);
+            PreviewCaption = preview.Caption;
+            PreviewDetail = preview.Detail;
+        }
+        catch (OperationCanceledException)
+        {
+            // 被更新的一次请求取代，正常路径。
+        }
+        catch (Exception ex)
+        {
+            if (token.IsCancellationRequested || _isClosed) return;
+            PreviewImage = null;
+            PreviewEmptyText = "预览生成失败：" + ex.Message;
+            PreviewCaption = string.Empty;
+            PreviewDetail = string.Empty;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                IsPreviewBusy = false;
+                _previewQueued = false;
+            }
+        }
+    }
+
+    /// <summary>窗口关闭时调用：取消在途渲染，之后不再回写界面。</summary>
+    public void CancelPendingPreview()
+    {
+        _isClosed = true;
+        var cts = Interlocked.Exchange(ref _previewCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+
     public bool HasError => Error.Length > 0;
 
     public bool IsExcel => SelectedFormat.Format == WeaveExportFormat.Excel;
     public bool IsImageOrPdf => !IsExcel;
     public bool IsReferenceStyle => SelectedStyle.Style == WeaveExportStyle.Reference;
+    public bool IsSeewoStyle => SelectedStyle.Style == WeaveExportStyle.Seewo;
+
+    /// <summary>希沃模板只有一张表，分页勾选对它不生效，界面上要说明。</summary>
+    public bool ShowSheetChoices => IsExcel && !IsSeewoStyle;
+
+    /// <summary>参考校样式才谈得上本机样式名称。</summary>
+    public bool ShowReferenceName => IsReferenceStyle && IsExcel;
+
+    public string StyleHint => SelectedStyle.Style switch
+    {
+        WeaveExportStyle.Seewo =>
+            "把课表填进希沃官方模板：标题、须知、表头、批注与合并单元格原样保留，只替换示例行，可直接上传希沃平台。",
+        WeaveExportStyle.Reference =>
+            "按参考工作簿生成表一分工表、表二横向课程总表和表三教师职位表。",
+        _ =>
+            "纸墨版式：总表、分工表、职位表、班级与教师课表，均带纸墨配色与细边。",
+    };
 
     public string TargetLabel => ResolveTarget().Label;
 
@@ -115,6 +256,33 @@ public partial class ExportOptionsViewModel : ObservableObject
 
     public string TargetHint => "PNG / PDF 导出当前选中的班级或教师课表；如需切换，请先在主窗口左侧选择。";
 
+    /// <summary>底部摘要：当前要导出什么。</summary>
+    public string ExportSummary
+    {
+        get
+        {
+            if (IsImageOrPdf)
+            {
+                var target = ResolveTarget();
+                if (target.Label == "未选择") return "未选择班级或教师";
+                return SelectedFormat.Format == WeaveExportFormat.Png
+                    ? $"{target.Label} · PNG 图片"
+                    : $"{target.Label} · PDF 打印";
+            }
+
+            if (IsSeewoStyle) return "全年级 · 希沃全校课表（单页）";
+
+            var pages = new List<string>();
+            if (IncludeMaster) pages.Add("总表");
+            if (IncludeAssignment) pages.Add("分工表");
+            if (IncludeTeacherPosition) pages.Add("职位表");
+            if (IncludeClassSheets) pages.Add("班级课表");
+            if (IncludeTeacherSheets) pages.Add("教师课表");
+            if (IncludeConflict) pages.Add("冲突页");
+            return pages.Count == 0 ? "未选择分页" : "全年级 · " + string.Join(" / ", pages);
+        }
+    }
+
     private (string? ClassId, string? TeacherId, string Label) ResolveTarget()
     {
         if (_teacherView && _selectedTeacher is not null)
@@ -128,13 +296,16 @@ public partial class ExportOptionsViewModel : ObservableObject
 
     partial void OnSelectedFormatChanged(ExportFormatOption value)
     {
-        OnPropertyChanged(nameof(IsExcel));
-        OnPropertyChanged(nameof(IsImageOrPdf));
+        RaiseDerivedProperties();
         Error = string.Empty;
+        RequestPreview();
     }
 
-    partial void OnSelectedStyleChanged(ExportStyleOption value) =>
-        OnPropertyChanged(nameof(IsReferenceStyle));
+    partial void OnSelectedStyleChanged(ExportStyleOption value)
+    {
+        RaiseDerivedProperties();
+        RequestPreview();
+    }
 
     partial void OnReferenceStyleNameChanged(string value)
     {
@@ -149,6 +320,34 @@ public partial class ExportOptionsViewModel : ObservableObject
 
     partial void OnErrorChanged(string value) => OnPropertyChanged(nameof(HasError));
 
+    partial void OnIncludeMasterChanged(bool value) => OnContentChanged();
+    partial void OnIncludeAssignmentChanged(bool value) => OnContentChanged();
+    partial void OnIncludeTeacherPositionChanged(bool value) => OnContentChanged();
+    partial void OnIncludeClassSheetsChanged(bool value) => OnContentChanged();
+    partial void OnIncludeTeacherSheetsChanged(bool value) => OnContentChanged();
+    partial void OnIncludeConflictChanged(bool value) => OnContentChanged();
+
+    private void OnContentChanged() => OnPropertyChanged(nameof(ExportSummary));
+
+    /// <summary>
+    /// 所有「随格式 / 样式变化」的派生属性都从这里一次性通知。
+    /// 逐处手写曾漏掉 ShowStyleChoice：切到 PDF 时 Excel 样式不消失，
+    /// 而且切回 Excel 也回不来——因为没人通知过它。
+    /// </summary>
+    private void RaiseDerivedProperties()
+    {
+        OnPropertyChanged(nameof(IsExcel));
+        OnPropertyChanged(nameof(IsImageOrPdf));
+        OnPropertyChanged(nameof(IsReferenceStyle));
+        OnPropertyChanged(nameof(IsSeewoStyle));
+        OnPropertyChanged(nameof(ShowSheetChoices));
+        OnPropertyChanged(nameof(ShowReferenceName));
+        OnPropertyChanged(nameof(StyleHint));
+        OnPropertyChanged(nameof(TargetText));
+        OnPropertyChanged(nameof(TargetLabel));
+        OnPropertyChanged(nameof(ExportSummary));
+    }
+
     public bool TryBuild(out WeaveExportRequest? request, out string error)
     {
         request = null;
@@ -158,7 +357,9 @@ public partial class ExportOptionsViewModel : ObservableObject
         var format = SelectedFormat.Format;
         if (format == WeaveExportFormat.Excel)
         {
-            if (!IncludeMaster && !IncludeAssignment && !IncludeTeacherPosition &&
+            // 希沃预设只有一张表，不受分页勾选约束；其余 Excel 样式至少要勾一页。
+            if (!IsSeewoStyle &&
+                !IncludeMaster && !IncludeAssignment && !IncludeTeacherPosition &&
                 !IncludeClassSheets && !IncludeTeacherSheets && !IncludeConflict)
             {
                 error = "请至少勾选一个分页。";

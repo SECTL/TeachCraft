@@ -97,4 +97,10 @@ public enum WeaveExportStyle
 
     /// <summary>参考校参考工作簿：宋体 / 楷体、黑色细框、横向课程总表与教师职位表。</summary>
     Reference,
+
+    /// <summary>
+    /// 希沃全校课表导入模板：把课表填进希沃下发的空表，供老师直接上传希沃平台。
+    /// 这一项不重排任何版面——模板的标题、须知、表头、批注与合并单元格原样保留。
+    /// </summary>
+    Seewo,
 }
