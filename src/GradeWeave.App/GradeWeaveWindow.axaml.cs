@@ -1938,6 +1938,37 @@ public partial class GradeWeaveWindow : Window
     // ----------------------------- 顶栏动作 -----------------------------
 
     /// <summary>
+    /// 删除走班组：删的是多条配置（A/B 层、教师、教室、参与班），
+    /// 与「切换工程」「删班级」同属不可撤销操作，必须先问后果（审计 P0-3 / P2-15）。
+    /// </summary>
+    private async void OnDeleteLayeredGroup(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedLayeredGroup is not { } item) { ViewModel.DeleteLayeredGroup(); return; }
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "删除走班组？",
+                $"将删除「{item.Name}」及其 A/B 层教师与教室配置，该组已生成的走班课也会一并清除，无法撤销。",
+                "删除", "取消", danger: true))
+            return;
+
+        ViewModel.DeleteLayeredGroup();
+    }
+
+    /// <summary>删除会议时段：解除该时段对教师的锁定，同样不可撤销。</summary>
+    private async void OnDeleteMeetingBlock(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedMeetingBlock is not { } item) { ViewModel.DeleteMeetingBlock(); return; }
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "删除会议时段？",
+                $"将删除「{item.Name}」对该时段的教师锁定，无法撤销。",
+                "删除", "取消", danger: true))
+            return;
+
+        ViewModel.DeleteMeetingBlock();
+    }
+
+    /// <summary>
     /// 切换工程前的确认。无路径工程的实体只存在于恢复文件里，而各入口都会 clearRecovery，
     /// 所以这里必须拦一次，否则误点「载入示例数据」会连恢复副本一起抹掉。
     /// </summary>

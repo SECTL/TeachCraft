@@ -637,7 +637,7 @@
                             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
                                 <Button Classes="primary" Content="新增" Command="{Binding AddLayeredGroupCommand}"
                                         FontSize="11" Padding="12,5" />
-                                <Button Classes="ghost" Content="删除" Command="{Binding DeleteLayeredGroupCommand}"
+                                <Button Classes="ghost" Content="删除" Click="OnDeleteLayeredGroup"
                                         FontSize="11" Padding="12,5" />
                             </StackPanel>
                             <TextBlock Grid.Row="4" Classes="helper"
@@ -866,7 +866,7 @@
                             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
                                 <Button Classes="primary" Content="新增" Command="{Binding AddMeetingBlockCommand}"
                                         FontSize="11" Padding="12,5" />
-                                <Button Classes="ghost" Content="删除" Command="{Binding DeleteMeetingBlockCommand}"
+                                <Button Classes="ghost" Content="删除" Click="OnDeleteMeetingBlock"
                                         FontSize="11" Padding="12,5" />
                             </StackPanel>
                             <Border Grid.Row="4" Height="1" Background="{StaticResource LineBrush}" />

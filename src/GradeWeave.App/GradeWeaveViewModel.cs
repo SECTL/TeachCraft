@@ -1099,8 +1099,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         SetStatus("已新建走班组草稿，填写后点「保存走班组」。");
     }
 
+    /// <summary>由窗口层的确认弹窗在用户确认后调用；也保留为命令供其它入口复用。</summary>
     [RelayCommand]
-    private void DeleteLayeredGroup()
+    public void DeleteLayeredGroup()
     {
         if (RejectWhileBusy()) return;
 
@@ -1321,8 +1322,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         SetStatus("已新建会议时段草稿，填写后点「保存会议时段」。");
     }
 
+    /// <summary>同上：确认在窗口层做，这里只负责删。</summary>
     [RelayCommand]
-    private void DeleteMeetingBlock()
+    public void DeleteMeetingBlock()
     {
         if (RejectWhileBusy()) return;
 
