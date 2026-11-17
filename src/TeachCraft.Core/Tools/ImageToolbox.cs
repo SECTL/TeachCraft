@@ -323,8 +323,7 @@ public static class ImageToolbox
         return count == 0 || total / count > 145;
     }
 
-    internal static SKTypeface ResolveCjkTypeface(SKFontStyle style)
-    {
+    internal static SKTypeface ResolveCjkTypeface(SKFontStyle style)    {
         var candidates = OperatingSystem.IsWindows()
             ? new[] { "Microsoft YaHei", "DengXian", "SimHei", "SimSun" }
             : OperatingSystem.IsMacOS()
@@ -339,5 +338,79 @@ public static class ImageToolbox
 
         return SKFontManager.Default.MatchCharacter('微')
             ?? SKTypeface.Default;
+    }
+
+    /// <summary>
+    /// 把水印画到一张缩略图上并返回 PNG 字节，供工具箱面板做实时预览。
+    ///
+    /// 用与 <see cref="Watermark"/> 同一套字号、位置、不透明度语义——预览与正式输出
+    /// 不一致的预览比没有预览更糟。缩略图按 <paramref name="previewWidth"/> 等比缩放，
+    /// 字号随之按比例缩小，所以观感与成品一致。
+    /// </summary>
+    public static byte[]? RenderWatermarkPreview(
+        string inputPath,
+        string text,
+        string positionLabel,
+        double opacity,
+        double scale,
+        int previewWidth = 240)
+    {
+        if (!File.Exists(inputPath)) return null;
+
+        using var stream = File.OpenRead(inputPath);
+        using var source = SKBitmap.Decode(stream);
+        if (source is null) return null;
+
+        var width = Math.Max(1, previewWidth);
+        var height = Math.Max(1, (int)Math.Round(source.Height * (width / (double)source.Width)));
+
+        using var resized = source.Resize(
+            new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul),
+            new SKSamplingOptions(SKCubicResampler.Mitchell));
+        if (resized is null) return null;
+
+        using var canvasBitmap = new SKBitmap(resized.Info);
+        using (var canvas = new SKCanvas(canvasBitmap))
+        {
+            canvas.Clear(SKColors.Transparent);
+            canvas.DrawBitmap(resized, 0, 0);
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                using var typeface = ResolveCjkTypeface(SKFontStyle.Bold);
+                var fontSize = Math.Max(8f, (float)(width * 0.032 * Math.Clamp(scale, 0.4, 4.0)));
+                using var font = new SKFont(typeface, fontSize);
+                var metrics = font.Metrics;
+                var padding = Math.Max(6f, width * 0.028f);
+
+                var (x, y, align) = positionLabel switch
+                {
+                    "左上角" => (padding, padding - metrics.Ascent, SKTextAlign.Left),
+                    "右上角" => (width - padding, padding - metrics.Ascent, SKTextAlign.Right),
+                    "居中" => (width / 2f, height / 2f + (metrics.Descent - metrics.Ascent) / 2f, SKTextAlign.Center),
+                    "左下角" => (padding, height - padding - metrics.Descent, SKTextAlign.Left),
+                    _ => (width - padding, height - padding - metrics.Descent, SKTextAlign.Right),
+                };
+
+                var alpha = (byte)Math.Clamp(opacity * 255, 8, 255);
+                using var shadow = new SKPaint
+                {
+                    Color = new SKColor(0, 0, 0, (byte)(alpha * 0.42)),
+                    IsAntialias = true,
+                };
+                canvas.DrawText(text, x + fontSize * 0.04f, y + fontSize * 0.04f, align, font, shadow);
+
+                using var paint = new SKPaint
+                {
+                    Color = new SKColor(255, 255, 255, alpha),
+                    IsAntialias = true,
+                };
+                canvas.DrawText(text, x, y, align, font, paint);
+            }
+        }
+
+        using var image = SKImage.FromBitmap(canvasBitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+        return data?.ToArray();
     }
 }

@@ -161,6 +161,21 @@
                     </Grid>
                     <Slider Minimum="0.05" Maximum="1" Value="{Binding WatermarkOpacity, Mode=TwoWay}" />
                 </StackPanel>
+
+                <!-- 水印是纯视觉调参：字号倍率与不透明度对非技术老师没有直觉，
+                     以前只能「改 → 存 → 打开看 → 再改」，每轮起一个新文件名（审计 P2-28）。 -->
+                <StackPanel Spacing="5" Margin="0,6,0,0">
+                    <TextBlock Text="效果预览" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                    <Border Background="{StaticResource PaperDeepBrush}" BorderBrush="{StaticResource LineBrush}"
+                            BorderThickness="1" CornerRadius="6" Height="120" ClipToBounds="True">
+                        <Panel>
+                            <Image x:Name="WatermarkPreview" Stretch="Uniform" />
+                            <TextBlock x:Name="WatermarkPreviewHint" Text="选择图片后显示预览"
+                                       FontSize="10" Foreground="{StaticResource MutedBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Panel>
+                    </Border>
+                </StackPanel>
             </StackPanel>
 
             <StackPanel Spacing="6" IsVisible="{Binding ShowPageRange}">

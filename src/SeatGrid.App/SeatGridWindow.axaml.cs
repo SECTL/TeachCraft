@@ -1176,6 +1176,43 @@ public partial class SeatGridWindow : Window
 
     private void OnTogglePin(object? sender, RoutedEventArgs e) => ViewModel.ToggleSelectedSeatPin();
 
+    /// <summary>
+    /// 一个「搜索框 + 过滤下拉」的学生选择位。
+    /// 搜索走 <see cref="SeatGridViewModel.FindStudents"/>，与快速换人同一套姓名 / 拼音匹配；
+    /// 搜索框为空时列出全部学生，选中后搜索框保留结果不打扰。
+    /// </summary>
+    private (ComboBox Picker, TextBox Search) BuildStudentPicker()
+    {
+        var picker = new ComboBox
+        {
+            ItemsSource = ViewModel.AllStudents.Select(s => s.Name).ToList(),
+            FontSize = 11.5,
+            MinHeight = 30,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var search = new TextBox
+        {
+            FontSize = 11,
+            MinHeight = 28,
+            PlaceholderText = "输入姓名或拼音首字母筛选，如 ZS",
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        search.TextChanged += (_, _) =>
+        {
+            var keyword = search.Text?.Trim() ?? string.Empty;
+            var names = keyword.Length == 0
+                ? ViewModel.AllStudents.Select(s => s.Name).ToList()
+                : ViewModel.FindStudents(keyword, limit: 20).Select(s => s.Name).ToList();
+
+            picker.ItemsSource = names;
+            if (names.Count > 0) picker.SelectedIndex = 0;
+        };
+
+        return (picker, search);
+    }
+
     /// <summary>添加互斥 / 结对规则：两个可搜索的学生选择器 + 类型单选。</summary>
     private async Task ShowPairRuleDialogAsync()
     {
@@ -1196,8 +1233,11 @@ public partial class SeatGridWindow : Window
             Background = DialogPaper,
         };
 
-        var first = new ComboBox { ItemsSource = ViewModel.AllStudents, FontSize = 11.5, MinHeight = 30 };
-        var second = new ComboBox { ItemsSource = ViewModel.AllStudents, FontSize = 11.5, MinHeight = 30 };
+        // 每个选择位 = 一个搜索框 + 一个过滤后的下拉。
+        // 55 人的班里给两位学生设「绝不相邻」以前要滚动翻找两次，
+        // 而同应用的快速换人早就有姓名 + 拼音搜索（审计 P2-40）。
+        var (first, firstSearch) = BuildStudentPicker();
+        var (second, secondSearch) = BuildStudentPicker();
         var mutex = new RadioButton { Content = "绝不相邻 · 前后左右都不挨着", IsChecked = true, FontSize = 11.5 };
         var deskmate = new RadioButton { Content = "必须同桌 · 坐同一张双人桌", FontSize = 11.5 };
         var error = new TextBlock { FontSize = 10.5, Foreground = DialogTerracotta, TextWrapping = TextWrapping.Wrap };
@@ -1225,7 +1265,13 @@ public partial class SeatGridWindow : Window
 
         confirm.Click += (_, _) =>
         {
-            if (first.SelectedItem is not StudentViewModel a || second.SelectedItem is not StudentViewModel b)
+            // 选择位里放的是姓名（搜索过滤后重建列表时会丢对象引用），按姓名找回学生。
+            var a = ViewModel.AllStudents.FirstOrDefault(s =>
+                string.Equals(s.Name, first.SelectedItem as string, StringComparison.Ordinal));
+            var b = ViewModel.AllStudents.FirstOrDefault(s =>
+                string.Equals(s.Name, second.SelectedItem as string, StringComparison.Ordinal));
+
+            if (a is null || b is null)
             {
                 error.Text = "请选择两名学生。";
                 return;
@@ -1265,8 +1311,10 @@ public partial class SeatGridWindow : Window
         });
 
         panel.Children.Add(new TextBlock { Text = "第一位学生", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(firstSearch);
         panel.Children.Add(first);
         panel.Children.Add(new TextBlock { Text = "第二位学生", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(secondSearch);
         panel.Children.Add(second);
         panel.Children.Add(mutex);
         panel.Children.Add(deskmate);

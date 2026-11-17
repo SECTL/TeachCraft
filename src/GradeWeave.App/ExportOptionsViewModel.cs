@@ -86,6 +86,41 @@ public partial class ExportOptionsViewModel : ObservableObject
 
         _selectedFormat = Formats[0];
         _selectedStyle = Styles[0];
+
+        // 导出对象下拉：PNG / PDF 只导一个班或一位教师，让老师在弹窗里直接选，
+        // 而不是「关弹窗 → 回主窗口选 → 再开弹窗」（审计 P2-18）。
+        // 主窗口当前选择只作初始值。
+        ClassTargets.Add(new ExportTargetOption(null, "未选择班级"));
+        foreach (var schoolClass in project.Classes.OrderBy(c => c.Name, StringComparer.Ordinal))
+            ClassTargets.Add(new ExportTargetOption(schoolClass.Id, schoolClass.Name));
+        TeacherTargets.Add(new ExportTargetOption(null, "未选择教师"));
+        foreach (var teacher in project.Teachers.OrderBy(t => t.Name, StringComparer.Ordinal))
+            TeacherTargets.Add(new ExportTargetOption(teacher.Id, teacher.Name));
+
+        _selectedClassTarget = ClassTargets.FirstOrDefault(o => o.Id == selectedClass?.Id) ?? ClassTargets[0];
+        _selectedTeacherTarget =
+            TeacherTargets.FirstOrDefault(o => o.Id == selectedTeacher?.Id) ?? TeacherTargets[0];
+    }
+
+    public ObservableCollection<ExportTargetOption> ClassTargets { get; } = new();
+    public ObservableCollection<ExportTargetOption> TeacherTargets { get; } = new();
+
+    [ObservableProperty] private ExportTargetOption _selectedClassTarget;
+    [ObservableProperty] private ExportTargetOption _selectedTeacherTarget;
+
+    /// <summary>PNG / PDF 下才需要选对象；Excel 是整本工作簿。</summary>
+    public bool ShowTargetPickers => !IsExcel;
+
+    partial void OnSelectedClassTargetChanged(ExportTargetOption value)
+    {
+        RaiseDerivedProperties();
+        RequestPreview();
+    }
+
+    partial void OnSelectedTeacherTargetChanged(ExportTargetOption value)
+    {
+        RaiseDerivedProperties();
+        RequestPreview();
     }
 
     public string ProjectTitle { get; }
@@ -285,6 +320,12 @@ public partial class ExportOptionsViewModel : ObservableObject
 
     private (string? ClassId, string? TeacherId, string Label) ResolveTarget()
     {
+        // 弹窗内选择优先；没选时回落到主窗口当前选择。
+        if (SelectedClassTarget.Id is { } classId)
+            return (classId, null, SelectedClassTarget.Label);
+        if (SelectedTeacherTarget.Id is { } teacherId)
+            return (null, teacherId, SelectedTeacherTarget.Label);
+
         if (_teacherView && _selectedTeacher is not null)
             return (null, _selectedTeacher.Id, _selectedTeacher.Name);
         if (_selectedClass is not null)
@@ -386,7 +427,7 @@ public partial class ExportOptionsViewModel : ObservableObject
         var target = ResolveTarget();
         if (target.ClassId is null && target.TeacherId is null)
         {
-            error = "请先在主窗口左侧选择一个班级或教师。";
+            error = "请选择要导出的班级或教师。";
             Error = error;
             return false;
         }
@@ -396,4 +437,18 @@ public partial class ExportOptionsViewModel : ObservableObject
             target.ClassId, target.TeacherId, target.Label);
         return true;
     }
+}
+
+/// <summary>导出对象的一项：班级或教师；Id 为 null 表示未选择。</summary>
+public sealed class ExportTargetOption
+{
+    public ExportTargetOption(string? id, string label)
+    {
+        Id = id;
+        Label = label;
+    }
+
+    public string? Id { get; }
+    public string Label { get; }
+    public override string ToString() => Label;
 }
