@@ -3,8 +3,15 @@ namespace GradeWeave.Core.Models;
 public sealed class ScheduleOptions
 {
     public int RandomSeed { get; set; } = 20261026;
+
+    /// <summary>同一班级同一学科每天最多几节（软约束，调度器按它计入代价）。</summary>
     public int MaxSameSubjectPerDay { get; set; } = 2;
-    public int MaxSameSubjectPerAfternoon { get; set; } = 1;
+
+    // 曾经这里还有一个 MaxSameSubjectPerAfternoon = 1，AGENTS.md 与 .memory/12
+    // 都把它写成「下午同一学科不超过 1 节」的承诺，但调度器从未引用过它——
+    // 一个只在声明处出现的假开关。已删除，文档同步改为只承诺「每天 ≤ 2 节」。
+    // 若将来真的要实现下午约束，请连同调度器与测试一起加回来。
+
     public bool PreferMainMorning { get; set; } = true;
     public int MaxRestarts { get; set; } = 24;
     public TimeSpan TimeLimit { get; set; } = TimeSpan.FromSeconds(8);

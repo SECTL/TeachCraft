@@ -387,7 +387,8 @@
                     <Ellipse Width="5" Height="5" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding StatusText}" FontSize="10.5"
                                Foreground="{StaticResource MutedBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="760" />
+                               TextTrimming="CharacterEllipsis" MaxWidth="760"
+                               ToolTip.Tip="{Binding StatusText}" />
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding MasterSummary}"
                            FontFamily="{StaticResource MonoFont}" FontSize="9"

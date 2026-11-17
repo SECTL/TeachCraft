@@ -325,6 +325,52 @@ public sealed class SeatGridUndoTests
         Assert.Contains(nameof(SeatGridViewModel.CanUndo), raised);
     }
 
+    // ----------------------------- 滑块入撤销栈（审计 P1-12） -----------------------------
+
+    [Fact]
+    public void Vm_LayoutSliderChangeIsUndoableInOneStep()
+    {
+        // 原先滑块直接 BuildGrid、全程不经 RecordChange：把小组数量从 4 拖到 3，
+        // 最后一组的学生全部退回未排，Ctrl+Z 却毫无反应（旁边「− 末组」删同一批人却可撤）。
+        var vm = new SeatGridViewModel();
+        vm.LoadRoster(Roster(12));
+        Assert.True(vm.CanExport);
+
+        var assignedBefore = vm.AssignedCount;
+        var groupsBefore = vm.GroupCount;
+
+        vm.BeginInteractiveLayoutChange();
+        vm.GroupCount = groupsBefore - 1;   // 模拟拖动（滑块绑定直接改属性）
+        vm.EndInteractiveLayoutChange();
+
+        Assert.True(vm.CanUndo, "布局滑块改动应当能撤销");
+        Assert.True(vm.AssignedCount < assignedBefore || vm.GroupCount < groupsBefore,
+            "缩小布局应当确实生效");
+
+        vm.Undo();
+
+        Assert.Equal(groupsBefore, vm.GroupCount);
+        Assert.Equal(assignedBefore, vm.AssignedCount);
+    }
+
+    [Fact]
+    public void Vm_NoOpInteractionDoesNotPushUndoStep()
+    {
+        // 按下又原样松开、布局没变：不能占掉一步（否则 Ctrl+Z 会空转）。
+        var vm = new SeatGridViewModel();
+        vm.LoadRoster(Roster(8));
+        vm.AutoArrange();
+
+        vm.BeginInteractiveLayoutChange();
+        vm.EndInteractiveLayoutChange();
+
+        Assert.True(vm.CanUndo);
+        vm.Undo();
+
+        // 撤销的应当是「自动排座」这一步本身，而不是一次空转。
+        Assert.Contains("自动排座", vm.StatusText, StringComparison.Ordinal);
+    }
+
     // ----------------------------- 顶栏布局 -----------------------------
 
     [Fact]

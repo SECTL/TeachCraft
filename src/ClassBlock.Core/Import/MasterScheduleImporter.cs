@@ -62,7 +62,14 @@ public static class MasterScheduleImporter
             if (headTeachers.Count == 0) warnings.Add("没有找到班主任分工表。");
             if (lunchStudy.Count == 0) warnings.Add("没有找到午学安排，午学行将留空。");
             if (afterSchool.Count == 0) warnings.Add("没有找到课后服务/晚修安排，相关行将使用课程表内的信息。");
-            if (earlyReading.Cells.All(string.IsNullOrWhiteSpace)) warnings.Add("没有找到早读说明，早读行将留空。");
+            if (earlyReading.Cells.All(string.IsNullOrWhiteSpace))
+            {
+                // 区分两种结局：真没找到说明 / 找到了但写法不认识。
+                // 旧实现一律报「没有找到」，让老师对着原文怀疑自己文件有问题（P3-7）。
+                warnings.Add(earlyReading.Rule.Length > 0
+                    ? earlyReading.Rule
+                    : "没有找到早读说明，早读行将留空。");
+            }
 
             var info = new MasterInfo
             {
@@ -549,7 +556,21 @@ public static class MasterScheduleImporter
         if (!string.IsNullOrWhiteSpace(cells[1])) ruleParts.Add("周二、周四 语文");
         if (!string.IsNullOrWhiteSpace(cells[2])) ruleParts.Add("周三、周五 英语");
 
+        // 说明找到了、但没解析出任何规则：必须如实说「读到了但没读懂」，
+        // 而不是让上层报「没有找到早读说明」——那会把老师引向错误的自查方向（P3-7）。
+        if (ruleParts.Count == 0)
+            return (cells, $"早读说明已读到，但仅支持「二、四语文 / 三、五英语」等写法，本表内容未解析：{TruncateNote(note)}");
+
         return (cells, string.Join(" · ", ruleParts));
+    }
+
+    /// <summary>把说明原文压到一句里，避免整段贴进警告条。</summary>
+    private static string TruncateNote(string note)
+    {
+        var flat = string.Join(" ", note.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0));
+        return flat.Length <= 80 ? flat : flat[..80] + "…";
     }
 
     // ----------------------------- 标题与信息 -----------------------------

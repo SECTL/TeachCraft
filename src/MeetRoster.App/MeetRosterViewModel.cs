@@ -1343,7 +1343,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         {
             HasScheduleSlots = false;
             ScheduleEmptyText = _project.Days.Count == 0
-                ? "点击右上角“导入赛程”，选择含“竞赛日程 + 项目分组表”的工作簿。"
+                ? "点击右上角「导入秩序册」，选择含「竞赛日程 + 项目分组表」的工作簿（只有赛程、没有名单也可以）。"
                 : "当前还没有赛程。";
             return;
         }
@@ -1386,7 +1386,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             ScheduleDayTitle = "赛程表";
             ScheduleDaySummary = string.Empty;
             ScheduleEmptyText = _project.Days.Count == 0
-                ? "点击右上角“导入赛程”，选择含“竞赛日程 + 项目分组表”的工作簿。"
+                ? "点击右上角「导入秩序册」，选择含「竞赛日程 + 项目分组表」的工作簿（只有赛程、没有名单也可以）。"
                 : "当前还没有赛程。";
             return;
         }

@@ -189,7 +189,8 @@ public partial class MainWindow : Window
     private void OnPanelDismissUpdate(object? sender, EventArgs e)
     {
         ViewModel.DismissUpdate();
-        ViewModel.UpdateStateText = "已跳过这个版本，之后不再提示；要恢复提示请删除 TeachCraft\\Update\\state.json。";
+        ViewModel.UpdateStateText =
+            "已跳过这个版本，之后不再提示；要恢复提示请删除 %LOCALAPPDATA%\\TeachCraft\\Update\\state.json。";
     }
 
     /// <summary>把窗口渲染成 PNG，供设计走查使用（--shot 参数触发）。</summary>

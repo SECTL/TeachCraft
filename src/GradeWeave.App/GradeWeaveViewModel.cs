@@ -272,11 +272,30 @@ public partial class GradeWeaveViewModel : ObservableObject
             MeetingSuggestions.Add(new MeetingBlockItemViewModel(block));
         OnPropertyChanged(nameof(HasMeetingSuggestions));
 
+        // 导入器算出的「哪里没读懂」必须让老师看见。
+        // 这些诊断一直躺在 result.Warnings / project.Warnings 里，UI 却一条都不展示——
+        // 周课时全为 0 时生成出来是整片空白，冲突台也不报（应排 0 = 实排 0），
+        // 老师只能逐格比对原工作簿才能发现（审计 P1-9）。
+        ImportWarnings.Clear();
+        foreach (var warning in result.Warnings)
+            ImportWarnings.Add(warning);
+        OnPropertyChanged(nameof(HasImportWarnings));
+
         var meetingHint = result.SuggestedMeetingBlocks.Count == 0
             ? string.Empty
             : $"；{result.SuggestedMeetingBlocks.Count} 条会议建议待 04 步确认";
-        SetStatus($"识别 {result.SuggestedResearchBlocks.Count} 条教研（已应用）{meetingHint}。");
+        var warningHint = result.Warnings.Count == 0
+            ? string.Empty
+            : $"；{result.Warnings.Count} 条导入提醒（见 02 步侧栏）";
+        SetStatus($"识别 {result.SuggestedResearchBlocks.Count} 条教研（已应用）{meetingHint}{warningHint}。");
     }
+
+    /// <summary>导入工作簿时收集到的提醒；数据来自 WeaveImportResult.Warnings。</summary>
+    public ObservableCollection<string> ImportWarnings { get; } = new();
+
+    public bool HasImportWarnings => ImportWarnings.Count > 0;
+
+    public string ImportWarningSummary => $"导入提醒（{ImportWarnings.Count} 条）";
 
     public void LoadDemoProject()
     {

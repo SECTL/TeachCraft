@@ -443,7 +443,7 @@
                     </Border>
 
                     <Border Grid.Column="2" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <StackPanel Grid.Row="0" Spacing="1">
                                 <TextBlock Text="编排将使用的节次" Classes="section-title" />
                                 <TextBlock Text="确认后编译为正课 + 扩展时段"
@@ -500,7 +500,7 @@
                 <!-- ==================== 02 教研 ==================== -->
                 <Grid IsVisible="{Binding IsResearchStep}" ColumnDefinitions="280,*" ColumnSpacing="12">
                     <Border Grid.Column="0" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="学科" Classes="section-title" />
                                 <Border Grid.Column="1" Classes="small-badge" VerticalAlignment="Center">
@@ -533,6 +533,24 @@
                             </ListBox>
                             <TextBlock Grid.Row="3" Classes="helper"
                                        Text="同一学科可有多段，例如上午 1—4 节、下午 5—7 节；相邻格子会自动合并。" />
+                            <!-- 导入提醒：导入器算出的「哪里没读懂」不能只躺在 Project.Warnings 里。
+                                 周课时全为 0 时生成出来是整片空白、冲突台也不报，老师只能逐格比对原件。 -->
+                            <Expander Grid.Row="4" IsVisible="{Binding HasImportWarnings}"
+                                      HorizontalAlignment="Stretch" Margin="0,4,0,0">
+                                <Expander.Header>
+                                    <TextBlock Text="{Binding ImportWarningSummary}" FontSize="10.5"
+                                               Foreground="{StaticResource AccentDeepBrush}" />
+                                </Expander.Header>
+                                <ItemsControl ItemsSource="{Binding ImportWarnings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" FontSize="10" LineHeight="16"
+                                                       TextWrapping="Wrap" Margin="0,2,0,0"
+                                                       Foreground="{StaticResource InkSoftBrush}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
                         </Grid>
                     </Border>
 
@@ -785,7 +803,7 @@
                     </Border>
 
                     <Border Grid.Column="2" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <StackPanel Grid.Row="0" Spacing="1">
                                 <TextBlock Text="走班锁定" Classes="section-title" />
                                 <TextBlock Text="{Binding LayeredLockText}" FontSize="9.5"
@@ -1248,7 +1266,7 @@
                     </Border>
 
                     <Border Grid.Column="2" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="冲突" Classes="section-title" />
                                 <Border Grid.Column="1" Classes="small-badge" VerticalAlignment="Center">
@@ -1399,7 +1417,8 @@
                     <Ellipse Width="5" Height="5" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding StatusText}" FontSize="10.5"
                                Foreground="{StaticResource MutedBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="820" />
+                               TextTrimming="CharacterEllipsis" MaxWidth="820"
+                               ToolTip.Tip="{Binding StatusText}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14"
                             HorizontalAlignment="Right" VerticalAlignment="Center">

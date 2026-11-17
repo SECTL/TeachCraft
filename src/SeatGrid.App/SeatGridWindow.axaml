@@ -369,6 +369,10 @@
                               ToolTip.Tip="自动排座方式" />
                     <Button Classes="accent-outline top" Content="自动排座" Click="OnAutoArrange"
                             IsEnabled="{Binding CanArrange}" AutomationProperties.Name="自动排座" />
+                    <Button Classes="ghost top" Content="清空座位" Click="OnClearAllSeats"
+                            IsEnabled="{Binding CanClearSeats}"
+                            ToolTip.Tip="清空全部未锁定座位（锁定座位保留），可撤销"
+                            AutomationProperties.Name="清空全部座位" />
                     <Button Classes="ghost top" Content="考场模式" Click="OnExamMode"
                             IsEnabled="{Binding CanEnterExam}" AutomationProperties.Name="进入考场模式" />
                     <Button Classes="ghost top" Content="桌贴" Click="OnExportStickers"
@@ -450,8 +454,14 @@
                             <TextBlock Text="{Binding RosterEmptyText}" FontFamily="{StaticResource SerifFont}"
                                        FontSize="15" Foreground="{StaticResource MutedBrush}"
                                        HorizontalAlignment="Center" />
-                            <TextBlock Text="导入名单后，这里会出现学生。" FontSize="10"
+                            <!-- 第二行要跟着两种空态走：搜不到时说「导入名单后会出现学生」会让人以为名单丢了。 -->
+                            <TextBlock Text="{Binding RosterEmptyHint}" FontSize="10"
                                        Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                            <Button Classes="link" Content="清除搜索" FontSize="10.5"
+                                    Foreground="{StaticResource AccentDeepBrush}"
+                                    HorizontalAlignment="Center"
+                                    IsVisible="{Binding HasSearchText}"
+                                    Click="OnClearSeatSearch" />
                         </StackPanel>
                     </Grid>
 
@@ -564,7 +574,7 @@
                                         HorizontalAlignment="Center" Background="{Binding PodiumBackgroundBrush}"
                                         BorderBrush="{Binding SeatBorderBrush}" BorderThickness="1"
                                         CornerRadius="8">
-                                    <TextBlock Text="讲　台" FontSize="11.5" Foreground="{Binding PodiumTextBrush}"
+                                    <TextBlock Text="{Binding PodiumLabel}" FontSize="11.5" Foreground="{Binding PodiumTextBrush}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
 
@@ -673,7 +683,7 @@
                                         HorizontalAlignment="Center" Background="{Binding PodiumBackgroundBrush}"
                                         BorderBrush="{Binding SeatBorderBrush}" BorderThickness="1"
                                         CornerRadius="8">
-                                    <TextBlock Text="讲　台" FontSize="11.5" Foreground="{Binding PodiumTextBrush}"
+                                    <TextBlock Text="{Binding PodiumLabel}" FontSize="11.5" Foreground="{Binding PodiumTextBrush}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                             </StackPanel>
@@ -1269,7 +1279,8 @@
                     <Ellipse Width="5" Height="5" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding StatusText}" FontSize="10.5"
                                Foreground="{StaticResource MutedBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="760" />
+                               TextTrimming="CharacterEllipsis" MaxWidth="760"
+                               ToolTip.Tip="{Binding StatusText}" />
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding SeatStats}"
                            FontFamily="{StaticResource MonoFont}" FontSize="9"

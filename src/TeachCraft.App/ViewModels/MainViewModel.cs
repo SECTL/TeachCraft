@@ -364,7 +364,10 @@ public partial class MainViewModel : ObservableObject
 
         InstallDescription = DescribeInstall();
         LastCheckedText = DescribeLastChecked();
-        if (!IsUpdateAvailable && !IsUpdateBusy)
+
+        // 只有真的从没查过才说「还没有检查过」。
+        // 否则同一张卡上会出现「还没有检查过」与「上次检查：今天 09:12」自相矛盾（P3-4）。
+        if (!IsUpdateAvailable && !IsUpdateBusy && LastCheckedText == "从未检查")
             UpdateStateText = "还没有检查过";
 
         SetStatus("正在查看 检查更新");
@@ -426,7 +429,9 @@ public partial class MainViewModel : ObservableObject
         if (!IsUpdateAvailable) UpdateStateText = "还没有检查过";
 
         var state = _stateStore.Load();
-        _stateStore.Save(new UpdateState(state.LastCheckUtc, state.SkippedVersions, source));
+        // 换源只该改源，通道要原样保留（四参缺第 4 位就是 null，等于悄悄换回默认通道）。
+        _stateStore.Save(new UpdateState(
+            state.LastCheckUtc, state.SkippedVersions, source, state.PreferredChannel));
 
         SetStatus($"更新源已切换为 {UpdateSourceText.DisplayName(source)}");
     }
@@ -530,7 +535,7 @@ public partial class MainViewModel : ObservableObject
         if (result.Status == UpdatePlanStatus.UpdateAvailable && !IsUpdateAvailable)
         {
             if (fromUserGesture)
-                SetStatus($"新版本 {result.Proposal!.VersionText} 已被你跳过；如需重新提示，请删除配置目录下的 state.json。");
+                SetStatus($"新版本 {result.Proposal!.VersionText} 已被你跳过；如需重新提示，请删除 %LOCALAPPDATA%\\TeachCraft\\Update\\state.json。");
             return;
         }
 
@@ -671,7 +676,10 @@ public partial class MainViewModel : ObservableObject
         var skipped = state.SkippedVersions.ToList();
         if (!skipped.Contains(skippedVersion))
             skipped.Add(skippedVersion);
-        _stateStore.Save(new UpdateState(DateTimeOffset.UtcNow, skipped));
+        // 只追加跳过记录，源与通道原样带回去——两参构造会把它们落成 null，
+        // 重启后老师选的镜像/预览通道被静默换成 GitHub+默认通道（审计 P2-35）。
+        _stateStore.Save(new UpdateState(
+            DateTimeOffset.UtcNow, skipped, state.PreferredSource, state.PreferredChannel));
     }
 
     /// <summary>

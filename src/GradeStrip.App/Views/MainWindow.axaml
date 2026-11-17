@@ -1835,8 +1835,10 @@
                                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                     </StackPanel>
                     <Grid ColumnDefinitions="*,Auto,Auto">
+                        <!-- 取消侧设 IsDefault：老师在其他四个应用里养成的习惯是「回车=安全侧」。
+                             Shared/ConfirmDialog 的 danger 分支也是这么做的，本弹窗是自制 XAML，必须对齐。 -->
                         <Button Grid.Column="1" Classes="ghost" Content="取消" Click="OnCancelRemoveSession"
-                                Padding="18,8" Margin="0,0,10,0" />
+                                IsDefault="True" Padding="18,8" Margin="0,0,10,0" />
                         <Button Grid.Column="2" Classes="primary" Content="删除" Click="OnConfirmRemoveSession"
                                 Padding="18,8" />
                     </Grid>

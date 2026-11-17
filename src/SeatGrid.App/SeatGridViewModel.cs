@@ -27,6 +27,9 @@ public partial class SeatGridViewModel : ObservableObject
     private readonly Dictionary<SeatPosition, SeatCellViewModel> _seats = new();
     private bool _suppressRebuild;
     private bool _interactiveLayoutEdit;
+
+    /// <summary>滑块按下时的状态快照；松手收尾时与当前状态比对，变了才入栈。</summary>
+    private SeatStateSnapshot? _interactiveSnapshot;
     private bool _structureDirty;
     private bool _scaleDirty;
     private bool _layoutRefreshQueued;
@@ -491,6 +494,13 @@ public partial class SeatGridViewModel : ObservableObject
     public bool ShowGenderLegend => MarkFemales;
     public string RosterEmptyText => _students.Count == 0 ? "还没有名单" : "没有匹配的学生";
 
+    /// <summary>与 <see cref="RosterEmptyText"/> 配套的第二行提示：两种空态说两句话。</summary>
+    public string RosterEmptyHint => _students.Count == 0
+        ? "导入名单后，这里会出现学生。"
+        : "换个关键词试试，或清除搜索。";
+
+    public bool HasSearchText => !string.IsNullOrWhiteSpace(SearchText);
+
     public int StudentCount => _students.Count;
     public int MaleCount => _students.Count(s => s.Model.Gender == Gender.Male);
     public int FemaleCount => _students.Count(s => s.Model.Gender == Gender.Female);
@@ -527,6 +537,9 @@ public partial class SeatGridViewModel : ObservableObject
 
     public bool CanAssign => SelectedStudent is not null && SelectedSeat is not null;
     public bool CanClearSeat => SelectedSeat is not null;
+
+    /// <summary>「清空全部座位」按钮：有人在座才可点。</summary>
+    public bool CanClearSeats => IsIdle && AssignedCount > 0;
 
     public IBrush SeatBackgroundBrush => _seatBackgroundBrush ??= new SolidColorBrush(SeatBackgroundColor);
     public IBrush EmptySeatBrush => _emptySeatBrush ??= new SolidColorBrush(EmptySeatColor);
@@ -565,6 +578,9 @@ public partial class SeatGridViewModel : ObservableObject
         _structureDirty = false;
         _scaleDirty = false;
         _layoutRefreshQueued = false;
+        // 按下时先拍照：滑块连发的几十次变更在松手后合并成**一步**，
+        // 满足「滑块连发不能按几十次 Ctrl+Z」的既有语义（AGENTS 1.33.0）。
+        _interactiveSnapshot = CaptureState("调整行列");
     }
 
     public void EndInteractiveLayoutChange()
@@ -573,20 +589,34 @@ public partial class SeatGridViewModel : ObservableObject
         _interactiveLayoutEdit = false;
         _layoutRefreshQueued = false; // 待执行的合并刷新由下面的收尾刷新覆盖
 
-        if (_structureDirty)
+        var structureChanged = _structureDirty;
+        var scaleChanged = _scaleDirty;
+
+        if (structureChanged)
         {
             _structureDirty = false;
             _scaleDirty = false;
             BuildGrid();
             NotifyCounts();
-            return;
         }
-
-        if (_scaleDirty)
+        else if (scaleChanged)
         {
             _scaleDirty = false;
             RefreshSeatVisuals();
             UpdatePodium();
+        }
+
+        // 只有真的动了布局才入栈：BuildGrid 会把越界座位上的学生退回未排，
+        // 那是实打实的数据变更，必须能撤销（原先滑块直接 BuildGrid、全程不登记）。
+        var snapshot = _interactiveSnapshot;
+        _interactiveSnapshot = null;
+        if ((structureChanged || scaleChanged) && snapshot is not null && !_restoring && !_suspendUndo)
+        {
+            if (!snapshot.ContentEquals(CaptureState("调整行列")))
+            {
+                _undo.Push(snapshot, "调整行列");
+                NotifyUndoState();
+            }
         }
     }
 
@@ -781,6 +811,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedSeatLabel));
         OnPropertyChanged(nameof(CanAssign));
         OnPropertyChanged(nameof(CanClearSeat));
+        OnPropertyChanged(nameof(CanClearSeats));
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -792,6 +823,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
         OnPropertyChanged(nameof(CanClearCanvas));
+        OnPropertyChanged(nameof(CanClearSeats));
     }
 
     partial void OnRosterHintChanged(string value) => OnPropertyChanged(nameof(HasRosterHint));
@@ -1035,6 +1067,8 @@ public partial class SeatGridViewModel : ObservableObject
 
         OnPropertyChanged(nameof(IsRosterEmpty));
         OnPropertyChanged(nameof(RosterEmptyText));
+        OnPropertyChanged(nameof(RosterEmptyHint));
+        OnPropertyChanged(nameof(HasSearchText));
     }
 
     public void AutoArrange() => RecordChange("自动排座", AutoArrangeCore);
@@ -1079,11 +1113,19 @@ public partial class SeatGridViewModel : ObservableObject
         RefreshSeatVisuals();
 
         var summary = $"已按「{ArrangeModes[ArrangeModeIndex]}」排座：{AssignedCount} 人 / {SeatCount} 座";
+
+        // 未排座的学生必须醒目报出来。默认 4×6×2=48 座，50+ 人的班一不留神就少几个人，
+        // 不点破的话老师会直接打印才发现（P3-12）。
+        var unseated = _students.Count(s => !s.IsAssigned);
+        var tail = unseated > 0
+            ? $" · 还有 {unseated} 人没有座位，调大排数/组数再排一次"
+            : string.Empty;
+
         SetStatus(result.Issues.Count == 0
-            ? summary
-            : $"{summary} · {result.Issues[0].Message}" +
+            ? summary + tail
+            : $"{summary}{tail} · {result.Issues[0].Message}" +
               (result.Issues.Count > 1 ? $"（另有 {result.Issues.Count - 1} 条）" : string.Empty),
-            error: result.Issues.Count > 0);
+            error: result.Issues.Count > 0 || unseated > 0);
     }
 
     /// <summary>
@@ -1520,6 +1562,14 @@ public partial class SeatGridViewModel : ObservableObject
         var student = SelectedStudent;
         var target = SelectedSeat;
 
+        // 过道格不是座位：界面上它是一片透明空地，但点击仍能选中并放进学生。
+        // 放进去的人只在内存里「已排」，导出时过道格 Student=null，人就凭空消失了。
+        if (!CurrentLayout.IsUsable(target.Position))
+        {
+            SetStatus("这个位置是过道，坐不了人。", true);
+            return;
+        }
+
         // 锁定的学生不能被「放入」覆盖，目标座上的人若锁定也不能被挤走。
         if (Constraints.IsPinned(student.Id))
         {
@@ -1549,6 +1599,13 @@ public partial class SeatGridViewModel : ObservableObject
     {
         if (source == target) return;
         if (!_assignments.TryGetValue(source.Position, out var moving)) return;
+
+        // 与「放入所选学生」同一条不变量：过道坐不了人。
+        if (!CurrentLayout.IsUsable(target.Position))
+        {
+            SetStatus("这个位置是过道，坐不了人。", true);
+            return;
+        }
 
         var involved = new List<StudentViewModel> { moving };
         if (_assignments.TryGetValue(target.Position, out var targetOccupant)) involved.Add(targetOccupant);
@@ -1585,6 +1642,23 @@ public partial class SeatGridViewModel : ObservableObject
             RefreshSeatVisuals();
             SetStatus($"已清空 {label}。");
         });
+    }
+
+    /// <summary>
+    /// 当前选中座位上的学生姓名；空座位或没有选中座位时返回 null。
+    ///
+    /// 确认框必须按「座位上坐着谁」来写——早先的实现读的是名单侧 SelectedStudent，
+    /// 于是会出现「弹窗写要清李四、实际清掉的是王五」这种比不弹窗更伤信任的错。
+    /// </summary>
+    public string? SelectedSeatOccupantName
+    {
+        get
+        {
+            if (SelectedSeat is null) return null;
+            return _assignments.TryGetValue(SelectedSeat.Position, out var occupant) && !string.IsNullOrWhiteSpace(occupant.Name)
+                ? occupant.Name
+                : null;
+        }
     }
 
     // ----------------------------- 行列调整 -----------------------------
@@ -2201,6 +2275,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(HasStudents));
         OnPropertyChanged(nameof(CanArrange));
         OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(CanClearSeats));
         OnPropertyChanged(nameof(IsChartEmpty));
     }
 }

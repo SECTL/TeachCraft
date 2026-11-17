@@ -135,6 +135,12 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string TitleOverride { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 上一次展示的考试标识（场次 + 源文件路径）。切对比基准、上下移考试都不换主考，
+    /// 据此判断「展示的考试有没有真的变」，决定要不要重置手改标题与班级筛选（审计 P2-1）。
+    /// </summary>
+    private string? _lastExamKey;
+
     [ObservableProperty]
     public partial bool IncludeLegend { get; set; } = true;
 
@@ -1009,7 +1015,18 @@ public partial class MainViewModel : ViewModelBase
         ExamName = string.IsNullOrWhiteSpace(displayData.ExamName) ? activeSession.DisplayName : displayData.ExamName;
         StudentCount = displayData.Students.Count;
         SubjectCount = displayData.Subjects.Count;
-        TitleOverride = displayData.DefaultTitle;
+
+        // 标题与班级筛选只在「展示的考试真的变了」时才重置。
+        // 切对比基准、上下移一场考试都不会换主考数据，却曾经把老师手改的标题
+        // 和筛好的班级一起冲回默认——7 个入口都走这里（审计 P2-1）。
+        var examKey = $"{activeSession.Order}:{activeSession.SourcePath}";
+        var examChanged = !string.Equals(_lastExamKey, examKey, StringComparison.Ordinal);
+        if (examChanged)
+        {
+            _lastExamKey = examKey;
+            TitleOverride = displayData.DefaultTitle;
+        }
+
         ImportNotice = displayData.ImportNotice;
         if (!string.IsNullOrWhiteSpace(displayData.ImportNotice))
         {
@@ -1018,7 +1035,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         HasData = true;
-        SyncStripClasses(displayData);
+        SyncStripClasses(displayData, resetSelection: examChanged);
 
         // 只重建当前页签需要的集合，其余页签切过去时再按需构建。
         _overviewDirty = true;
@@ -1754,7 +1771,14 @@ public partial class MainViewModel : ViewModelBase
     /// 同步成绩条页的班级下拉：首项固定「全年级」，其后为总表中的有效班级。
     /// 会话加载或切换时重置回「全年级」。
     /// </summary>
-    private void SyncStripClasses(ExamData data)
+    /// <summary>
+    /// 同步成绩条页的班级下拉：首项固定「全年级」，其后为总表中的有效班级。
+    ///
+    /// <paramref name="resetSelection"/> 为真才把筛选拨回「全年级」——切换/加载考试时该重置；
+    /// 而切对比基准、上下移考试这类「主考没变」的操作不该冲掉老师筛好的班级（审计 P2-1）。
+    /// 列表本身变了时仍需先置 null 再回设，否则 ComboBox 容器不重建（见下面的注释）。
+    /// </summary>
+    private void SyncStripClasses(ExamData data, bool resetSelection = true)
     {
         _syncingStripClasses = true;
         try
@@ -1773,7 +1797,8 @@ public partial class MainViewModel : ViewModelBase
                 foreach (var className in desired) StripClasses.Add(className);
             }
 
-            SelectedStripClass = OverviewReportFilter.AllClasses;
+            if (resetSelection || !desired.Contains(SelectedStripClass ?? string.Empty))
+                SelectedStripClass = OverviewReportFilter.AllClasses;
         }
         finally
         {

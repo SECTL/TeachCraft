@@ -100,7 +100,9 @@ public partial class ClassBlockWindow : Window
     {
         var path = await PickOpenAsync("导入课程总表", new FilePickerFileType("Excel 总表")
         {
-            Patterns = new[] { "*.xlsx" },
+            // .xls 也放进来：Core 里有一条「请先把 Excel 另存为 xlsx」的友好提示，
+            // 过滤器挡在外面它就永远没机会说出来，老师只会看到文件「隐身」（审计 P2-11）。
+            Patterns = new[] { "*.xlsx", "*.xls" },
         });
         if (path is null) return;
 

@@ -953,11 +953,18 @@ public partial class SeatGridWindow : Window
 
     private async void OnClearSeat(object? sender, RoutedEventArgs e)
     {
-        var name = ViewModel.SelectedStudent?.Name;
-        if (string.IsNullOrWhiteSpace(name)) return;
+        // 按「座位上坐着谁」弹确认，而不是按名单侧选中的学生——
+        // 两者可以不同，写错人名比不弹窗更伤信任（审计 P2-23）。
+        var occupantName = ViewModel.SelectedSeatOccupantName;
+        if (string.IsNullOrWhiteSpace(occupantName))
+        {
+            ViewModel.SetStatus("这是空座位，没有需要清空的人。", true);
+            return;
+        }
+
         if (!await ConfirmDialog.ShowAsync(
                 this, "清空这个座位？",
-                $"将清空「{name}」的座位，学生仍保留在名单中。",
+                $"将清空「{occupantName}」的座位，学生仍保留在名单中。",
                 "清空座位", "取消", danger: true))
             return;
         ViewModel.ClearSelectedSeat();
@@ -1022,7 +1029,7 @@ public partial class SeatGridWindow : Window
             return;
         }
 
-        if (e.Key == Key.Delete && ViewModel.SelectedStudent is not null)
+        if (e.Key == Key.Delete && ViewModel.SelectedStudent is not null && !IsTextInputFocused())
         {
             _ = DeleteSelectedStudentAsync();
             e.Handled = true;
@@ -1030,7 +1037,8 @@ public partial class SeatGridWindow : Window
         }
 
         // L 锁定 / 解锁当前选中座位，与织序「选中课程格按 L 锁定」保持同一肌肉记忆。
-        if (e.Key == Key.L && ViewModel.SelectedSeat is not null)
+        // 输入框里按 L 只是在打字，不能抢。
+        if (e.Key == Key.L && ViewModel.SelectedSeat is not null && !IsTextInputFocused())
         {
             ViewModel.ToggleSelectedSeatPin();
             e.Handled = true;
@@ -1060,6 +1068,30 @@ public partial class SeatGridWindow : Window
     }
 
     private void OnClearCanvas(object? sender, RoutedEventArgs e) => ViewModel.ClearCanvas();
+
+    private void OnClearSeatSearch(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.SearchText = string.Empty;
+        ViewModel.SetStatus("已清除搜索");
+    }
+
+    /// <summary>
+    /// 清空全部未锁定座位（锁定座位保留，走 ClearSeats 因而是可撤销的一步）。
+    /// 能力在 ViewModel 里早就有，只是从来没有任何按钮调用它——想清场只能逐座点几十次。
+    /// </summary>
+    private async void OnClearAllSeats(object? sender, RoutedEventArgs e)
+    {
+        var assigned = ViewModel.AssignedCount;
+        if (assigned == 0) return;
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "清空全部座位？",
+                $"将清空 {assigned} 个座位，锁定座位保留不动。可以撤销。",
+                "清空座位", "取消", danger: true))
+            return;
+
+        ViewModel.ClearSeats();
+    }
 
     private void OnUnpinAll(object? sender, RoutedEventArgs e)
     {
