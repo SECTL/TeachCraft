@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using SeatGrid.Core.Models;
@@ -13,6 +14,13 @@ public sealed class SeatChartDocument
     public required bool PodiumOnTop { get; init; }
     public required IReadOnlyList<DisplayGroup> Groups { get; init; }
     public required int StudentCount { get; init; }
+
+    /// <summary>
+    /// 座号（座位 → 1 基座号）。只有考场模式会带，日常座位表是空的。
+    /// 空表时渲染、Excel、PPTX 一律不画座号——日常导出的字节与版面都不变。
+    /// </summary>
+    public IReadOnlyDictionary<SeatPosition, int> SeatNumbers { get; init; } =
+        SeatChartComposer.EmptySeatNumbers;
 }
 
 public sealed class DisplayGroup
@@ -39,6 +47,12 @@ public sealed class DisplaySeat
 
     /// <summary>座位还是过道。过道格不坐人，渲染与 Excel 都不画边框。</summary>
     public SeatCellKind Kind { get; init; } = SeatCellKind.Seat;
+
+    /// <summary>
+    /// 1 基座号。只有考场模式有值；日常座位表恒为 null，渲染与导出都不画。
+    /// 注意它属于座位而非学生——空座也有座号。
+    /// </summary>
+    public int? SeatNumber { get; init; }
 }
 
 /// <summary>
@@ -47,10 +61,15 @@ public sealed class DisplaySeat
 /// </summary>
 public static class SeatChartComposer
 {
+    /// <summary>没有座号时的只读空表。考场之外全部走它，渲染与导出一个字都不多画。</summary>
+    internal static readonly FrozenDictionary<SeatPosition, int> EmptySeatNumbers =
+        FrozenDictionary<SeatPosition, int>.Empty;
+
     public static SeatChartDocument Compose(
         SeatChartSettings settings,
         IReadOnlyDictionary<SeatPosition, Student> assignments,
-        int studentCount)
+        int studentCount,
+        IReadOnlyDictionary<SeatPosition, int>? seatNumbers = null)
     {
         settings.Normalize();
         var layout = settings.GetLayout();
@@ -77,6 +96,10 @@ public static class SeatChartComposer
                             ? string.Empty
                             : DisplayName(student.Name, settings.SpaceTwoCharNames),
                         Kind = aisle ? SeatCellKind.Aisle : SeatCellKind.Seat,
+                        // 座号属于座位而不是坐着的人：空座位也编了号，老师要对号布置考桌。
+                        SeatNumber = aisle || seatNumbers is null
+                            ? null
+                            : seatNumbers.TryGetValue(position, out var number) ? number : null,
                     };
                 }).ToList();
 
@@ -112,6 +135,7 @@ public static class SeatChartComposer
             PodiumOnTop = !teacher,
             Groups = groups,
             StudentCount = studentCount,
+            SeatNumbers = seatNumbers ?? EmptySeatNumbers,
         };
     }
 

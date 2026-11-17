@@ -99,6 +99,12 @@ public partial class SeatCellViewModel : ObservableObject
     /// <summary>
     /// 与导出渲染（SeatChartRenderer.DrawSeat）同一套缩名规则：姓名实测宽度超过格子
     /// 可用宽度（边长 - 10px）时按比例缩小字号，下限 8px，保证屏幕与导出图一致不溢出。
+    ///
+    /// 量宽失败时原样返回字号：<see cref="FormattedText"/> 依赖平台字体后端
+    /// （<c>Avalonia.Platform.IFontManagerImpl</c>），无头环境或后端缺失时它会抛
+    /// <see cref="InvalidOperationException"/>。那只是「量不出来」，不是「这个座位坏了」——
+    /// 让它掀掉整次 <c>RefreshSeatVisuals</c> 会把一次无害的字号微调变成一片空白网格。
+    /// 量不出来就用原字号（最坏情况是略大，与不缩字号的老行为一致）。
     /// </summary>
     private static double FitFontSize(string name, double fontSize, FontWeight weight, double cellSize)
     {
@@ -107,13 +113,21 @@ public partial class SeatCellViewModel : ObservableObject
         var available = cellSize - 10;
         if (available <= 0) return fontSize;
 
-        var measured = new FormattedText(
-            name,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            new Typeface(FontFamily.Default, FontStyle.Normal, weight),
-            fontSize,
-            Brushes.Black).Width;
+        double measured;
+        try
+        {
+            measured = new FormattedText(
+                name,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface(FontFamily.Default, FontStyle.Normal, weight),
+                fontSize,
+                Brushes.Black).Width;
+        }
+        catch (Exception)
+        {
+            return fontSize;
+        }
 
         if (measured <= available || measured <= 0) return fontSize;
         return Math.Max(8, fontSize * available / measured);

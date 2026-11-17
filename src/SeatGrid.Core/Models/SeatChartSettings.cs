@@ -106,12 +106,29 @@ public sealed class SeatChartSettings
     /// <summary>组长坐哪：组中心 / 第一排。</summary>
     public Seating.MentorSeat MentorSeat { get; set; } = Seating.MentorSeat.Center;
 
-    public SeatChartLayout GetLayout() => new(Groups, Rows, Columns, Canvas);
+    /// <summary>
+    /// 显式布局。<see cref="GetLayout"/> 直接返回它，不再读 <see cref="Groups"/> /
+    /// <see cref="Rows"/> / <see cref="Columns"/>，因此那三个字段的夹取对它无效。
+    ///
+    /// 只为考场模式存在：考场布局是「单组、8 列上限」的单人桌快照，而日常滑块最多 4 列。
+    /// 早先导出走的是 ToSettings() → Compose → Normalize，布局取自日常滑块并被夹到 4 列，
+    /// 30 人考场 6 列 × 5 排被切成 4 列 × N 排，后排的人直接消失。
+    ///
+    /// **除了画布那一行，<see cref="Normalize"/> 一个字都没改**——三维字段的夹取是给日常滑块用的
+    /// 不变量，改它就会动到日常导出的每个字节。画布那行加守卫是因为它读 <see cref="GetLayout"/>，
+    /// 有了显式布局之后会拿考场尺寸去截日常画布，把调用方手里的过道 / 门窗截掉。
+    /// 日常路径（不设这个字段）因此完全走旧逻辑。
+    /// </summary>
+    public SeatChartLayout? LayoutOverride { get; set; }
+
+    /// <summary>当前布局：有显式布局就是它，否则由三个日常维度字段组装。</summary>
+    public SeatChartLayout GetLayout() => LayoutOverride ?? new(Groups, Rows, Columns, Canvas);
 
     public SeatChartSettings Clone() => (SeatChartSettings)MemberwiseClone();
 
     public void Normalize()
     {
+        // 日常滑块的三维字段照旧夹到界面允许范围。考场布局不走这里（见 LayoutOverride）。
         Groups = Math.Clamp(Groups, 1, 8);
         Rows = Math.Clamp(Rows, 1, 10);
         Columns = Math.Clamp(Columns, 1, 4);
@@ -125,7 +142,12 @@ public sealed class SeatChartSettings
         PodiumWidthPercent = Math.Clamp(PodiumWidthPercent, 20, 100);
         PodiumHeight = Math.Clamp(PodiumHeight, 24, 80);
         if (string.IsNullOrWhiteSpace(PodiumLabel)) PodiumLabel = "讲　台";
-        Canvas = Canvas.Normalize(GetLayout());
+
+        // 显式布局下不裁日常画布：Compose 读的是 layout.Surface（考场布局自带空画布），
+        // 拿日常过道去按考场尺寸截一遍既没意义，又会让调用方手里的日常画布凭空少东西
+        // ——ToSettings() 交出去的是同一个 Canvas 引用，截掉就回不去了。
+        if (LayoutOverride is null) Canvas = Canvas.Normalize(GetLayout());
+
         Title = string.IsNullOrWhiteSpace(Title) ? "座位表" : Title.Trim();
 
         SeatBackground = NormalizeColor(SeatBackground, "#FFFFFF");

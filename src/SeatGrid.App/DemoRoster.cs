@@ -18,10 +18,16 @@ public static class DemoRoster
         "钟子墨", "汪雨泽", "任思彤", "姚俊熙", "卢欣妍", "姜浩然", "崔诗雨", "谭子轩",
     };
 
-    public static RosterImportResult Create()
+    public static RosterImportResult Create() => Create(Names.Length);
+
+    /// <summary>
+    /// 取前 count 个人。考场走查要一个正好铺满整张考场的名单（30 人 → 6 列 × 5 排），
+    /// 48 人的演示名单排出来是 7 × 7，看不出「最后一行人还在不在」。
+    /// </summary>
+    public static RosterImportResult Create(int count)
     {
         var students = new List<Student>();
-        for (var i = 0; i < Names.Length; i++)
+        for (var i = 0; i < Math.Min(count, Names.Length); i++)
         {
             students.Add(new Student
             {

@@ -113,9 +113,11 @@ public partial class SeatGridWindow : Window
     }
 
     /// <summary>设计走查用：装载演示名单并截图。</summary>
-    public void LoadDemoData()
+    public void LoadDemoData() => LoadDemoData(DemoRoster.Create());
+
+    public void LoadDemoData(RosterImportResult roster)
     {
-        ViewModel.LoadRoster(DemoRoster.Create());
+        ViewModel.LoadRoster(roster);
         ViewModel.ArrangeModeIndex = 1;
         ViewModel.AutoArrange();
         ViewModel.SetStatus("演示名单 · 已按男女交替自动排座");
@@ -147,6 +149,38 @@ public partial class SeatGridWindow : Window
     {
         LoadDemoData();
         ViewModel.EnterExamMode(new ExamLayoutOptions());
+    }
+
+    /// <summary>
+    /// 设计走查：30 人考场（6 列 × 5 排，正好铺满）。
+    /// 48 人的演示名单排出来是 7 × 7，看不出「最后一行人还在不在」。
+    /// </summary>
+    public void LoadDemoExamPacked()
+    {
+        LoadDemoData(DemoRoster.Create(30));
+        ViewModel.EnterExamMode(new ExamLayoutOptions());
+    }
+
+    /// <summary>
+    /// 设计走查：把「导出时真正用的那一份文档」写出去。
+    /// 走 ViewModel.ComposeDocument，与老师点按钮时是同一条路——
+    /// 绕开它另拼一份文档，走查就证明不了导出是对的。
+    /// </summary>
+    public void ExportChartForCapture(string path, bool excel)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+        var document = ViewModel.ComposeDocument();
+        if (excel)
+        {
+            SeatChartExcelExporter.ExportSeatChart(
+                document, ViewModel.GetCoreAssignments(), ViewModel.GetModels(), path);
+        }
+        else
+        {
+            SeatChartRenderer.RenderPng(document, path, 2.0);
+        }
     }
 
     /// <summary>设计走查：教室画布演示态——中间两组靠讲台的前两排设为过道，加一条组间走廊与两扇门。</summary>
@@ -1525,6 +1559,16 @@ public partial class SeatGridWindow : Window
 
     private async void OnExportConfig(object? sender, RoutedEventArgs e)
     {
+        // 考场是独立快照（AGENTS 第六节）：它的单组单人桌布局不是日常布局，写进 SeatGrid Config v1
+        // 只会在导回时被夹成日常布局、后排学生整片「超出布局」。与其产出一份骗人的配置，
+        // 不如直接说清楚——老师要的是一条能导回来的路，而考场快照只需要座位表本身。
+        if (ViewModel.IsExamMode)
+        {
+            ViewModel.SetStatus("考场模式下不导出配置：考场是独立快照，不能导回日常座位。"
+                                + "要保存日常座位请先点「返回日常座位」；考场用「导出 Excel / 导出图片」。", true);
+            return;
+        }
+
         var path = await PickSaveAsync("导出座位配置", SafeFileName("-配置.xlsx"), ".xlsx",
             new FilePickerFileType("Excel 工作簿") { Patterns = new[] { "*.xlsx" } });
         if (path is null) return;

@@ -26,6 +26,16 @@ public sealed record SeatGridConfig(
 public static class SeatGridConfigIO
 {
     private const string Marker = "SeatGrid Config v1";
+
+    /// <summary>
+    /// 考场快照标记。写在「座位设置」表的设置项里，值为 true。
+    ///
+    /// 考场是独立快照而不是日常布局（AGENTS 第六节），它的单组单人桌布局可能超出日常
+    /// 4 列的上限。若不标记，导回时会按日常规则夹取，后排学生整片变成「超出布局」——
+    /// 比报错更糟，因为老师会以为座位真的丢了。
+    /// </summary>
+    private const string ExamSnapshotKey = "ExamSnapshot";
+
     internal const string SettingsSheetName = "座位设置";
     internal const string RosterSheetName = "名单";
     internal const string ChartSheetName = "座位表";
@@ -38,6 +48,13 @@ public static class SeatGridConfigIO
         IReadOnlyDictionary<SeatPosition, Student> assignments,
         ArrangeConstraints? constraints = null)
     {
+        // 配置的语义是「日常座位的存档」。`LayoutOverride` 只有考场模式会设，而考场快照的布局
+        // 超出日常 4 列上限，写进来只是一份导不回去的文件：界面已经在考场模式下禁用了这个入口，
+        // 这里再挡一道，免得将来有人从别的入口（批处理、脚本、测试）调进来产出一份骗人的配置。
+        if (settings.LayoutOverride is not null)
+            throw new SeatGridException(
+                "这份配置来自考场快照，不能作为日常座位导出。请先返回日常座位再导出配置。");
+
         using var workbook = new XLWorkbook();
         WriteSettingsSheet(workbook, settings);
         WriteRosterSheet(workbook, students, assignments, withIndex: false);
@@ -122,11 +139,26 @@ public static class SeatGridConfigIO
         return sheet;
     }
 
-    /// <summary>写「座位设置」表（A1 为版本标记）。座位表导出也调用它，并把它隐藏起来。</summary>
-    internal static IXLWorksheet WriteSettingsSheet(XLWorkbook workbook, SeatChartSettings settings)
+    /// <summary>
+    /// 写「座位设置」表（A1 为版本标记）。座位表导出也调用它，并把它隐藏起来。
+    ///
+    /// 考场快照写的是**考场自己的组 / 排 / 列**：设置表再怎么导不回去（见 Import 的拒绝分支），
+    /// 它写在文件里就得跟这张座位表对得上——否则打开文件的人看到 4 组 × 6 排 × 2 列，
+    /// 画面上却是 1 组 × 5 排 × 6 列，只会以为软件坏了。
+    /// </summary>
+    internal static IXLWorksheet WriteSettingsSheet(
+        XLWorkbook workbook, SeatChartSettings settings, bool examSnapshot = false)
     {
         var source = settings.Clone();
         source.Normalize();
+
+        // 有显式布局（考场）时，把三个维度字段对齐到它，设置表才与座位表一致。
+        if (source.LayoutOverride is { } layout)
+        {
+            source.Groups = layout.Groups;
+            source.Rows = layout.Rows;
+            source.Columns = layout.Columns;
+        }
 
         var sheet = workbook.Worksheets.Add(SettingsSheetName);
 
@@ -197,6 +229,9 @@ public static class SeatGridConfigIO
         Add("PodiumLabel", source.PodiumLabel);
         Add("PodiumWidthPercent", source.PodiumWidthPercent);
         Add("PodiumHeight", source.PodiumHeight);
+
+        // 只有考场导出才写这一行。日常导出的设置表与旧版逐行一致，旧读者读新表也不会多出键。
+        if (examSnapshot) Add(ExamSnapshotKey, true);
 
         sheet.Column(1).Width = 26;
         sheet.Column(2).Width = 34;
@@ -273,6 +308,10 @@ public static class SeatGridConfigIO
     /// <summary>
     /// 「导入名单」先用它探一下：是本软件导出的配置或座位表就整体还原（名单 + 座位 + 设置），
     /// 否则返回 null，交给普通名单识别。打不开的文件也返回 null，由名单识别给出具体错误。
+    ///
+    /// **唯一会抛的情况**：认出是本软件的文件、但它带着 <c>ExamSnapshot</c> 标记（考场导出）。
+    /// 那种文件导不回来（考场布局超出日常 4 列上限），必须让老师看到原因；
+    /// 返回 null 会掉进普通名单识别，读出一份「有名单没有座位」的东西，比报错更糟。
     /// </summary>
     public static SeatGridConfig? TryImport(string path)
     {
@@ -303,6 +342,14 @@ public static class SeatGridConfigIO
         var warnings = new List<string>();
         if (HasMarker(sheet))
         {
+            // 考场导出的座位表不是日常布局：它的单组单人桌可能超过日常 4 列上限，
+            // 硬导回来会被夹成日常布局、后排学生整片变「超出布局」。宁可如实拒绝，
+            // 也不产出一份「导回来变成日常」的配置。
+            if (IsExamSnapshot(sheet))
+                throw new SeatGridException(
+                    "这是「考场模式」下导出的座位表：考场是独立快照，不能导回日常座位。"
+                    + "请先返回日常座位，再导出配置或座位表。");
+
             var settings = ReadSettings(sheet);
             var (students, assignments) = ReadRoster(workbook, settings.GetLayout(), warnings, accept: null);
             var constraints = ReadConstraints(workbook, students, settings.GetLayout(), warnings);
@@ -320,6 +367,23 @@ public static class SeatGridConfigIO
 
     private static bool HasMarker(IXLWorksheet sheet) =>
         string.Equals(sheet.Cell(1, 1).GetFormattedString().Trim(), Marker, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>设置表里是否写着「这是考场快照」。缺键 = 日常导出，与旧版一致。</summary>
+    private static bool IsExamSnapshot(IXLWorksheet sheet)
+    {
+        var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
+        for (var row = 3; row <= lastRow; row++)
+        {
+            if (!string.Equals(sheet.Cell(row, 1).GetFormattedString().Trim(), ExamSnapshotKey,
+                    StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var value = sheet.Cell(row, 2).GetFormattedString().Trim();
+            return bool.TryParse(value, out var parsed) ? parsed : value is "1" or "是";
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// 读「座位约束」表。学生按「序号 + 姓名」双校验定位；序号对不上就按姓名唯一匹配；

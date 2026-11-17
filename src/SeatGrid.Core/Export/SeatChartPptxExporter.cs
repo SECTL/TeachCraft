@@ -177,6 +177,22 @@ public static class SeatChartPptxExporter
                             center: true,
                             fill: seat.IsEmpty ? document.Settings.EmptySeatBackground : document.Settings.SeatBackground,
                             border: document.Settings.SeatBorder));
+
+                        // 座号（只有考场表有）：左上角一个无填充的小文本框，与 PNG 同一口径。
+                        // 日常表 document.SeatNumbers 为空，这里整段不进，导出结果与旧版一致。
+                        if (seat.SeatNumber is { } seatNumber)
+                        {
+                            var numberSize = Math.Min(cellHeight, cellWidth) / 5;
+                            shapes.Add(MakeTextShape(
+                                id++, $"SeatNumber{seatNumber}",
+                                x, y + gap / 4,
+                                Math.Max(1, cellWidth - gap), Math.Max(1, numberSize),
+                                $"{seatNumber:00} 号",
+                                900,
+                                bold: false,
+                                color: document.Settings.RowLabel,
+                                center: false));
+                        }
                     }
                 }
             }

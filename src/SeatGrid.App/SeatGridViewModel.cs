@@ -249,6 +249,8 @@ public partial class SeatGridViewModel : ObservableObject
     // ----------------------------- 计算属性 -----------------------------
 
     public bool IsIdle => !IsBusy;
+    /// <summary>「导出配置」是否可用。考场是快照不是日常布局，导回去只会被夹坏，所以直接禁用。</summary>
+    public bool CanExportConfig => IsIdle && !IsExamMode;
     public bool IsTeacherView => !IsStudentView;
     public bool PodiumOnTop => IsStudentView;
     public bool PodiumOnBottom => !IsStudentView;
@@ -558,6 +560,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(CanArrange));
         OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(CanExportConfig));
     }
 
     partial void OnRosterHintChanged(string value) => OnPropertyChanged(nameof(HasRosterHint));
@@ -1395,6 +1398,7 @@ public partial class SeatGridViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanEnterExam));
         OnPropertyChanged(nameof(CanLeaveExam));
+        OnPropertyChanged(nameof(CanExportConfig));
         OnPropertyChanged(nameof(ExamSummary));
     }
 
@@ -1741,8 +1745,27 @@ public partial class SeatGridViewModel : ObservableObject
         return withMentor.IsEmpty ? null : withMentor;
     }
 
-    public SeatChartDocument ComposeDocument() =>
-        SeatChartComposer.Compose(ToSettings(), GetCoreAssignments(), _students.Count);
+    /// <summary>
+    /// 导出用的文档。日常模式与旧版逐字段一致；考场模式必须走这里的旁路，
+    /// 否则 ToSettings() 带出的组 / 排 / 列仍是日常滑块的值，Normalize 再把列数夹到 4——
+    /// 界面画的是 6 列 × 5 排，导出却切成 4 列，后排的学生整片消失。
+    ///
+    /// 两处旁路都只作用于 `IsExamMode && _examPlan != null` 这一个分支：
+    /// 显式布局（不夹取、直接用考场 layout）与座号表（日常为空表，渲染与导出都不画）。
+    /// 不改日常滑块，也不改 _examPlan 的快照语义。
+    /// </summary>
+    public SeatChartDocument ComposeDocument()
+    {
+        var settings = ToSettings();
+        if (IsExamMode && _examPlan is { } exam)
+        {
+            settings.LayoutOverride = exam.Layout;
+            return SeatChartComposer.Compose(
+                settings, GetCoreAssignments(), _students.Count, exam.SeatNumbers);
+        }
+
+        return SeatChartComposer.Compose(settings, GetCoreAssignments(), _students.Count);
+    }
 
     public Dictionary<SeatPosition, Student> GetCoreAssignments() =>
         _assignments.ToDictionary(kv => kv.Key, kv => kv.Value.Model);

@@ -1208,7 +1208,8 @@
                                 </Grid>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                                     <Button Classes="primary tool" Content="导出配置"
-                                            Click="OnExportConfig" IsEnabled="{Binding IsIdle}" />
+                                            Click="OnExportConfig" IsEnabled="{Binding CanExportConfig}"
+                                            ToolTip.Tip="考场模式下不可用：考场是独立快照，导不回日常座位" />
                                     <Button Grid.Column="1" Classes="ghost tool" Content="导入配置"
                                             Click="OnImportConfig" IsEnabled="{Binding IsIdle}" />
                                 </Grid>

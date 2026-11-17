@@ -317,6 +317,11 @@ public static class SeatChartRenderer
         if (!empty || !settings.HideEmptySeats)
             canvas.DrawRoundRect(rect, 6f, 6f, paintCache.Border(empty));
 
+        // 座号（只有考场模式有）：画在左上角，小号 muted 字，与桌贴的「NN 号」同一口径。
+        // 空座位也编了号——老师要按号布置考桌，所以它在 empty 的提前返回之前。
+        if (seat.SeatNumber is { } seatNumber)
+            DrawSeatNumber(canvas, seatNumber, rect, paintCache);
+
         if (empty) return;
 
         var name = seat.Name;
@@ -338,6 +343,26 @@ public static class SeatChartRenderer
 
         var centerY = rect.MidY - (nameFont.Metrics.Ascent + nameFont.Metrics.Descent) / 2f;
         canvas.DrawText(name, rect.MidX, centerY, SKTextAlign.Center, nameFont, namePaint);
+    }
+
+    /// <summary>
+    /// 座号：格子左上角，两位补零 + 「号」，字号随格子大小收缩并夹在 7–11px。
+    /// 桌子很小的时候（格子 40px）仍然读得出来，格子很大（200%）也不会喧宾夺主。
+    /// </summary>
+    private static void DrawSeatNumber(
+        SKCanvas canvas, int seatNumber, SKRect rect, SeatPaintCache paintCache)
+    {
+        var size = Math.Clamp(rect.Width * 0.16f, 7f, 11f);
+        var font = paintCache.Font(size, bold: false);
+        var pad = Math.Max(4f, rect.Width * 0.07f);
+
+        canvas.DrawText(
+            $"{seatNumber:00} 号",
+            rect.Left + pad,
+            rect.Top + pad - font.Metrics.Ascent,
+            SKTextAlign.Left,
+            font,
+            paintCache.SeatNumberPaint);
     }
 
     private static void DrawPodium(
@@ -395,6 +420,7 @@ public static class SeatChartRenderer
         private readonly SKPaint _emptyBorder;
         private readonly SKPaint _inkPaint;
         private readonly SKPaint _femalePaint;
+        private readonly SKPaint _seatNumberPaint;
         private readonly SKPathEffect _emptyDash;
         private readonly Dictionary<(float Size, bool Bold), SKFont> _fonts = new();
 
@@ -431,11 +457,14 @@ public static class SeatChartRenderer
             };
             _inkPaint = new SKPaint { Color = Color(settings.SeatText), IsAntialias = true };
             _femalePaint = new SKPaint { Color = Color(settings.FemaleMark), IsAntialias = true };
+            // 座号用与排标题一致的灰：它是辅助标注，不该抢姓名的注意力。
+            _seatNumberPaint = new SKPaint { Color = Color(settings.RowLabel), IsAntialias = true };
         }
 
         public SKPaint Fill(bool empty) => empty ? _emptyFill : _seatFill;
         public SKPaint Border(bool empty) => empty ? _emptyBorder : _seatBorder;
         public SKPaint Name(bool female) => female ? _femalePaint : _inkPaint;
+        public SKPaint SeatNumberPaint => _seatNumberPaint;
 
         public SKFont Font(float size, bool bold)
         {
@@ -457,6 +486,7 @@ public static class SeatChartRenderer
             _emptyBorder.Dispose();
             _inkPaint.Dispose();
             _femalePaint.Dispose();
+            _seatNumberPaint.Dispose();
             _emptyDash.Dispose();
         }
     }

@@ -161,8 +161,6 @@ public static class SeatChartExcelExporter
                         continue;
                     }
 
-                    cell.Value = seat.Name;
-
                     cell.Style.Font.FontName = "Microsoft YaHei";
                     cell.Style.Font.FontSize = Math.Max(7, settings.NameFontSize * 0.75);
                     cell.Style.Font.Bold = settings.BoldNames;
@@ -170,6 +168,10 @@ public static class SeatChartExcelExporter
                         !seat.IsEmpty && settings.MarkFemales && seat.IsFemale
                             ? settings.FemaleMark
                             : settings.SeatText);
+
+                    // 文字放在样式之后写：考场表用富文本（姓名 + 换行小字座号），
+                    // 每个 run 自带字体，样式写在前面才不会被后续赋值覆盖。
+                    WriteSeatText(cell, seat, settings);
 
                     if (!seat.IsEmpty)
                     {
@@ -186,7 +188,7 @@ public static class SeatChartExcelExporter
 
                     cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                     cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-                    cell.Style.Alignment.WrapText = false;
+                    cell.Style.Alignment.WrapText = seat.SeatNumber is not null;
                 }
             }
 
@@ -214,16 +216,52 @@ public static class SeatChartExcelExporter
 
         // 名单页与配置共用写法；再附一张隐藏的「座位设置」，导回时布局、配色与座位都能还原。
         // 隐藏表放在最后，打开文件时停在座位表上。
+        //
+        // 考场快照（带座号）另说：它的布局是单组单人桌，列数可能超过日常 4 列的上限，
+        // 导回来只会被夹成日常布局、后排学生整片报「超出布局」。所以照样写设置表，
+        // 但打上 ExamSnapshot 标记——导入侧见到标记就如实拒绝，绝不产出一份「导回来变成日常」的配置。
+        // 约束表同理不写：考场下锁定 / 互斥 / 结对 / 区域本来就不生效。
+        var examSnapshot = document.SeatNumbers.Count > 0;
         SeatGridConfigIO.WriteRosterSheet(workbook, students, assignments, withIndex: true);
         if (includeSettingsSheet)
-            SeatGridConfigIO.WriteSettingsSheet(workbook, settings).Hide();
-        if (constraints is { IsEmpty: false })
+            SeatGridConfigIO.WriteSettingsSheet(workbook, settings, examSnapshot).Hide();
+        if (!examSnapshot && constraints is { IsEmpty: false })
             SeatGridConfigIO.WriteConstraintSheet(workbook, constraints, students);
 
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         workbook.SaveAs(path);
+    }
+
+    /// <summary>
+    /// 写座位格的文字。日常座位表就是姓名一个值（与旧版逐格一致）；
+    /// 考场表多一行小号灰字座号——文档带座号才走富文本，日常导出完全不碰这条分支。
+    /// </summary>
+    private static void WriteSeatText(IXLCell cell, DisplaySeat seat, SeatChartSettings settings)
+    {
+        if (seat.SeatNumber is not { } seatNumber)
+        {
+            cell.Value = seat.Name;
+            return;
+        }
+
+        var rich = cell.CreateRichText();
+        if (seat.Name.Length > 0)
+        {
+            var nameRun = rich.AddText(seat.Name);
+            nameRun.SetFontName("Microsoft YaHei");
+            nameRun.SetFontSize(Math.Max(7, settings.NameFontSize * 0.75));
+            nameRun.SetFontColor(XLColor.FromHtml(
+                !seat.IsEmpty && settings.MarkFemales && seat.IsFemale
+                    ? settings.FemaleMark
+                    : settings.SeatText));
+        }
+
+        var numberRun = rich.AddText($"{(seat.Name.Length > 0 ? "\n" : string.Empty)}{seatNumber:00} 号");
+        numberRun.SetFontName("Microsoft YaHei");
+        numberRun.SetFontSize(8);
+        numberRun.SetFontColor(XLColor.FromHtml(settings.RowLabel));
     }
 
     /// <summary>
