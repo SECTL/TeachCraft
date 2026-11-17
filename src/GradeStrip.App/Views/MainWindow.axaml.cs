@@ -33,6 +33,9 @@ public partial class MainWindow : Window
         {
             Classes.Add("allow-motion");
         }
+
+        // 与其余窗口一致：打开后把窗口钳进屏幕工作区（此前是唯一引入 WindowFit 却从不调用的窗口）。
+        Opened += (_, _) => WindowFit.Clamp(this);
     }
 
     /// <summary>

@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using GradeWeave.Core.Models;
 using GradeWeave.Core.Timetable;
+using TeachCraft.Shared;
 
 namespace GradeWeave.App;
 
@@ -43,7 +44,7 @@ public partial class TimetableEditorWindow : Window
         Opened += (_, _) =>
         {
             DrawTimeline();
-            ScreenFit.Clamp(this);
+            WindowFit.Clamp(this);
         };
         DrawTimeline();
     }

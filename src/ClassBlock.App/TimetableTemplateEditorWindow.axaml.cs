@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using ClassBlock.Core;
 using ClassBlock.Core.Timetable;
+using TeachCraft.Shared;
 
 namespace ClassBlock.App;
 
@@ -23,6 +24,7 @@ public partial class TimetableTemplateEditorWindow : Window
     {
         InitializeComponent();
         DataContext = new TimetableTemplateEditorViewModel(source, startAsCopy);
+        Opened += (_, _) => WindowFit.Clamp(this);
     }
 
     private TimetableTemplateEditorViewModel ViewModel => (TimetableTemplateEditorViewModel)DataContext!;

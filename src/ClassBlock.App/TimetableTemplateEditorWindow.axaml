@@ -146,7 +146,7 @@
                         IsVisible="{Binding !IsBuiltin}" IsEnabled="{Binding CanSave}" />
                 <Button Classes="ghost" Content="删除模板" x:Name="DeleteButton" Click="OnDelete"
                         IsVisible="{Binding CanDelete}" />
-                <Button Classes="ghost" Content="关闭" Click="OnClose" />
+                <Button Classes="ghost" Content="关闭" Click="OnClose" IsCancel="True" />
             </StackPanel>
             <TextBlock Classes="helper"
                        Text="「绑定」为空的行使用静态内容；绑定第 N 节 / 早读 / 午学 / 课服 / 晚修的行会自动填入总表数据。显示开关（早读、午学等）只对绑定行生效。" />

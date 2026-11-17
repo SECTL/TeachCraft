@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using TeachCraft.Shared;
 
 namespace SeatGrid.App;
 
@@ -27,6 +28,8 @@ public partial class SeatPreviewWindow : Window
         Title = $"打印预览 · {title}";
         Subtitle.Text = subtitle;
         Opened += (_, _) => _ = LoadPreviewAsync();
+        Opened += (_, _) => WindowFit.Clamp(this);
+        KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Escape) Close(); };
     }
 
     /// <summary>
