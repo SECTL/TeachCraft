@@ -217,12 +217,22 @@
         </Border>
 
         <!-- 运行 -->
-        <ProgressBar IsVisible="{Binding IsBusy}" Minimum="0" Maximum="100"
+        <ProgressBar IsVisible="{Binding HasProgress}" Minimum="0" Maximum="100"
                      Value="{Binding Progress}" Margin="0,18,0,0" />
         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}" Margin="0,8,0,0">
             <TextBlock Text="正在处理…" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+            <!-- 没有真实进度的工具不再显示 0%：那看起来像死机（审计 P2-30）。 -->
             <TextBlock Text="{Binding Progress, StringFormat='{}{0:0}%'}" FontFamily="{StaticResource MonoFont}"
-                       FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}" />
+                       FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}"
+                       IsVisible="{Binding HasProgress}" />
+            <Button Classes="link" Content="取消" FontSize="10.5"
+                    Foreground="{StaticResource MutedBrush}"
+                    IsVisible="{Binding !CancelRequested}"
+                    VerticalAlignment="Center"
+                    Click="OnCancelTool"
+                    AutomationProperties.Name="取消处理" />
+            <TextBlock Text="正在取消…" FontSize="10.5" Foreground="{StaticResource MutedBrush}"
+                       IsVisible="{Binding CancelRequested}" VerticalAlignment="Center" />
         </StackPanel>
 
         <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}" FontSize="11"

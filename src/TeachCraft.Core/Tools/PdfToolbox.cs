@@ -85,12 +85,15 @@ public static class PdfToolbox
         }
     }
 
-    public static string ImagesToPdf(IReadOnlyList<string> images, string output)
+    public static string ImagesToPdf(
+        IReadOnlyList<string> images, string output, IProgress<int>? progress = null)
     {
         if (images.Count == 0) throw new ToolboxException("请先选择图片。");
 
         try
         {
+            var index = 0;
+            var total = Math.Max(1, images.Count);
             Document.Create(container =>
             {
                 foreach (var file in images)
@@ -103,6 +106,9 @@ public static class PdfToolbox
                         page.PageColor(Colors.White);
                         page.Content().AlignCenter().AlignMiddle().Image(file).FitArea();
                     });
+
+                    // 30 张照片合成 PDF 要几秒到十几秒，逐张上报（审计 P2-30）。
+                    progress?.Report(++index * 100 / total);
                 }
             }).GeneratePdf(output);
 
@@ -158,7 +164,8 @@ public static class PdfToolbox
     }
 
     /// <summary>PDF 转 Word。keepLayout 为真时把每页渲染成图片嵌入 DOCX，版式不变但不可编辑。</summary>
-    public static string PdfToWord(string input, string output, bool keepLayout, int dpi = 150)
+    public static string PdfToWord(
+        string input, string output, bool keepLayout, int dpi = 150, IProgress<int>? progress = null)
     {
         EnsureDistinct(new[] { input }, output);
         try
@@ -192,6 +199,10 @@ public static class PdfToolbox
                     imagePart.FeedData(png);
                     body.Append(CreateImageParagraph(main, imagePart, bitmap.Width, bitmap.Height, index + 1));
                     if (index < pageCount - 1) body.Append(PageBreakParagraph());
+
+                    // 逐页上报：80 页扫描件按 300 DPI 保留版面要跑几分钟，
+                    // 没有进度的话进度条恒为 0%，老师会以为死机并强关（审计 P2-30）。
+                    progress?.Report((index + 1) * 100 / Math.Max(1, pageCount));
                 }
 
                 AppendSectionProperties(body);

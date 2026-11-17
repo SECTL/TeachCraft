@@ -74,9 +74,10 @@ public static class ToolDispatcher
                 request.WatermarkPosition,
                 request.WatermarkOpacity,
                 request.WatermarkScale),
-            ToolKind.PdfToWord => PdfToolbox.PdfToWord(first, request.Output, request.KeepLayout, request.Dpi),
+            ToolKind.PdfToWord => PdfToolbox.PdfToWord(
+                first, request.Output, request.KeepLayout, request.Dpi, progress),
             ToolKind.WordToPdf => PdfToolbox.WordToPdf(first, request.Output),
-            ToolKind.ImagesToPdf => PdfToolbox.ImagesToPdf(request.Inputs, request.Output),
+            ToolKind.ImagesToPdf => PdfToolbox.ImagesToPdf(request.Inputs, request.Output, progress),
             ToolKind.PdfToImages => PdfToolbox.PdfToImages(first, request.Output, request.Dpi, progress),
             ToolKind.PdfMerge => PdfToolbox.Merge(request.Inputs, request.Output),
             ToolKind.PdfSplit => PdfToolbox.Split(first, request.Output, request.PageRange ?? string.Empty),

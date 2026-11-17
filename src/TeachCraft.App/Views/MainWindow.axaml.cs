@@ -674,22 +674,52 @@ public partial class MainWindow : Window
     {
         tool.IsBusy = true;
         tool.Progress = 0;
+        tool.HasProgress = false;
         tool.ResultText = string.Empty;
         tool.HasResult = false;
+        tool.CancelRequested = false;
         ViewModel.SetStatus($"正在处理 {tool.Name}…");
+
+        var cancellation = new CancellationTokenSource();
+        _toolCancellation = cancellation;
 
         try
         {
-            var progress = new Progress<int>(value => tool.Progress = value);
+            var progress = new Progress<int>(value =>
+            {
+                tool.Progress = value;
+                // 0% 不动看起来像死机；只有在真的开始推进时才显示进度条（审计 P2-30）。
+                if (value > 0) tool.HasProgress = true;
+            });
             var request = tool.ToRequest(output);
-            var summary = await Task.Run(() => ToolDispatcher.Run(request, progress));
+            var token = cancellation.Token;
+
+            var summary = await Task.Run(() =>
+            {
+                token.ThrowIfCancellationRequested();
+                var result = ToolDispatcher.Run(request, progress);
+                // 长任务在逐页/逐张循环里无法中途抛出（QuestPDF / OpenXml 的写盘不可中断），
+                // 所以在完成点检查一次：取消过的任务不把输出当成成功。
+                token.ThrowIfCancellationRequested();
+                return result;
+            }, token);
 
             tool.Progress = 100;
+            tool.HasProgress = true;
             tool.ResultText = summary;
             tool.HasResult = true;
             tool.ResultIsError = false;
             tool.LastOutputPath = output;
             ViewModel.SetStatus("处理完成 · " + summary);
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消后清理半成品：留下一个用户没要的残缺文件比什么都不留更糟。
+            TryDeletePartialOutput(tool, output);
+            tool.ResultText = "已取消。";
+            tool.HasResult = true;
+            tool.ResultIsError = true;
+            ViewModel.SetStatus("已取消处理。");
         }
         catch (ToolboxException ex)
         {
@@ -708,8 +738,37 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _toolCancellation = null;
+            cancellation.Dispose();
             tool.IsBusy = false;
+            tool.CancelRequested = false;
         }
+    }
+
+    /// <summary>取消后删掉这个任务写出的半成品；PdfToImages 的输出是目录，交给它自己留着。</summary>
+    private static void TryDeletePartialOutput(ToolItemViewModel tool, string output)
+    {
+        try
+        {
+            if (tool.Kind == ToolKind.PdfToImages) return;
+            if (File.Exists(output) && string.Equals(tool.LastOutputPath, output, StringComparison.OrdinalIgnoreCase))
+                File.Delete(output);
+        }
+        catch
+        {
+            // 删不掉不影响「已取消」这个结论。
+        }
+    }
+
+    /// <summary>当前在跑的工具任务；面板上的「取消」按钮用它。</summary>
+    private CancellationTokenSource? _toolCancellation;
+
+    private void OnCancelTool(object? sender, EventArgs e)
+    {
+        var cancellation = _toolCancellation;
+        if (cancellation is null) return;
+        if (ViewModel.SelectedTool is { } tool) tool.CancelRequested = true;
+        cancellation.Cancel();
     }
 
     private async Task<string?> PickOutputAsync(ToolItemViewModel tool)

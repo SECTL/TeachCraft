@@ -42,6 +42,12 @@ public partial class ToolItemViewModel : ObservableObject
     [ObservableProperty] private decimal? _dpiValue = 150;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private double _progress;
+
+    /// <summary>真的开始推进时才显示进度条：恒为 0% 的进度条看起来像死机（审计 P2-30）。</summary>
+    [ObservableProperty] private bool _hasProgress;
+
+    /// <summary>老师已点过「取消」，按钮据此切换文案。</summary>
+    [ObservableProperty] private bool _cancelRequested;
     [ObservableProperty] private string _resultText = string.Empty;
     [ObservableProperty] private bool _hasResult;
     [ObservableProperty] private bool _resultIsError;

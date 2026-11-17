@@ -984,6 +984,7 @@
                                                  IsVisible="{Binding #Root.DataContext.IsToolPanelOpen}"
                                                  FilePickRequested="OnPickFiles"
                                                  RunRequested="OnRunTool"
+                                                 CancelRequested="OnCancelTool"
                                                  CloseRequested="OnClosePanel" />
                             <views:ProjectPanelView x:Name="ProjectPanel" IsVisible="{Binding IsProjectPanelOpen}"
                                                     CloseRequested="OnClosePanel"

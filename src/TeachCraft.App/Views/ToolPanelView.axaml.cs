@@ -10,6 +10,9 @@ public partial class ToolPanelView : UserControl
     public event EventHandler? RunRequested;
     public event EventHandler? CloseRequested;
 
+    /// <summary>「取消」：由 MainWindow 持有真正的 CancellationTokenSource。</summary>
+    public event EventHandler? CancelRequested;
+
     public ToolPanelView()
     {
         InitializeComponent();
@@ -18,6 +21,7 @@ public partial class ToolPanelView : UserControl
     private void OnPick(object? sender, RoutedEventArgs e) => FilePickRequested?.Invoke(this, EventArgs.Empty);
     private void OnRun(object? sender, RoutedEventArgs e) => RunRequested?.Invoke(this, EventArgs.Empty);
     private void OnClose(object? sender, RoutedEventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
+    private void OnCancelTool(object? sender, RoutedEventArgs e) => CancelRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnClearFiles(object? sender, RoutedEventArgs e)
     {
