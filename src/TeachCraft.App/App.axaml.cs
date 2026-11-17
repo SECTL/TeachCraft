@@ -1034,6 +1034,25 @@ public partial class App : Application
                 StartRestartHelper(installer.Id, Environment.ProcessId, exe);
             }
 
+            // 关窗之前先问一句：Shutdown 会绕过各窗口自己的 OnClosing 确认。
+            // 手动点 X 有防线、点「更新」反而没有，这个不对称最伤（审计 P1-3）。
+            var unsaved = Updating.UnsavedWindowGuard.FindUnsaved(
+                desktop.Windows.Select(w => (
+                    w.Title ?? "某个窗口",
+                    Updating.UnsavedWindowGuard.HasUnsavedWork(w.DataContext))));
+            if (unsaved.Count > 0)
+            {
+                var proceed = await TeachCraft.Shared.ConfirmDialog.ShowAsync(
+                    desktop.MainWindow ?? desktop.Windows.First(),
+                    "安装更新会关闭所有窗口",
+                    $"{string.Join("、", unsaved)} 还有未保存的内容。建议先导出或保存，再安装更新。仍要继续吗？",
+                    "继续安装",
+                    "暂不安装",
+                    danger: true);
+                if (!proceed)
+                    return "已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。";
+            }
+
             // 到这里安装包已经在跑，可以安全退出。
             // **必须先释放单实例锁**：帮手进程装完后会拉起新版本，
             // 若此时锁仍被本进程持有（Mutex 还没随进程销毁），新进程 TryAcquire 会失败并直接 Exit(0)，

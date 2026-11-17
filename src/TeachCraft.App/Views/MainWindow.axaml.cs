@@ -65,8 +65,14 @@ public partial class MainWindow : Window
     /// </summary>
     private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e)
     {
+        // 状态栏这颗 mini 按钮也要守卫：自包含包上百 MB、下载几分钟，
+        // 老师以为没点中再点一次，两个下载会写同一个 .part 并互相删掉（审计 P1-5）。
+        // 面板版 OnPanelInstallUpdate 早就有这道守卫，这里漏了。
+        if (ViewModel.IsUpdateBusy) return;
+
         try
         {
+            ViewModel.IsUpdateBusy = true;
             // 状态栏也带速度：老师在这儿等的时候，最想知道的是「还要多久」。
             var progress = new Progress<DownloadProgress>(p =>
             {
@@ -82,6 +88,10 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ViewModel.SetStatus(ErrorText.Describe(ex, "更新"), error: true);
+        }
+        finally
+        {
+            ViewModel.IsUpdateBusy = false;
         }
     }
 

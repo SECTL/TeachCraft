@@ -943,9 +943,11 @@
                                    ToolTip.Tip="{Binding UpdateExplanation}" />
                         <Button Content="更新" Classes="mini"
                                 AutomationProperties.Name="下载并安装新版本"
+                                IsEnabled="{Binding !IsUpdateBusy}"
                                 Click="OnInstallUpdateClick" />
-                        <Button Content="稍后" Classes="mini"
+                        <Button Content="跳过这版" Classes="mini"
                                 AutomationProperties.Name="暂时忽略这次更新"
+                                IsEnabled="{Binding !IsUpdateBusy}"
                                 Click="OnDismissUpdateClick" />
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"

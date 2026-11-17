@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -48,6 +49,17 @@ public sealed class UpdateErrorTextTests
         var text = UpdateErrorText.ForStatus(HttpStatusCode.ProxyAuthenticationRequired, "检查更新");
 
         Assert.Contains("认证", text);
+    }
+
+    [Fact]
+    public void LocalIoFailure_IsNotReportedAsNetworkProblem()
+    {
+        // 并发下载互删 .part 抛的是 IOException。归到「请检查网络」会把老师
+        // 引去查校园网，而真正的问题是本机文件冲突（审计 P1-5）。
+        var text = Describe(new IOException("The process cannot access the file"));
+
+        Assert.Contains("本机", text);
+        Assert.DoesNotContain("网络", text);
     }
 
     [Fact]
