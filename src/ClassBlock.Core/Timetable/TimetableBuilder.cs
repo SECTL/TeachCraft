@@ -33,7 +33,7 @@ public static class TimetableBuilder
 
         foreach (var spec in template.Rows)
         {
-            if (!IsEnabled(settings, spec.Slot)) continue;
+            if (!IsEnabled(settings, spec)) continue;
 
             var row = BuildRow(master, cls, spec, settings);
             if (row is not null) rows.Add(row);
@@ -54,13 +54,21 @@ public static class TimetableBuilder
         };
     }
 
-    /// <summary>显示开关只过滤绑定行；静态行与结构行（大课间/午餐/晚餐/新闻联播）始终保留。</summary>
-    private static bool IsEnabled(TimetableSettings settings, TemplateSlot slot) => slot switch
+    /// <summary>
+    /// 显示开关过滤绑定行与「新闻联播」行。
+    ///
+    /// 新闻联播是 slot=None 的静态行，早先落到 `_ => true` 分支，于是界面上的
+    /// 「新闻联播与晚修」开关只关掉晚修、新闻联播纹丝不动——文案与行为不符（审计 P2-10）。
+    /// 大课间 / 午餐 / 晚餐等其他静态行仍始终保留。
+    /// </summary>
+    private static bool IsEnabled(TimetableSettings settings, TemplateRowSpec spec) => spec.Slot switch
     {
         TemplateSlot.EarlyReading => settings.ShowEarlyReading,
         TemplateSlot.LunchStudy => settings.ShowLunchStudy,
         TemplateSlot.AfterSchool1 or TemplateSlot.AfterSchool2 => settings.ShowAfterSchool,
         TemplateSlot.Evening => settings.ShowEveningStudy,
+        // 「新闻联播」与晚修共用一个开关：界面文案就是「新闻联播与晚修」。
+        TemplateSlot.None when spec.Kind == TimetableRowKind.News => settings.ShowEveningStudy,
         _ => true,
     };
 

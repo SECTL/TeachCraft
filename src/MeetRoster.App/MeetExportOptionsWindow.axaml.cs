@@ -40,6 +40,9 @@ public partial class MeetExportOptionsWindow : Window
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close(null);
 
+    /// <summary>「自动」：放弃手改的文件名，按当前导出对象重新生成。</summary>
+    private void OnResetFileName(object? sender, RoutedEventArgs e) => _viewModel.ResetFileName();
+
     /// <summary>设计走查用：把窗口渲染成 PNG。</summary>
     public void CaptureTo(string path)
     {

@@ -95,9 +95,11 @@ public static class RegistrationWorkbookExporter
         if (IsExampleRow(sheet, dataStart)) dataStart++;
 
         sheet.Cell(2, 2).Value = meetClass.Name;
-        if (!string.IsNullOrWhiteSpace(meetClass.Code)) sheet.Cell(3, 2).Value = meetClass.Code;
-        if (!string.IsNullOrWhiteSpace(meetClass.LeaderContact)) sheet.Cell(4, 2).Value = meetClass.LeaderContact;
-        if (!string.IsNullOrWhiteSpace(meetClass.Coach)) sheet.Cell(5, 2).Value = meetClass.Coach;
+        // 三个可清空字段必须无条件写：老师删掉前任体育老师后点保存，
+        // 旧实现因「非空才写」把旧值留在 B5，状态栏却报「已保存」（审计 P2-6）。
+        sheet.Cell(3, 2).Value = meetClass.Code ?? string.Empty;
+        sheet.Cell(4, 2).Value = meetClass.LeaderContact ?? string.Empty;
+        sheet.Cell(5, 2).Value = meetClass.Coach ?? string.Empty;
 
         var templateEnd = Math.Max(sheet.LastRowUsed()?.RowNumber() ?? dataStart, dataStart + 28);
         // 一次性清空模板区内容（Plan 4.2：替代逐格 196 次 Cell().Clear()）。

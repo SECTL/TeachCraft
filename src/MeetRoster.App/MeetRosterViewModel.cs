@@ -1185,6 +1185,23 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         StatusDetail = string.IsNullOrWhiteSpace(detail) ? text : detail;
     }
 
+    /// <summary>
+    /// 移除一个班（及其全部运动员与报名）。
+    ///
+    /// 「多选导入」必然带来选错的可能，而错了以前只能关窗全部重导（审计 P2-22）。
+    /// 走 LoadProject 之外的最小刷新：只动这个班与列表，不重建赛程视图。
+    /// </summary>
+    public void RemoveClass(string className)
+    {
+        var target = AllClasses.FirstOrDefault(c => string.Equals(c.Name, className, StringComparison.Ordinal));
+        if (target is null) return;
+
+        _project.Classes.Remove(target.Source);
+        LoadProject(_project, _isDemo, _scheduleImported);
+
+        SetStatus($"已移除「{className}」及其全部报名。");
+    }
+
     private void LoadProject(MeetProject project, bool isDemo, bool scheduleImported,
         string? preferredClassName = null)
     {

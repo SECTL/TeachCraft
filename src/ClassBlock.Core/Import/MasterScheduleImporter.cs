@@ -47,7 +47,8 @@ public static class MasterScheduleImporter
 
             var classes = ReadClasses(candidate, gradeChar);
             if (classes.Count == 0)
-                throw new ClassBlockException("课程表里没有识别到班级行（例如「九（6）班」）。");
+                throw new ClassBlockException(
+                    "没有识别到班级行。目前仅支持七 / 八 / 九年级的班级行（如「九（6）班」），小学年级暂不支持。");
 
             if (string.IsNullOrEmpty(gradeChar))
                 gradeChar = classes[0].Key[..1];
@@ -276,7 +277,11 @@ public static class MasterScheduleImporter
                 }
 
                 var serviceStart = FindServiceStart(sheet, candidate.PeriodRow, dayStart, groupEnd);
-                var eveningColumn = Math.Min(dayStart + 9, lastColumn);
+                // 找不到「课后服务」表头就不要再盲回退到 dayStart+7 去读相邻列：
+                // 非 10 列的总表（7 节 + 晚修，或表头写「延时服务」）会静默读到别天的内容，
+                // 而且看起来完全「正常」，发现时可能已贴到教室墙上（审计 P2-41）。
+                var hasServiceHeader = serviceStart >= 0;
+                var eveningColumn = FindEveningColumn(sheet, candidate.PeriodRow, dayStart, groupEnd);
 
                 var periods = new List<CourseCell>(7);
                 for (var period = 0; period < 7; period++)
@@ -288,9 +293,9 @@ public static class MasterScheduleImporter
                 {
                     DayName = DayNames[dayIndex],
                     Periods = periods,
-                    AfterSchool1 = CourseParser.Parse(GetMergedText(sheet, row, serviceStart)),
-                    AfterSchool2 = CourseParser.Parse(GetMergedText(sheet, row, serviceStart + 1)),
-                    EveningStudy = GetMergedText(sheet, row, eveningColumn),
+                    AfterSchool1 = hasServiceHeader ? CourseParser.Parse(GetMergedText(sheet, row, serviceStart)) : CourseCell.Empty,
+                    AfterSchool2 = hasServiceHeader ? CourseParser.Parse(GetMergedText(sheet, row, serviceStart + 1)) : CourseCell.Empty,
+                    EveningStudy = eveningColumn >= 0 ? GetMergedText(sheet, row, eveningColumn) : string.Empty,
                 });
             }
 
@@ -324,6 +329,7 @@ public static class MasterScheduleImporter
         return Math.Min(dayStart + period - 1, groupEnd);
     }
 
+    /// <summary>「课后服务」列；找不到返回 -1（调用方据此留空并告警，不再盲回退读相邻列）。</summary>
     private static int FindServiceStart(IXLWorksheet sheet, int periodRow, int dayStart, int groupEnd)
     {
         for (var column = dayStart; column <= groupEnd; column++)
@@ -332,7 +338,23 @@ public static class MasterScheduleImporter
             if (header.Contains("课后服务")) return column;
         }
 
-        return Math.Min(dayStart + 7, groupEnd);
+        return -1;
+    }
+
+    /// <summary>
+    /// 晚修列。优先按表头找；找不到时接受每天固定 10 列宽布局的最后一列（dayStart+9）——
+    /// 真实总表里晚修格常常没有单独表头，只有合并的「课后服务」覆盖前两列。
+    /// 但**不越过 groupEnd**：日块不足 10 列时宁可留空，也不去读隔壁天的内容（审计 P2-41）。
+    /// </summary>
+    private static int FindEveningColumn(IXLWorksheet sheet, int periodRow, int dayStart, int groupEnd)
+    {
+        for (var column = dayStart; column <= groupEnd; column++)
+        {
+            if (sheet.Cell(periodRow, column).GetString().Contains("晚修")) return column;
+        }
+
+        var fixedWidthColumn = dayStart + 9;
+        return fixedWidthColumn <= groupEnd ? fixedWidthColumn : -1;
     }
 
     // ----------------------------- 辅助表 -----------------------------

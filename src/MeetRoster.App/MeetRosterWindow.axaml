@@ -522,6 +522,11 @@
                                             <TextBlock Text="人" FontSize="9"
                                                        Foreground="{StaticResource MutedBrush}"
                                                        VerticalAlignment="Center" />
+                                            <!-- 多选导入必然有选错的时候；以前只能关窗全部重导（审计 P2-22）。 -->
+                                            <Button Classes="mini" Content="×" Margin="4,0,0,0"
+                                                    Click="OnRemoveClass" Tag="{Binding}"
+                                                    ToolTip.Tip="移除这个班及其全部报名"
+                                                    AutomationProperties.Name="移除这个班级" />
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>

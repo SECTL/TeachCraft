@@ -154,9 +154,11 @@ public partial class MeetRosterWindow : Window
             else
             {
                 // 廉价预读各文件的"参赛单位"，把"新增 / 替换 / 保留"算给用户看；预读失败按新增对待。
-                var peeked = paths
+                // 必须放后台：每份文件都要完整开一次 XLWorkbook，一次选 30 份会在 UI 线程上
+                // 白屏几秒（审计 P2-8）。
+                var peeked = await Task.Run(() => paths
                     .Select(path => (Path: path, Name: RegistrationWorkbookImporter.PeekClassName(path)))
-                    .ToList();
+                    .ToList());
                 var existingNames = ViewModel.AllClasses.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
                 var replaceNames = peeked
                     .Where(p => p.Name is not null && existingNames.Contains(p.Name))
@@ -205,11 +207,18 @@ public partial class MeetRosterWindow : Window
             // 整份工作簿只打开一次：判类型与后续导入共用同一个实例（60 班秩序册原先要解析三遍）。
             // 打开与判类型都在后台线程；文件以共享读打开，会话存活期间 Excel 仍能同时打开同一份文件。
             // 生命周期由本方法负责（using），ViewModel 只借用、不释放——否则会用到已释放的实例。
-            var (session, kind) = await Task.Run(() => OpenAndDetect(path));
+            var (session, kind, openError) = await Task.Run(() => OpenAndDetect(path));
 
-            if (session is null || kind == MeetWorkbookKind.Unknown)
+            // 打不开与认不出去分两种话术：前者是文件损坏 / 加密，后者是表型不符。
+            if (session is null)
             {
-                session?.Dispose();
+                ViewModel.SetStatus($"这份文件打不开：{openError}（请确认文件未损坏、未被密码保护）", true);
+                return;
+            }
+
+            if (kind == MeetWorkbookKind.Unknown)
+            {
+                session.Dispose();
                 ViewModel.SetStatus(
                     "这份工作簿里既没有「代表队名单」，也没有「竞赛日程 / 项目分组表」，认不出是什么表。"
                     + "请确认选的是秩序册或往届赛程。", true);
@@ -249,23 +258,26 @@ public partial class MeetRosterWindow : Window
     }
 
     /// <summary>
-    /// 打开工作簿并判断这是秩序册还是只有赛程。打开 / 解析失败一律按「认不出」返回，
-    /// 与旧 <see cref="OrderBookImporter.DetectKind(string)"/> 的容忍行为一致：
-    /// 老师看到的是一句可操作的提示，而不是「文件被占用」这类技术异常。
+    /// 打开工作簿并判断这是秩序册还是只有赛程。
+    ///
+    /// 失败时必须把「打不开」与「认不出」分开：损坏 / 加密的文件打不开，
+    /// 报「认不出是什么表」会让老师反复核对文件类型而永远不成功（审计 P2-38）。
     /// 失败时已经打开的会话当场收掉，成功时把所有权交给调用方。
     /// </summary>
-    private static (WorkbookSession? Session, MeetWorkbookKind Kind) OpenAndDetect(string path)
+    private static (WorkbookSession? Session, MeetWorkbookKind Kind, string? Error) OpenAndDetect(string path)
     {
         WorkbookSession? session = null;
         try
         {
             session = WorkbookSession.Open(path);
-            return (session, OrderBookImporter.DetectKind(session.Workbook));
+            return (session, OrderBookImporter.DetectKind(session.Workbook), null);
         }
-        catch
+        catch (Exception ex)
         {
             session?.Dispose();
-            return (null, MeetWorkbookKind.Unknown);
+            // 复用 WorkbookIO 已经写好的中文话术（损坏 / 被密码保护）。
+            var message = ex is InvalidDataException ? ex.Message : ErrorText.Describe(ex, "打开工作簿");
+            return (null, MeetWorkbookKind.Unknown, message);
         }
     }
 
@@ -593,6 +605,20 @@ public partial class MeetRosterWindow : Window
     }
 
     private void OnClearClassSearch(object? sender, RoutedEventArgs e) => ViewModel.ClearClassSearch();
+
+    /// <summary>移除一个班（及其全部报名），先问后果。</summary>
+    private async void OnRemoveClass(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ClassItemViewModel item }) return;
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "移除这个班？",
+                $"将移除「{item.Name}」及其 {item.AthleteCount} 名运动员与全部报名，无法撤销。",
+                "移除", "取消", danger: true))
+            return;
+
+        ViewModel.RemoveClass(item.Name);
+    }
 
     private void OnDismissImportNotices(object? sender, RoutedEventArgs e) =>
         ViewModel.DismissImportNotices();

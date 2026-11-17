@@ -123,7 +123,9 @@ public static class OrderBookImporter
                 ? $"已读取 {project.Classes.Count} 个班 · {athleteCount} 名运动员 · {days.Count} 天赛程。"
                 : hasRoster
                     ? $"已读取 {project.Classes.Count} 个班 · {athleteCount} 名运动员；没有找到「竞赛日程」，赛程页将为空。"
-                    : "没有找到「代表队名单」，只导入了赛程与分组名单。",
+                    // 报错要说实话：小学年级的块头（如「三年级2班」）本就不在识别范围内，
+                    // 说成「没有找到代表队名单」会让老师对着原文反复核对（审计 P2-21）。
+                    : "没有找到可识别的「代表队名单」班组块（目前支持七 / 八 / 九年级与高中；小学年级的秩序册暂不支持）。只导入了赛程与分组名单。",
             false));
 
         return new OrderBookImportResult

@@ -297,7 +297,33 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         }
     }
 
-    public string FileName { get; private set; } = "运动会秩序册.xlsx";
+    private string _fileName = "运动会秩序册.xlsx";
+
+    /// <summary>
+    /// 导出文件名。老师可以在弹窗里直接改——改过之后就不再被自动名顶掉
+    /// （旧实现是 get-only + TwoWay 绑定，输入静默失效，切一下导出对象
+    /// 打的字就没了；审计 P2-19）。
+    /// </summary>
+    public string FileName
+    {
+        get => _fileName;
+        set
+        {
+            if (_fileName == value) return;
+            _fileName = value;
+            _fileNameEdited = true;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _fileNameEdited;
+
+    /// <summary>「自动」按钮：放弃手改的名字，重新按导出对象生成。</summary>
+    public void ResetFileName()
+    {
+        _fileNameEdited = false;
+        UpdateFileName();
+    }
 
     public MeetExportOptions BuildOptions() => new()
     {
@@ -401,8 +427,11 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
 
     private void UpdateFileName()
     {
+        // 老师手改过就不再覆盖；其余情况按导出对象与格式自动命名。
+        if (_fileNameEdited) return;
+
         var extension = IsExcel ? ".xlsx" : ".pdf";
-        FileName = SelectedTarget.IsAllClasses
+        _fileName = SelectedTarget.IsAllClasses
             ? $"{MeetExportNaming.Safe(Title)}·全部班级{extension}"
             : $"{MeetExportNaming.Safe(SelectedTarget.ClassName!)}参赛手册{extension}";
         OnPropertyChanged(nameof(FileName));
