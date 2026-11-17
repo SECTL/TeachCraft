@@ -362,6 +362,8 @@ public static class ImageToolbox
         if (source is null) return null;
 
         var width = Math.Max(1, previewWidth);
+        // 损坏或异常图片可能解出 0 宽：除零会抛 DivideByZeroException 而不是返回 null。
+        if (source.Width <= 0 || source.Height <= 0) return null;
         var height = Math.Max(1, (int)Math.Round(source.Height * (width / (double)source.Width)));
 
         using var resized = source.Resize(
