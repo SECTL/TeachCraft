@@ -1394,15 +1394,23 @@
                     </Border>
                 </Border>
 
-                <!-- ==================== 忙碌遮罩 ==================== -->
-                <Border IsVisible="{Binding IsBusy}" Background="#B3FAF9F5" ZIndex="50">
+                <!-- ==================== 忙碌遮罩 ====================
+                     绑 ShowBusyOverlay 而不是 IsBusy：置忙后延迟 400ms 才亮，
+                     快操作（导出 Excel 1–2 秒）不再整屏闪一下。 -->
+                <Border IsVisible="{Binding ShowBusyOverlay}" Background="#B3FAF9F5" ZIndex="50">
                     <Border Classes="panel-card" Padding="26,20" HorizontalAlignment="Center"
                             VerticalAlignment="Center">
                         <StackPanel Spacing="10" HorizontalAlignment="Center">
-                            <TextBlock Text="正在处理…" FontFamily="{StaticResource SerifFont}" FontSize="18"
-                                       Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding BusyOverlayTitle}" FontFamily="{StaticResource SerifFont}"
+                                       FontSize="18" Foreground="{StaticResource InkBrush}"
+                                       HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
+                                       TextAlignment="Center" />
                             <ProgressBar IsIndeterminate="True" Width="220" />
-                            <TextBlock Text="文件只在本机解析，不会上传。" Classes="helper"
+                            <TextBlock Text="本机处理，不会上传。" Classes="helper"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="处理期间请勿关闭窗口"
+                                       FontFamily="{StaticResource MonoFont}" FontSize="8.5"
+                                       LetterSpacing="0.8" Foreground="{StaticResource MutedBrush}"
                                        HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>

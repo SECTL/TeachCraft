@@ -1387,6 +1387,10 @@ public partial class GradeWeaveWindow : Window
             SelectCell(tag, cellBorder);
             if (ViewModel.IsClassView || ViewModel.IsMasterView)
                 _ = OpenLessonEditorAsync(tag);
+            else if (ViewModel.IsTeacherView)
+                // 教师视角的格子只有选中框亮一下、什么都不发生，老师会以为软件坏了。
+                // 右键其实能改课，但没人会去试一个静默失效的左键（审计 P2-17）。
+                ViewModel.SetStatus("教师视角只读：请切到班级视角修改，或右键本格直接调整。", true);
         }
     }
 

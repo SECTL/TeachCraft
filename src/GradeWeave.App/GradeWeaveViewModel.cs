@@ -2142,11 +2142,45 @@ public partial class GradeWeaveViewModel : ObservableObject
         if (!_loadingDraft) RaiseLayeredPreview();
     }
 
+    /// <summary>
+    /// 忙碌遮罩：置 IsBusy 后延迟 400ms 才亮，快操作不闪一下。
+    /// 与归位 / 竞名 / 时序同一套阈值——此前织序是即时显示，
+    /// 导出 Excel 这种 1–2 秒的操作会让整屏闪一下，被老师读成「卡了一下」（审计 P2-31）。
+    /// </summary>
+    [ObservableProperty] private bool _showBusyOverlay;
+
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+    private CancellationTokenSource? _busyCts;
+
+    /// <summary>遮罩上的具体动作名；没有时退回通用文案。</summary>
+    public string BusyOverlayTitle =>
+        string.IsNullOrWhiteSpace(StatusText) ? "正在处理…" : StatusText;
+
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(CanOperate));
         OnPropertyChanged(nameof(CanGenerate));
+
+        if (!value)
+        {
+            _busyCts?.Cancel();
+            _busyCts = null;
+            ShowBusyOverlay = false;
+            return;
+        }
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested && IsBusy) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
     }
 
     partial void OnHasProjectChanged(bool value)
