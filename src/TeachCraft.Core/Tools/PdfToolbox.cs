@@ -548,6 +548,23 @@ public static class PdfToolbox
         }
     }
 
+    /// <summary>
+    /// 供 <see cref="ToolDispatcher"/> 的输出保护使用：PDF 转图片要按页判断
+    /// `-第N页.png` 是否已存在。与内部 <see cref="PageCount"/> 同一实现，
+    /// 只多一层容错——页数读不出来时按 1 页处理，让后续渲染自己报准确错误。
+    /// </summary>
+    internal static int PageCountForGuard(string path)
+    {
+        try
+        {
+            return PageCount(path);
+        }
+        catch (ToolboxException)
+        {
+            return 1;
+        }
+    }
+
     private static (int Width, int Height) ReadPixelSize(string path)
     {
         using var stream = File.OpenRead(path);
