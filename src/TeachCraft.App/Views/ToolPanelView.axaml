@@ -150,7 +150,7 @@
                                    FontFamily="{StaticResource MonoFont}" FontSize="10.5"
                                    Foreground="{StaticResource InkBrush}" />
                     </Grid>
-                    <Slider Minimum="0.4" Maximum="3" Value="{Binding WatermarkScale, Mode=TwoWay}" />
+                    <Slider Minimum="0.4" Maximum="4" Value="{Binding WatermarkScale, Mode=TwoWay}" />
                 </StackPanel>
                 <StackPanel Spacing="4" Margin="0,4,0,0">
                     <Grid ColumnDefinitions="*,Auto">

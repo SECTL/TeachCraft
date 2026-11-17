@@ -22,6 +22,9 @@ public partial class GradeWeaveViewModel : ObservableObject
     private static readonly IBrush SuccessBrush = new SolidColorBrush(Color.Parse("#5A7A4B"));
     private static readonly IBrush ErrorBrush = new SolidColorBrush(Color.Parse("#C6613F"));
     private static readonly IBrush MutedBrush = new SolidColorBrush(Color.Parse("#6F6A5E"));
+
+    /// <summary>「成功但有提醒」的中性色，与对话框里的提醒色一致。</summary>
+    private static readonly IBrush NoticeBrush = new SolidColorBrush(Color.Parse("#8A6D3B"));
     private static readonly string[] MeetingRoles =
         ["班主任", "科组长", "备课组长", "年级长", "主任", "副主任", "校长"];
 
@@ -456,6 +459,20 @@ public partial class GradeWeaveViewModel : ObservableObject
     {
         StatusText = message;
         StatusBrush = isError ? ErrorBrush : SuccessBrush;
+    }
+
+    /// <summary>
+    /// 带提醒的成功状态：操作确实成功了，但有需要老师留意的地方。
+    ///
+    /// 用中性色而不是错误色——「已导出希沃全校课表…某班年级识别失败」用红点点亮，
+    /// 老师会以为导出失败并反复重导（P3-16）。提醒不是失败。
+    /// </summary>
+    public void SetStatusWithNotice(string message) => SetStatusCore(message, NoticeBrush);
+
+    private void SetStatusCore(string message, IBrush brush)
+    {
+        StatusText = message;
+        StatusBrush = brush;
     }
 
     /// <summary>生成或导入进行中时拒绝一切改课动作，避免后台任务读到半改状态。</summary>

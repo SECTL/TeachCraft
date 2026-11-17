@@ -2326,7 +2326,11 @@ public partial class GradeWeaveWindow : Window
             var warnings = new List<string>();
             await Task.Run(() => WeaveSeewoExporter.Export(project, path, warnings));
             var note = warnings.Count > 0 ? " " + string.Join(" ", warnings) : string.Empty;
-            ViewModel.SetStatus($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd(), warnings.Count > 0);
+            // 带提醒的成功用中性色：红点会让老师以为导出失败而反复重导（P3-16）。
+            if (warnings.Count > 0)
+                ViewModel.SetStatusWithNotice($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd());
+            else
+                ViewModel.SetStatus($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd());
         }
         catch (Exception ex)
         {

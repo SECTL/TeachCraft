@@ -1607,8 +1607,19 @@ public partial class SeatGridWindow : Window
             var path = Path.Combine(directory, SafeFileName("-打印.pdf"));
             await Task.Run(() => SeatChartRenderer.RenderPdf(document, path));
 
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
+            // 渲染成功与「唤起阅读器失败」必须分开报：
+            // 没装 PDF 阅读器的新系统上，PDF 其实已经生成在临时目录里，
+            // 旧实现说「生成打印文件失败」，老师重试永远失败，也永远拿不到那个文件（P3-16）。
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
+            }
+            catch (Exception openEx)
+            {
+                ViewModel.SetStatus(
+                    $"PDF 已生成，但没有找到能打开它的程序：{path}（{openEx.Message}）", true);
+            }
         }
         catch (Exception ex)
         {

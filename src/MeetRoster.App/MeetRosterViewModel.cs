@@ -557,6 +557,16 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             var detail = errors.Count > 0
                 ? string.Join(Environment.NewLine, errors)
                 : string.Empty;
+
+            // 逐份失败原因进「导入提示」面板：与名单导入的处理一致。
+            // 状态栏只有 560px 宽、明细藏在悬浮提示里，老师根本不会悬停（P3-17）。
+            if (errors.Count > 0)
+            {
+                _importIssues[RosterIssueKey] =
+                    errors.Select(e => new RegistrationIssue(e, true)).ToList();
+                RebuildImportNotices();
+            }
+
             SetStatus(message, errors.Count > 0, detail, success: errors.Count == 0);
     
         }

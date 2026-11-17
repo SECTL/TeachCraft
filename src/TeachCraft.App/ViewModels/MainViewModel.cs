@@ -175,7 +175,7 @@ public partial class MainViewModel : ObservableObject
                 "提取可编辑文字，或保留页面版式转换为 DOCX。", "file", "档",
                 "PDF 文档", "DOCX 文档"),
             new(ToolKind.WordToPdf, "06", "word-pdf", "Word 转 PDF",
-                "将 DOCX 文档转换为 PDF 文件，版式不跑偏。", "file", "档",
+                "保留标题、段落与表格，排成 A4 PDF（图片暂不参与）。", "file", "档",
                 "DOCX 文档", "PDF 文件"),
             new(ToolKind.ImagesToPdf, "07", "images-pdf", "图片合成 PDF",
                 "多张图片或照片按顺序合并生成一份 PDF。", "file", "档",

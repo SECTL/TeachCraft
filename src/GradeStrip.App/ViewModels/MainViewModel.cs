@@ -1165,10 +1165,13 @@ public partial class MainViewModel : ViewModelBase
 
     public string SuggestedFileName()
     {
-        // 选中具体班级时文件名带上班级（如「九2班-…-成绩条.xlsx」）；「全年级」沿用原命名
+        // 选中具体班级时文件名带上班级（如「九2班-…-成绩条.xlsx」）；
+        // 「全年级」用「全年级」本身，而不是 ClassName——后者在跨班总表里是
+        // 「未识别班级」这个界面兜底文案，会直接泄漏进文件名（P3-20）。
         var scope = string.IsNullOrWhiteSpace(SelectedStripClass) || SelectedStripClass == OverviewReportFilter.AllClasses
-            ? ClassName
+            ? (ClassName == "未识别班级" ? "全年级" : ClassName)
             : SelectedStripClass;
+        scope = string.IsNullOrWhiteSpace(scope) ? "全年级" : scope;
         var name = $"{scope}-{ExamName}-成绩条".Replace("/", "-").Replace("\\", "-");
         return string.IsNullOrWhiteSpace(name) ? "成绩条.xlsx" : $"{name}.xlsx";
     }
