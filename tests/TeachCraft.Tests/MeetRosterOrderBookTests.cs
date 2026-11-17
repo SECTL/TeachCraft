@@ -221,6 +221,21 @@ public sealed class MeetRosterOrderBookTests : IDisposable
     }
 
     [Fact]
+    public void WorkbookExport_RefusesToOverwriteProjectSourceBook()
+    {
+        // 只含赛程的工作簿：班级没有 SourcePath，只有 project.SourcePath。
+        // 审计 P1-1：这条路径曾三处防护里唯独主导出器漏防。
+        var source = CreateOrderBook();
+        var project = OrderBookImporter.Import(source).Project;
+        project.Classes.ForEach(c => c.SourcePath = null);
+        project.SourcePath = source;
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            MeetWorkbookExporter.Export(project, new MeetExportOptions(), source));
+        Assert.Contains("不能覆盖", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WorkbookExport_RejectsEmptyProject()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>

@@ -1045,6 +1045,15 @@ public partial class MainViewModel : ViewModelBase
     {
         if (_data is null || IsBusy) return;
 
+        // 导出路径不得覆盖任何一份导入的成绩总表：
+        // 保存对话框的覆盖提示只说「文件已存在」，看不出这是刚用来算成绩的原件。
+        if (WouldOverwriteImportedSource(path, _sessions.Select(s => s.SourcePath)))
+        {
+            Status = "导出路径不能覆盖已导入的成绩总表，请换一个文件名。";
+            StatusBrush = Palette.Seal;
+            return;
+        }
+
         await RunBusyAsync("正在导出成绩条…", async () =>
         {
             try
@@ -1080,6 +1089,39 @@ public partial class MainViewModel : ViewModelBase
                 StatusBrush = Palette.Seal;
             }
         });
+    }
+
+    /// <summary>
+    /// 导出前检查：目标路径不得是任何一场考试的导入源。
+    ///
+    /// 抽成公开静态方法是为了可测——<see cref="ExportAsync"/> 走 RunBusyAsync，
+    /// 其中 `Dispatcher.UIThread.InvokeAsync` 在无 UI 线程的测试环境会永久挂起，
+    /// 所以守护逻辑本身必须能脱离导入流程单独断言。
+    /// </summary>
+    public static bool WouldOverwriteImportedSource(
+        string exportPath, IEnumerable<string> importedSourcePaths)
+    {
+        foreach (var source in importedSourcePaths)
+        {
+            if (IsSameFile(exportPath, source)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>两个路径是否指向同一个文件（大小写不敏感，相对路径先转绝对）。</summary>
+    private static bool IsSameFile(string path, string? other)
+    {
+        if (string.IsNullOrWhiteSpace(other)) return false;
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(path), Path.GetFullPath(other), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>把底层异常翻译成中文提示，避免状态栏出现英文堆栈信息。</summary>

@@ -755,9 +755,10 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
     }
 
-    /// <summary>导出路径不得覆盖任何一份导入来源（报名表或秩序册）。</summary>
+    /// <summary>导出路径不得覆盖任何一份导入来源（报名表、秩序册或只含赛程的工作簿）。</summary>
     public bool IsExportPathBlocked(string path) =>
         _orderBookSources.Any(source => SamePath(path, source)) ||
+        (!string.IsNullOrWhiteSpace(_project.SourcePath) && SamePath(path, _project.SourcePath!)) ||
         AllClasses.Any(c => !string.IsNullOrWhiteSpace(c.Source.SourcePath) &&
                             SamePath(path, c.Source.SourcePath!));
 
