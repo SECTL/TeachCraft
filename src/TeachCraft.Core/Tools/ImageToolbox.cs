@@ -323,7 +323,8 @@ public static class ImageToolbox
         return count == 0 || total / count > 145;
     }
 
-    internal static SKTypeface ResolveCjkTypeface(SKFontStyle style)    {
+    internal static SKTypeface ResolveCjkTypeface(SKFontStyle style)
+    {
         var candidates = OperatingSystem.IsWindows()
             ? new[] { "Microsoft YaHei", "DengXian", "SimHei", "SimSun" }
             : OperatingSystem.IsMacOS()
