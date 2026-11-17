@@ -152,6 +152,29 @@ public partial class SeatGridWindow : Window
     }
 
     /// <summary>
+    /// 设计走查：把「撤销 / 重做」两个按钮的可点状态摆出来。
+    ///
+    /// 无参数：先自动排座、再撤销一次 —— 撤销变灰、重做变亮。
+    /// 传 "can-undo"：只自动排座 —— 撤销可点、重做变灰。
+    /// 截图看不出来就说明绑定没接上。
+    /// </summary>
+    public void LoadDemoUndoState(string mode)
+    {
+        ViewModel.LoadRoster(DemoRoster.Create(18));
+        ViewModel.ArrangeModeIndex = 1;
+        ViewModel.AutoArrange();
+
+        if (string.Equals(mode, "can-undo", StringComparison.OrdinalIgnoreCase))
+        {
+            ViewModel.SetStatus("走查：撤销可点 · 重做不可点");
+            return;
+        }
+
+        ViewModel.Undo();
+        ViewModel.SetStatus("走查：撤销不可点 · 重做可点");
+    }
+
+    /// <summary>
     /// 设计走查：30 人考场（6 列 × 5 排，正好铺满）。
     /// 48 人的演示名单排出来是 7 × 7，看不出「最后一行人还在不在」。
     /// </summary>
@@ -936,9 +959,34 @@ public partial class SeatGridWindow : Window
         ViewModel.DeleteSelectedStudent();
     }
 
+    private void OnUndo(object? sender, RoutedEventArgs e) => ViewModel.Undo();
+
+    private void OnRedo(object? sender, RoutedEventArgs e) => ViewModel.Redo();
+
     /// <summary>窗口级键盘：Esc 取消拖拽，Delete 删除选中学生（走统一确认）。</summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        // 撤销 / 重做优先于其它快捷键：Ctrl+Z 在文本框里该走文本框自己的撤销，
+        // 所以先看焦点是不是输入控件。
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && !IsTextInputFocused())
+        {
+            var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            if (e.Key == Key.Z && !shift)
+            {
+                ViewModel.Undo();
+                e.Handled = true;
+                return;
+            }
+
+            // Ctrl+Y（Windows）与 Ctrl+Shift+Z（macOS / Linux 习惯）都算重做。
+            if (e.Key == Key.Y || (e.Key == Key.Z && shift))
+            {
+                ViewModel.Redo();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Key == Key.Escape)
         {
             if (_dragStarted)
@@ -964,6 +1012,13 @@ public partial class SeatGridWindow : Window
         }
     }
 
+    /// <summary>
+    /// 焦点是否落在能输入文字的控件上。Ctrl+Z 在姓名 / 学号输入框里
+    /// 应该是文本框自己的撤销，抢过来会让人没法改字。
+    /// </summary>
+    private bool IsTextInputFocused() =>
+        FocusManager?.GetFocusedElement() is TextBox;
+
     private async void OnEditCanvas(object? sender, RoutedEventArgs e)
     {
         var editor = new SeatCanvasEditorWindow(ViewModel.CurrentLayoutPublic, ViewModel.CurrentCanvas);
@@ -976,23 +1031,29 @@ public partial class SeatGridWindow : Window
             return;
         }
 
-        ViewModel.ApplyCanvas(canvas, "已更新教室画布。");
+        ViewModel.RecordWindowChange("教室画布", () => ViewModel.ApplyCanvas(canvas, "已更新教室画布。"));
     }
 
     private void OnUnpinAll(object? sender, RoutedEventArgs e)
     {
         if (ViewModel.Constraints.PinnedCount == 0) return;
-        ViewModel.Constraints.UnpinAll();
-        ViewModel.RefreshSeatVisualsPublic();
-        ViewModel.SetStatus("已解除全部座位锁定。");
+        ViewModel.RecordWindowChange("解除全部锁定", () =>
+        {
+            ViewModel.Constraints.UnpinAll();
+            ViewModel.RefreshSeatVisualsPublic();
+            ViewModel.SetStatus("已解除全部座位锁定。");
+        });
     }
 
     private void OnRemoveConstraint(object? sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.Tag is not ConstraintRowViewModel row) return;
-        ViewModel.Constraints.RemoveRule(row);
-        ViewModel.RefreshSeatVisualsPublic();
-        ViewModel.SetStatus($"已删除规则「{row.Label}」。");
+        ViewModel.RecordWindowChange("删除规则", () =>
+        {
+            ViewModel.Constraints.RemoveRule(row);
+            ViewModel.RefreshSeatVisualsPublic();
+            ViewModel.SetStatus($"已删除规则「{row.Label}」。");
+        });
     }
 
     private void OnAddConstraint(object? sender, RoutedEventArgs e) =>
@@ -1117,8 +1178,11 @@ public partial class SeatGridWindow : Window
                 return;
             }
 
-            ViewModel.Constraints.AddPairRule(a, b, mustBeDeskmates: deskmate.IsChecked == true);
-            ViewModel.RefreshSeatVisualsPublic();
+            ViewModel.RecordWindowChange("添加规则", () =>
+            {
+                ViewModel.Constraints.AddPairRule(a, b, mustBeDeskmates: deskmate.IsChecked == true);
+                ViewModel.RefreshSeatVisualsPublic();
+            });
             applied = true;
             dialog.Close();
         };

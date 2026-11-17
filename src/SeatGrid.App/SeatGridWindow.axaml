@@ -332,6 +332,20 @@
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
                 </StackPanel>
 
+                <!-- 撤销 / 重做：紧贴标题，与「导入名单」这类重操作分开。
+                     快捷键 Ctrl+Z / Ctrl+Y（Windows 习惯）与 Ctrl+Shift+Z 都接。 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                            HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <Button Classes="ghost top" Content="↶ 撤销" Click="OnUndo"
+                            IsEnabled="{Binding CanUndo}"
+                            ToolTip.Tip="{Binding UndoLabel}"
+                            AutomationProperties.Name="撤销" />
+                    <Button Classes="ghost top" Content="↷ 重做" Click="OnRedo"
+                            IsEnabled="{Binding CanRedo}"
+                            ToolTip.Tip="{Binding RedoLabel}"
+                            AutomationProperties.Name="重做" />
+                </StackPanel>
+
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Classes="primary top" Content="导入名单" Click="OnImportRoster"
                             IsEnabled="{Binding IsIdle}" AutomationProperties.Name="导入名单" />

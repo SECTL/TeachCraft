@@ -64,6 +64,207 @@ public partial class SeatGridViewModel : ObservableObject
         SelectedStudent = null;
     }
 
+    // ----------------------------- 撤销 / 重做 -----------------------------
+
+    private readonly SeatUndoStack _undo = new();
+    private bool _restoring;
+
+    /// <summary>
+    /// 挂起登记。导入名单 / 套用配置时内部的 AutoArrange 不该各记一步——
+    /// 「换了一份数据」整体是一个起点，不是一串可撤回的编辑。
+    /// </summary>
+    private bool _suspendUndo;
+
+    public bool CanUndo => _undo.CanUndo && !IsBusy;
+    public bool CanRedo => _undo.CanRedo && !IsBusy;
+
+    /// <summary>状态栏 / 按钮悬浮提示用：下一步撤销会退回哪一步。</summary>
+    public string UndoLabel => _undo.NextUndoLabel is { } label ? $"撤销：{label}" : "撤销";
+    public string RedoLabel => _undo.NextRedoLabel is { } label ? $"重做：{label}" : "重做";
+
+    /// <summary>
+    /// 把一次变更包成可撤销的一步。
+    ///
+    /// **先拍照再改**：<paramref name="change"/> 里任何一处失败都不影响已拍下的快照，
+    /// 而拍快照本身只是拷数据、不会失败。恢复期间 <see cref="_restoring"/> 为真，
+    /// 直接执行 change、不登记（撤销 / 重做自身不能入栈）。
+    /// </summary>
+    private void RecordChange(string label, Action change)
+    {
+        if (_restoring || _suspendUndo)
+        {
+            change();
+            return;
+        }
+
+        var before = CaptureState(label);
+        change();
+        _undo.Push(before, label);
+        NotifyUndoState();
+    }
+
+    /// <summary>拍一份当前状态。学生按 Id 克隆，座位用坐标，撤销时整体重建 ViewModel。</summary>
+    private SeatStateSnapshot CaptureState(string label) => new()
+    {
+        Layout = CurrentLayout,
+        Canvas = Canvas,
+        Students = _students.Select(s => s.Model.CopyKeepingId()).ToList(),
+        Assignments = _assignments.ToDictionary(kv => kv.Key, kv => kv.Value.Id),
+        Pins = new Dictionary<Guid, SeatPosition>(Constraints.Pins),
+        Mutex = Constraints.Mutex.Select(p => new SeatPairState(p.A, p.B)).ToList(),
+        Deskmates = Constraints.Deskmates.Select(p => new SeatPairState(p.A, p.B)).ToList(),
+        AvoidDeskmates = Constraints.AvoidDeskmates.Select(p => new SeatPairState(p.A, p.B)).ToList(),
+        Zones = Constraints.Zones.ToDictionary(
+            kv => kv.Key,
+            kv => new SeatZoneState { Allowed = kv.Value.Allowed.ToList(), Denied = kv.Value.Denied.ToList() }),
+        IsExam = IsExamMode && _examPlan is not null,
+        Exam = IsExamMode && _examPlan is { } exam
+            ? new ExamPlanSnapshot
+            {
+                Layout = exam.Layout,
+                Assignments = exam.Assignments.ToDictionary(kv => kv.Key, kv => kv.Value.Id),
+                SeatNumbers = new Dictionary<SeatPosition, int>(exam.SeatNumbers),
+                Notes = exam.Notes.ToList(),
+            }
+            : null,
+        Label = label,
+    };
+
+    public void Undo()
+    {
+        if (!_undo.CanUndo || IsBusy) return;
+
+        var target = _undo.Undo(CaptureState("撤销"));
+        if (target is null) return;
+
+        RestoreState(target);
+        SetStatus($"已撤销：{target.Label}");
+        NotifyUndoState();
+    }
+
+    public void Redo()
+    {
+        if (!_undo.CanRedo || IsBusy) return;
+
+        var target = _undo.Redo(CaptureState("重做"));
+        if (target is null) return;
+
+        RestoreState(target);
+        SetStatus($"已重做：{target.Label}");
+        NotifyUndoState();
+    }
+
+    /// <summary>
+    /// 整体还原一份快照：名单、座位、约束、画布、布局。选中状态与搜索无关紧要，保留不动。
+    ///
+    /// 学生对象按 Id 复用已有 ViewModel 而不是新建：新造会让「已选中学生」「右侧编辑框」
+    /// 与刚撤销回来的数据脱钩。
+    /// </summary>
+    private void RestoreState(SeatStateSnapshot snapshot)
+    {
+        _restoring = true;
+        try
+        {
+            _suppressRebuild = true;
+            GroupCount = snapshot.Layout.Groups;
+            RowCount = snapshot.Layout.Rows;
+            ColumnCount = snapshot.Layout.Columns;
+            Canvas = snapshot.Canvas;
+            _suppressRebuild = false;
+
+            // 名单：按 Id 找现有实例，缺的才新建，多的删掉。顺序按快照。
+            var existing = _students.ToDictionary(s => s.Id);
+            _students.Clear();
+            foreach (var model in snapshot.Students)
+            {
+                if (existing.TryGetValue(model.Id, out var student))
+                {
+                    CopyInto(student.Model, model);
+                    student.Refresh();
+                    _students.Add(student);
+                }
+                else
+                {
+                    _students.Add(new StudentViewModel(model));
+                }
+            }
+
+            // 座位：先按快照重建坐标，再换成当前的 ViewModel 实例。
+            _assignments.Clear();
+            var byId = _students.ToDictionary(s => s.Id);
+            foreach (var (position, id) in snapshot.Assignments)
+                if (byId.TryGetValue(id, out var student)) _assignments[position] = student;
+
+            // 考场状态：撤销「进入考场模式」必须把标志与考场安排一起退回去，
+            // 否则座位已经是日常的，界面却还在按考场画。
+            _dailySnapshot = null;
+            _examPlan = null;
+            if (snapshot.IsExam && snapshot.Exam is { } examSnapshot)
+            {
+                _examPlan = examSnapshot.ToExamPlan(byId.ToDictionary(kv => kv.Key, kv => kv.Value.Model));
+                IsExamMode = true;
+            }
+            else
+            {
+                IsExamMode = false;
+            }
+
+            // 约束：整体替换。约束查看模型持的是学生列表的副本，名单变了要重建。
+            Constraints = new SeatConstraintsViewModel(_students);
+            Constraints.Apply(new ArrangeConstraints
+            {
+                Pins = new Dictionary<Guid, SeatPosition>(snapshot.Pins),
+                Mutex = snapshot.Mutex.Select(p => StudentPair.Create(p.A, p.B)).ToList(),
+                Deskmates = snapshot.Deskmates.Select(p => StudentPair.Create(p.A, p.B)).ToList(),
+                AvoidDeskmates = snapshot.AvoidDeskmates.Select(p => StudentPair.Create(p.A, p.B)).ToList(),
+                Zones = snapshot.Zones.ToDictionary(kv => kv.Key, kv => kv.Value.ToZone()),
+            });
+            OnPropertyChanged(nameof(Constraints));
+
+            BuildGrid();
+            RefreshStudents();
+            NotifyCounts();
+        }
+        finally
+        {
+            _restoring = false;
+        }
+    }
+
+    private static void CopyInto(Student target, Student source)
+    {
+        target.Name = source.Name;
+        target.Gender = source.Gender;
+        target.Number = source.Number;
+        target.Height = source.Height;
+        target.Vision = source.Vision;
+        target.Score = source.Score;
+        target.Notes = source.Notes;
+        target.OriginalGroup = source.OriginalGroup;
+    }
+
+    private void NotifyUndoState()
+    {
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+        OnPropertyChanged(nameof(UndoLabel));
+        OnPropertyChanged(nameof(RedoLabel));
+    }
+
+    /// <summary>
+    /// 供窗口层包住「约束弹窗 / 画布编辑器」这类跨层操作。
+    /// 约束与画布的实际改动发生在窗口代码里，但撤销栈只有 VM 有一份——
+    /// 让窗口直接操作 Constraints 而不经过这里，那些改动就撤不回去。
+    /// </summary>
+    public void RecordWindowChange(string label, Action change) => RecordChange(label, change);
+
+    /// <summary>导入新名单这类「本就该从头开始」的操作会把撤销栈清空。</summary>
+    private void ClearUndo()
+    {
+        _undo.Clear();
+        NotifyUndoState();
+    }
+
     // ----------------------------- 座位表设置 -----------------------------
 
     [ObservableProperty] private string _title = "班级座位表";
@@ -561,6 +762,8 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanArrange));
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(CanExportConfig));
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
     }
 
     partial void OnRosterHintChanged(string value) => OnPropertyChanged(nameof(HasRosterHint));
@@ -735,6 +938,10 @@ public partial class SeatGridViewModel : ObservableObject
 
     public void LoadRoster(RosterImportResult result)
     {
+        // 导入新名单是「重来」而不是「编辑」：撤销回上一份名单没有意义，
+        // 而且快照里存的学生 Id 与当前约束全都对不上了。整段挂起登记、末尾清栈，
+        // 比留一堆跨名单的步骤更安全——内部的 AutoArrange 也不该单独成为一步。
+        _suspendUndo = true;
         _suppressRebuild = true;
         _students.Clear();
         _assignments.Clear();
@@ -763,6 +970,9 @@ public partial class SeatGridViewModel : ObservableObject
         SetStatus(RosterHint.Length > 0
             ? $"已识别 {_students.Count} 人 · {RosterHint}"
             : $"已识别 {_students.Count} 人 · 男 {MaleCount} / 女 {FemaleCount}");
+
+        _suspendUndo = false;
+        ClearUndo();
     }
 
     private static string DeriveTitle(string fileName)
@@ -799,7 +1009,9 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(RosterEmptyText));
     }
 
-    public void AutoArrange()
+    public void AutoArrange() => RecordChange("自动排座", AutoArrangeCore);
+
+    private void AutoArrangeCore()
     {
         if (_students.Count == 0)
         {
@@ -888,7 +1100,10 @@ public partial class SeatGridViewModel : ObservableObject
     }
 
     /// <summary>应用一份新画布：裁掉越界格、把受影响的学生退回未排、重建网格。</summary>
-    public void ApplyCanvas(SeatChartCanvas canvas, string message)
+    public void ApplyCanvas(SeatChartCanvas canvas, string message) =>
+        RecordChange("教室画布", () => ApplyCanvasCore(canvas, message));
+
+    private void ApplyCanvasCore(SeatChartCanvas canvas, string message)
     {
         var layout = CurrentLayout with { Canvas = canvas };
         Canvas = canvas.Normalize(layout);
@@ -956,7 +1171,10 @@ public partial class SeatGridViewModel : ObservableObject
             : $"已删除{label}。", unseated > 0);
     }
 
-    private void ResizeLayout(SeatChartLayout layout, string message, bool warn = false)
+    private void ResizeLayout(SeatChartLayout layout, string message, bool warn = false) =>
+        RecordChange("调整行列", () => ResizeLayoutCore(layout, message, warn));
+
+    private void ResizeLayoutCore(SeatChartLayout layout, string message, bool warn = false)
     {
         _suppressRebuild = true;
         GroupCount = layout.Groups;
@@ -982,13 +1200,16 @@ public partial class SeatGridViewModel : ObservableObject
 
         if (RefuseIfPinned(_assignments.Values, "左右镜像")) return;
 
-        var mirrored = SeatChartComposer.MirrorColumns(_assignments, CurrentLayout, out var blocked);
-        _assignments.Clear();
-        foreach (var (position, student) in mirrored) _assignments[position] = student;
+        RecordChange("左右镜像", () =>
+        {
+            var mirrored = SeatChartComposer.MirrorColumns(_assignments, CurrentLayout, out var blocked);
+            _assignments.Clear();
+            foreach (var (position, student) in mirrored) _assignments[position] = student;
 
-        RefreshSeatVisuals();
-        var note = blocked > 0 ? $"（{blocked} 人因目标格是过道未移动）" : string.Empty;
-        SetStatus($"已左右镜像{note}");
+            RefreshSeatVisuals();
+            var note = blocked > 0 ? $"（{blocked} 人因目标格是过道未移动）" : string.Empty;
+            SetStatus($"已左右镜像{note}");
+        });
     }
 
     public void MirrorGroups()
@@ -1001,13 +1222,16 @@ public partial class SeatGridViewModel : ObservableObject
 
         if (RefuseIfPinned(_assignments.Values, "组序镜像")) return;
 
-        var mirrored = SeatChartComposer.MirrorGroups(_assignments, CurrentLayout, out var blocked);
-        _assignments.Clear();
-        foreach (var (position, student) in mirrored) _assignments[position] = student;
+        RecordChange("组序镜像", () =>
+        {
+            var mirrored = SeatChartComposer.MirrorGroups(_assignments, CurrentLayout, out var blocked);
+            _assignments.Clear();
+            foreach (var (position, student) in mirrored) _assignments[position] = student;
 
-        RefreshSeatVisuals();
-        var note = blocked > 0 ? $"（{blocked} 人因目标格是过道未移动）" : string.Empty;
-        SetStatus($"已组序镜像{note}");
+            RefreshSeatVisuals();
+            var note = blocked > 0 ? $"（{blocked} 人因目标格是过道未移动）" : string.Empty;
+            SetStatus($"已组序镜像{note}");
+        });
     }
 
     // ----------------------------- 异形教室预设 -----------------------------
@@ -1087,12 +1311,16 @@ public partial class SeatGridViewModel : ObservableObject
             denied.Add(SeatRect.RowBand(layout, Math.Max(0, layout.Rows - m), layout.Rows - 1));
 
         var zone = new StudentZone(allowed, denied);
-        Constraints.SetZone(SelectedStudent, zone);
-        RefreshSeatVisuals();
+        var student = SelectedStudent;
+        RecordChange("区域限制", () =>
+        {
+            Constraints.SetZone(student, zone);
+            RefreshSeatVisuals();
 
-        SetStatus(zone.IsEmpty
-            ? $"已清除 {SelectedStudent.Name} 的区域限制。"
-            : $"已设置 {SelectedStudent.Name} 的区域限制。");
+            SetStatus(zone.IsEmpty
+                ? $"已清除 {student.Name} 的区域限制。"
+                : $"已设置 {student.Name} 的区域限制。");
+        });
     }
 
     /// <summary>把区域限制写进排座引擎：`Constraints.Build` 已经带 Zones，这里只做提示。</summary>
@@ -1196,11 +1424,15 @@ public partial class SeatGridViewModel : ObservableObject
         }
 
         var pinned = Constraints.IsPinned(student.Id);
-        Constraints.TogglePin(student, SelectedSeat.Position);
-        RefreshSeatVisuals();
-        SetStatus(pinned
-            ? $"已解除 {student.Name} 的座位锁定。"
-            : $"已锁定 {student.Name} 的座位，重新排座时不会移动。");
+        var position = SelectedSeat.Position;
+        RecordChange(pinned ? "解除锁定" : "锁定座位", () =>
+        {
+            Constraints.TogglePin(student, position);
+            RefreshSeatVisuals();
+            SetStatus(pinned
+                ? $"已解除 {student.Name} 的座位锁定。"
+                : $"已锁定 {student.Name} 的座位，重新排座时不会移动。");
+        });
     }
 
     /// <summary>整班平移前检查：任一被移动的学生处于锁定状态就整体拒绝。</summary>
@@ -1213,7 +1445,9 @@ public partial class SeatGridViewModel : ObservableObject
         return true;
     }
 
-    public void ClearSeats()
+    public void ClearSeats() => RecordChange("清空座位", ClearSeatsCore);
+
+    private void ClearSeatsCore()
     {
         var pinned = Constraints.Pins.Count;
         var removed = 0;
@@ -1259,12 +1493,15 @@ public partial class SeatGridViewModel : ObservableObject
             return;
         }
 
-        foreach (var pair in _assignments.Where(kv => kv.Value == student).ToList())
-            _assignments.Remove(pair.Key);
+        RecordChange("放入学生", () =>
+        {
+            foreach (var pair in _assignments.Where(kv => kv.Value == student).ToList())
+                _assignments.Remove(pair.Key);
 
-        _assignments[target.Position] = student;
-        RefreshSeatVisuals();
-        SetStatus($"已把 {student.Name} 放到 {target.PositionLabel}。");
+            _assignments[target.Position] = student;
+            RefreshSeatVisuals();
+            SetStatus($"已把 {student.Name} 放到 {target.PositionLabel}。");
+        });
     }
 
     /// <summary>拖拽落座：目标有人则交换，目标为空则移动。</summary>
@@ -1277,20 +1514,23 @@ public partial class SeatGridViewModel : ObservableObject
         if (_assignments.TryGetValue(target.Position, out var targetOccupant)) involved.Add(targetOccupant);
         if (RefuseIfPinned(involved, "移动")) return;
 
-        if (_assignments.TryGetValue(target.Position, out var occupying))
+        RecordChange("移动座位", () =>
         {
-            _assignments[target.Position] = moving;
-            _assignments[source.Position] = occupying;
-            RefreshSeatVisuals();
-            SetStatus($"已把 {moving.Name} 与 {occupying.Name} 交换座位。");
-        }
-        else
-        {
-            _assignments.Remove(source.Position);
-            _assignments[target.Position] = moving;
-            RefreshSeatVisuals();
-            SetStatus($"已把 {moving.Name} 移到 {target.PositionLabel}。");
-        }
+            if (_assignments.TryGetValue(target.Position, out var occupying))
+            {
+                _assignments[target.Position] = moving;
+                _assignments[source.Position] = occupying;
+                RefreshSeatVisuals();
+                SetStatus($"已把 {moving.Name} 与 {occupying.Name} 交换座位。");
+            }
+            else
+            {
+                _assignments.Remove(source.Position);
+                _assignments[target.Position] = moving;
+                RefreshSeatVisuals();
+                SetStatus($"已把 {moving.Name} 移到 {target.PositionLabel}。");
+            }
+        });
     }
 
     public void ClearSelectedSeat()
@@ -1298,9 +1538,13 @@ public partial class SeatGridViewModel : ObservableObject
         if (SelectedSeat is null) return;
 
         var label = SelectedSeat.PositionLabel;
-        _assignments.Remove(SelectedSeat.Position);
-        RefreshSeatVisuals();
-        SetStatus($"已清空 {label}。");
+        var position = SelectedSeat.Position;
+        RecordChange("清空座位", () =>
+        {
+            _assignments.Remove(position);
+            RefreshSeatVisuals();
+            SetStatus($"已清空 {label}。");
+        });
     }
 
     // ----------------------------- 行列调整 -----------------------------
@@ -1348,6 +1592,11 @@ public partial class SeatGridViewModel : ObservableObject
             ToSettings(),
             Title);
 
+        RecordChange("进入考场模式", () => EnterExamModeCore(options));
+    }
+
+    private void EnterExamModeCore(ExamLayoutOptions options)
+    {
         _examPlan = ExamPlanner.FromAssignments(
             _students.Select(s => s.Model).ToList(), GetCoreAssignments(), options);
 
@@ -1371,7 +1620,9 @@ public partial class SeatGridViewModel : ObservableObject
     }
 
     /// <summary>返回日常座位：整体还原布局、座位与设置。</summary>
-    public void LeaveExamMode()
+    public void LeaveExamMode() => RecordChange("返回日常座位", LeaveExamModeCore);
+
+    private void LeaveExamModeCore()
     {
         if (_dailySnapshot is not { } snapshot) return;
 
@@ -1443,6 +1694,11 @@ public partial class SeatGridViewModel : ObservableObject
             return;
         }
 
+        RecordChange("周轮转", () => RotateGroupsCore(dx));
+    }
+
+    private void RotateGroupsCore(int dx)
+    {
         var rotated = SeatChartComposer.RotateGroups(_assignments, CurrentLayout, dx);
 
         var blocked = _assignments.Count - rotated.Count;
@@ -1497,15 +1753,18 @@ public partial class SeatGridViewModel : ObservableObject
         if (RefuseIfPinned(_assignments.Values, "整体平移")) return;
 
         // 方向按屏幕换算，与 BuildGrid / 导出共用同一份摆放顺序。
-        var shifted = SeatChartComposer.ShiftOnScreen(_assignments, CurrentLayout, CurrentView, dx, dy);
+        RecordChange("整班平移", () =>
+        {
+            var shifted = SeatChartComposer.ShiftOnScreen(_assignments, CurrentLayout, CurrentView, dx, dy);
 
-        _assignments.Clear();
-        foreach (var (position, student) in shifted)
-            _assignments[position] = student;
+            _assignments.Clear();
+            foreach (var (position, student) in shifted)
+                _assignments[position] = student;
 
-        RefreshSeatVisuals();
-        var direction = dy < 0 ? "上" : dy > 0 ? "下" : dx < 0 ? "左" : "右";
-        SetStatus($"已整体向{direction}平移一格（边缘自动绕回）。");
+            RefreshSeatVisuals();
+            var direction = dy < 0 ? "上" : dy > 0 ? "下" : dx < 0 ? "左" : "右";
+            SetStatus($"已整体向{direction}平移一格（边缘自动绕回）。");
+        });
     }
 
     /// <summary>整排对调：两排在所有小组、所有列上互换学生。</summary>
@@ -1521,12 +1780,15 @@ public partial class SeatGridViewModel : ObservableObject
 
         if (RefuseIfPinned(_assignments.Values, "整排对调")) return;
 
-        for (var group = 0; group < layout.Groups; group++)
-            for (var column = 0; column < layout.Columns; column++)
-                SwapAssignments(new SeatPosition(group, rowA, column), new SeatPosition(group, rowB, column));
+        RecordChange("整排对调", () =>
+        {
+            for (var group = 0; group < layout.Groups; group++)
+                for (var column = 0; column < layout.Columns; column++)
+                    SwapAssignments(new SeatPosition(group, rowA, column), new SeatPosition(group, rowB, column));
 
-        RefreshSeatVisuals();
-        SetStatus($"已把第 {Math.Min(rowA, rowB) + 1} 排与第 {Math.Max(rowA, rowB) + 1} 排整排对调。");
+            RefreshSeatVisuals();
+            SetStatus($"已把第 {Math.Min(rowA, rowB) + 1} 排与第 {Math.Max(rowA, rowB) + 1} 排整排对调。");
+        });
     }
 
     /// <summary>整列对调：两列在所有排上互换学生，可以跨小组。</summary>
@@ -1544,13 +1806,16 @@ public partial class SeatGridViewModel : ObservableObject
 
         if (RefuseIfPinned(_assignments.Values, "整列对调")) return;
 
-        for (var row = 0; row < layout.Rows; row++)
-            SwapAssignments(new SeatPosition(groupA, row, columnA), new SeatPosition(groupB, row, columnB));
+        RecordChange("整列对调", () =>
+        {
+            for (var row = 0; row < layout.Rows; row++)
+                SwapAssignments(new SeatPosition(groupA, row, columnA), new SeatPosition(groupB, row, columnB));
 
-        RefreshSeatVisuals();
-        SetStatus(columnA == columnB
-            ? $"已把第 {Math.Min(groupA, groupB) + 1} 组与第 {Math.Max(groupA, groupB) + 1} 组的第 {columnA + 1} 列整列对调。"
-            : $"已把第 {groupA + 1} 组第 {columnA + 1} 列与第 {groupB + 1} 组第 {columnB + 1} 列整列对调。");
+            RefreshSeatVisuals();
+            SetStatus(columnA == columnB
+                ? $"已把第 {Math.Min(groupA, groupB) + 1} 组与第 {Math.Max(groupA, groupB) + 1} 组的第 {columnA + 1} 列整列对调。"
+                : $"已把第 {groupA + 1} 组第 {columnA + 1} 列与第 {groupB + 1} 组第 {columnB + 1} 列整列对调。");
+        });
     }
 
     private void SwapAssignments(SeatPosition a, SeatPosition b)
@@ -1581,22 +1846,31 @@ public partial class SeatGridViewModel : ObservableObject
         }
 
         var model = SelectedStudent.Model;
-        model.Name = name;
-        model.Number = EditNumber.Trim();
-        model.Gender = EditGenderIndex switch
+        var gender = EditGenderIndex switch
         {
             1 => Gender.Male,
             2 => Gender.Female,
             _ => Gender.Unknown,
         };
-        model.Height = ParseOptional(EditHeight);
-        model.Vision = ParseOptional(EditVision);
-        model.Notes = EditNotes.Trim();
+        var number = EditNumber.Trim();
+        var height = ParseOptional(EditHeight);
+        var vision = ParseOptional(EditVision);
+        var notes = EditNotes.Trim();
 
-        SelectedStudent.Refresh();
-        RefreshSeatVisuals();
-        RefreshStudents();
-        SetStatus($"已保存 {name} 的信息。");
+        RecordChange("编辑学生", () =>
+        {
+            model.Name = name;
+            model.Number = number;
+            model.Gender = gender;
+            model.Height = height;
+            model.Vision = vision;
+            model.Notes = notes;
+
+            SelectedStudent.Refresh();
+            RefreshSeatVisuals();
+            RefreshStudents();
+            SetStatus($"已保存 {name} 的信息。");
+        });
     }
 
     public void AddStudent()
@@ -1622,11 +1896,14 @@ public partial class SeatGridViewModel : ObservableObject
             Vision = ParseOptional(EditVision),
             Notes = EditNotes.Trim(),
         });
-        _students.Add(student);
-        RefreshStudents();
-        SelectedStudent = student;
-        NotifyCounts();
-        SetStatus($"已把 {name} 加入名单。");
+        RecordChange("新增学生", () =>
+        {
+            _students.Add(student);
+            RefreshStudents();
+            SelectedStudent = student;
+            NotifyCounts();
+            SetStatus($"已把 {name} 加入名单。");
+        });
     }
 
     public void DeleteSelectedStudent()
@@ -1638,22 +1915,25 @@ public partial class SeatGridViewModel : ObservableObject
         }
 
         var student = SelectedStudent;
-        foreach (var pair in _assignments.Where(kv => kv.Value == student).ToList())
-            _assignments.Remove(pair.Key);
+        RecordChange("删除学生", () =>
+        {
+            foreach (var pair in _assignments.Where(kv => kv.Value == student).ToList())
+                _assignments.Remove(pair.Key);
 
-        // 删学生要连带删掉他的锁与规则，否则会留下指向不存在学生的幽灵约束。
-        Constraints.Pins.Remove(student.Id);
-        Constraints.Mutex.RemoveAll(p => p.A == student.Id || p.B == student.Id);
-        Constraints.Deskmates.RemoveAll(p => p.A == student.Id || p.B == student.Id);
-        Constraints.AvoidDeskmates.RemoveAll(p => p.A == student.Id || p.B == student.Id);
-        Constraints.Zones.Remove(student.Id);
-        Constraints.RefreshRows();
+            // 删学生要连带删掉他的锁与规则，否则会留下指向不存在学生的幽灵约束。
+            Constraints.Pins.Remove(student.Id);
+            Constraints.Mutex.RemoveAll(p => p.A == student.Id || p.B == student.Id);
+            Constraints.Deskmates.RemoveAll(p => p.A == student.Id || p.B == student.Id);
+            Constraints.AvoidDeskmates.RemoveAll(p => p.A == student.Id || p.B == student.Id);
+            Constraints.Zones.Remove(student.Id);
+            Constraints.RefreshRows();
 
-        _students.Remove(student);
-        SelectedStudent = null;
-        RefreshSeatVisuals();
-        RefreshStudents();
-        SetStatus($"已从名单中删除 {student.Name}。");
+            _students.Remove(student);
+            SelectedStudent = null;
+            RefreshSeatVisuals();
+            RefreshStudents();
+            SetStatus($"已从名单中删除 {student.Name}。");
+        });
     }
 
     private static double? ParseOptional(string text)
@@ -1666,7 +1946,9 @@ public partial class SeatGridViewModel : ObservableObject
 
     // ----------------------------- 配置 / 导出 -----------------------------
 
-    public void ResetStyle()
+    public void ResetStyle() => RecordChange("恢复默认样式", ResetStyleCore);
+
+    private void ResetStyleCore()
     {
         SeatBackgroundColor = Color.Parse("#FFFFFF");
         EmptySeatColor = Color.Parse("#FAF9F5");
@@ -1778,6 +2060,8 @@ public partial class SeatGridViewModel : ObservableObject
     /// </summary>
     public void ApplyConfig(SeatGridConfig config, string? sourceName = null)
     {
+        // 同 LoadRoster：整体还原一份配置等于换了一份数据，撤销回去没有语义。
+        _suspendUndo = true;
         _suppressRebuild = true;
         Title = config.Settings.Title;
         BoldTitle = config.Settings.BoldTitle;
@@ -1850,6 +2134,9 @@ public partial class SeatGridViewModel : ObservableObject
         SetStatus(config.Warnings.Count > 0
             ? $"{summary} · {string.Join("；", config.Warnings)}"
             : $"{summary}。");
+
+        _suspendUndo = false;
+        ClearUndo();
     }
 
     public void SetStatus(string text, bool error = false)

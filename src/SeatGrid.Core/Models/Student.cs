@@ -49,4 +49,24 @@ public sealed class Student
         Notes = Notes,
         OriginalGroup = OriginalGroup,
     };
+
+    /// <summary>
+    /// 同 <see cref="Copy"/>，但**保留同一个 <see cref="Id"/>**。
+    ///
+    /// 撤销 / 重做的快照要按 Id 把座位与约束还原到原学生身上；<see cref="Copy"/> 给新 Id
+    /// 会让每一处引用都错位。这里用 <c>with</c> 不可行（普通类），所以单独一个方法，
+    /// 并且刻意不叫 Clone——两者的语义差别必须是显式的。
+    /// </summary>
+    public Student CopyKeepingId() => new()
+    {
+        Id = Id,
+        Name = Name,
+        Gender = Gender,
+        Number = Number,
+        Height = Height,
+        Vision = Vision,
+        Score = Score,
+        Notes = Notes,
+        OriginalGroup = OriginalGroup,
+    };
 }

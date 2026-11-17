@@ -862,6 +862,15 @@ public partial class App : Application
         var mode = index + 2 < args.Length ? args[index + 2] : string.Empty;
         var empty = mode == "empty";
 
+        // 导出走查：--seatgrid-chart-export <路径> [excel]
+        // 截窗口的同时把「导出用的那一份文档」真渲染一遍。本次修复的缺陷正是在导出这一侧——
+        // 界面网格一直是对的，只截界面看不出导出把后排切掉了。
+        // 不指定格式时导出 PNG；路径为空则只截图。
+        var exportIndex = Array.IndexOf(args, "--seatgrid-chart-export");
+        var exportPath = exportIndex >= 0 && exportIndex + 1 < args.Length ? args[exportIndex + 1] : null;
+        var exportExcel = exportIndex >= 0 && exportIndex + 2 < args.Length &&
+                          string.Equals(args[exportIndex + 2], "excel", StringComparison.OrdinalIgnoreCase);
+
         Dispatcher.UIThread.Post(async () =>
         {
             try
@@ -872,9 +881,13 @@ public partial class App : Application
                 if (mode == "constraints") window.LoadDemoConstraints();
                 if (mode == "canvas") window.LoadDemoCanvas();
                 if (mode == "exam") window.LoadDemoExam();
+                if (mode == "exam-packed") window.LoadDemoExamPacked();
+                if (mode == "undo") window.LoadDemoUndoState("can-undo");
+                if (mode == "redo") window.LoadDemoUndoState("can-redo");
                 window.Show();
                 await Task.Delay(1600);
                 window.CaptureTo(target);
+                if (!string.IsNullOrWhiteSpace(exportPath)) window.ExportChartForCapture(exportPath!, exportExcel);
                 window.Close();
             }
             catch (Exception ex)
