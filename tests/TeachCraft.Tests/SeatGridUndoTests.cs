@@ -325,6 +325,46 @@ public sealed class SeatGridUndoTests
         Assert.Contains(nameof(SeatGridViewModel.CanUndo), raised);
     }
 
+    // ----------------------------- 顶栏布局 -----------------------------
+
+    [Fact]
+    public void Vm_HeaderTagHidesOnNarrowWindows()
+    {
+        // 顶栏在最小宽度（1180）下放不下那一排按钮：「课堂应用」这个装饰小标先让位。
+        var vm = new SeatGridViewModel();
+        Assert.True(vm.ShowHeaderTag);
+
+        vm.SetHeaderWidth(1180);
+        Assert.False(vm.ShowHeaderTag);
+
+        vm.SetHeaderWidth(1440);
+        Assert.True(vm.ShowHeaderTag);
+    }
+
+    [Fact]
+    public void Vm_HeaderTagNotifiesOnlyWhenCrossingTheThreshold()
+    {
+        // 每次 SizeChanged 都发通知会白白刷一遍绑定；只在跨过阈值时才需要。
+        var vm = new SeatGridViewModel();
+        var raised = 0;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SeatGridViewModel.ShowHeaderTag)) raised++;
+        };
+
+        vm.SetHeaderWidth(1440);
+        Assert.Equal(0, raised);      // 同一个值，不该通知
+
+        vm.SetHeaderWidth(1180);
+        Assert.Equal(1, raised);
+
+        vm.SetHeaderWidth(1170);
+        Assert.Equal(1, raised);      // 仍在阈值左侧，状态没变
+
+        vm.SetHeaderWidth(1400);
+        Assert.Equal(2, raised);
+    }
+
     // ----------------------------- 清空画布 -----------------------------
 
     [Fact]

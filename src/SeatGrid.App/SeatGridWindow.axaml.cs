@@ -83,7 +83,14 @@ public partial class SeatGridWindow : Window
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
 
         // 小屏（1366×768 / 125% 缩放）上把窗口钳进工作区，避免底部状态栏被任务栏挡住。
-        Opened += (_, _) => WindowFit.Clamp(this);
+        Opened += (_, _) =>
+        {
+            WindowFit.Clamp(this);
+            viewModel.SetHeaderWidth(Bounds.Width);
+        };
+
+        // 顶栏那排按钮在窄窗口下会挤不下：让「课堂应用」小标先让位。
+        SizeChanged += (_, e) => viewModel.SetHeaderWidth(e.NewSize.Width);
     }
 
     private SeatGridViewModel ViewModel => (SeatGridViewModel)DataContext!;

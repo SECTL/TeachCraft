@@ -454,6 +454,29 @@ public partial class SeatGridViewModel : ObservableObject
     // ----------------------------- 计算属性 -----------------------------
 
     public bool IsIdle => !IsBusy;
+
+    /// <summary>
+    /// 顶栏那个「课堂应用」装饰小标是否显示。零信息量，窄窗口下第一个让位——
+    /// 右侧那排按钮都是能点的功能，标题本身已说明这是哪个应用。
+    /// </summary>
+    public bool ShowHeaderTag => _headerWidth >= 1300;
+
+    private double _headerWidth = 1440;
+
+    /// <summary>
+    /// 窗口层在 Opened / SizeChanged 里回填窗口宽度。
+    ///
+    /// 只在**跨过阈值**时才发通知：拖动窗口边缘会连续触发几十次 SizeChanged，
+    /// 每次都刷一遍绑定是白费；而判定只关心宽度在阈值哪一侧。
+    /// </summary>
+    public void SetHeaderWidth(double width)
+    {
+        if (Math.Abs(_headerWidth - width) < 1) return;
+
+        var wasVisible = ShowHeaderTag;
+        _headerWidth = width;
+        if (ShowHeaderTag != wasVisible) OnPropertyChanged(nameof(ShowHeaderTag));
+    }
     /// <summary>「导出配置」是否可用。考场是快照不是日常布局，导回去只会被夹坏，所以直接禁用。</summary>
     public bool CanExportConfig => IsIdle && !IsExamMode;
     public bool IsTeacherView => !IsStudentView;

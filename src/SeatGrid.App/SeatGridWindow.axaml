@@ -279,6 +279,11 @@
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- ==================== 顶栏 ==================== -->
         <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="20,12">
+            <!-- 顶栏三列：品牌 + 标题 + 撤销 · 留白 · 工具组。
+                 工具组用 Auto：网格按内容宽度测量，WrapPanel 拿不到受限宽度所以不会换行——
+                 这在 1440 下没问题，但最小宽度 1180 时会顶出窗口。
+                 解决办法不是让它换行，而是把**标题列**的可伸缩空间收掉：
+                 标题有 MaxWidth=280 且会省略号截断，窄窗口下该让位的是它，不是按钮。 -->
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
                     <Viewbox Width="38" Height="38">
@@ -327,15 +332,27 @@
                     <Border Width="1" Height="30" Background="{StaticResource LineBrush}" Margin="7,0" />
                     <TextBlock Text="{Binding Title}" FontFamily="{StaticResource SerifFont}" FontSize="22"
                                Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"
-                               MaxWidth="280" TextTrimming="CharacterEllipsis" />
+                               MaxWidth="280" MinWidth="0" TextTrimming="CharacterEllipsis" />
+                    <!-- 「课堂应用」这个装饰小标在窄窗口下要第一个让位：
+                         它零信息量，而右侧那排按钮都是能点的功能。 -->
                     <TextBlock Text="课堂应用" FontSize="9.5" LetterSpacing="1"
+                               IsVisible="{Binding ShowHeaderTag}"
                                Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+
                 </StackPanel>
 
-                <!-- 撤销 / 重做：紧贴标题，与「导入名单」这类重操作分开。
-                     快捷键 Ctrl+Z / Ctrl+Y（Windows 习惯）与 Ctrl+Shift+Z 都接。 -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
-                            HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0">
+                <!-- 右侧工具组：用 WrapPanel 而不是 StackPanel。
+                     这一排有 12 个控件，1440 下摆得开，但最小宽度（1180）下多出约 120px——
+                     原来直接溢出到窗口外，「导出 Excel」被切掉一半。WrapPanel 放不下时换行，
+                     宁可顶栏高一点，也不要把按钮画到看不见的地方。 -->
+                <WrapPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                           ItemSpacing="6" LineSpacing="6" HorizontalAlignment="Right">
+                    <!-- 撤销 / 重做放在这排的开头。
+                         它曾经被塞进标题与工具组之间的 * 弹性列：窗口一窄那列被压到不足按钮宽度，
+                         而 Avalonia 不裁剪溢出内容，「重做」就画到「导入名单」底下了。
+                         放进 Auto 的左侧组也会出问题——标题 MaxWidth=280 先占满，
+                         撤销会被挤到看不见。这里是 WrapPanel，放不下会整体换行，不会重叠也不会消失。
+                         快捷键 Ctrl+Z / Ctrl+Y 与 Ctrl+Shift+Z。 -->
                     <Button Classes="ghost top" Content="↶ 撤销" Click="OnUndo"
                             IsEnabled="{Binding CanUndo}"
                             ToolTip.Tip="{Binding UndoLabel}"
@@ -344,9 +361,6 @@
                             IsEnabled="{Binding CanRedo}"
                             ToolTip.Tip="{Binding RedoLabel}"
                             AutomationProperties.Name="重做" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Classes="primary top" Content="导入名单" Click="OnImportRoster"
                             IsEnabled="{Binding IsIdle}" AutomationProperties.Name="导入名单" />
                     <TextBlock Text="排座方式" Classes="field-label" VerticalAlignment="Center" />
@@ -371,7 +385,7 @@
                             IsEnabled="{Binding CanExport}" />
                     <Button Classes="ghost top" Content="导出 Excel" Click="OnExportExcel"
                             IsEnabled="{Binding CanExport}" />
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Border>
 

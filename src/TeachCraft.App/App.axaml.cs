@@ -885,6 +885,13 @@ public partial class App : Application
                 if (mode == "undo") window.LoadDemoUndoState("can-undo");
                 if (mode == "ushape") window.LoadDemoClearCanvas("ushape");
                 if (mode == "cleared") window.LoadDemoClearCanvas("cleared");
+
+                // 顶栏宽度走查：--seatgrid-width <px>。专治「按钮在小窗口下被挤到一起」——
+                // 1440 下永远看不出问题，1180（最小宽度）才照得出来。
+                var widthIndex = Array.IndexOf(args, "--seatgrid-width");
+                if (widthIndex >= 0 && widthIndex + 1 < args.Length &&
+                    double.TryParse(args[widthIndex + 1], out var shotWidth) && shotWidth > 0)
+                    window.Width = shotWidth;
                 if (mode == "redo") window.LoadDemoUndoState("can-redo");
                 window.Show();
                 await Task.Delay(1600);
