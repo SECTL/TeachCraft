@@ -151,6 +151,24 @@ public partial class SeatGridWindow : Window
         ViewModel.EnterExamMode(new ExamLayoutOptions());
     }
 
+    /// <summary>设计走查：先点 U 型（中间出现一片虚线过道），再清空画布——用来核对那条出路。</summary>
+    public void LoadDemoClearCanvas(string mode)
+    {
+        ViewModel.LoadRoster(DemoRoster.Create(16));
+        ViewModel.ArrangeModeIndex = 1;
+        ViewModel.AutoArrange();
+        ViewModel.ApplyUShape(openTowardPodium: true);
+
+        if (string.Equals(mode, "cleared", StringComparison.OrdinalIgnoreCase))
+        {
+            ViewModel.ClearCanvas();
+            ViewModel.SetStatus("走查：已清空画布");
+            return;
+        }
+
+        ViewModel.SetStatus("走查：U 型过道 · 点「清空画布」可整体去掉");
+    }
+
     /// <summary>
     /// 设计走查：把「撤销 / 重做」两个按钮的可点状态摆出来。
     ///
@@ -1033,6 +1051,8 @@ public partial class SeatGridWindow : Window
 
         ViewModel.RecordWindowChange("教室画布", () => ViewModel.ApplyCanvas(canvas, "已更新教室画布。"));
     }
+
+    private void OnClearCanvas(object? sender, RoutedEventArgs e) => ViewModel.ClearCanvas();
 
     private void OnUnpinAll(object? sender, RoutedEventArgs e)
     {

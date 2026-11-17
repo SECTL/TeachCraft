@@ -325,6 +325,54 @@ public sealed class SeatGridUndoTests
         Assert.Contains(nameof(SeatGridViewModel.CanUndo), raised);
     }
 
+    // ----------------------------- 清空画布 -----------------------------
+
+    [Fact]
+    public void Vm_UshapeLeavesAislesAndClearCanvasRemovesThem()
+    {
+        // 用户报告的场景：点了 U 型之后中间出现一大片虚线空格，找不到地方去掉。
+        var vm = NewViewModel(16);
+        vm.AutoArrange();
+
+        vm.ApplyUShape(openTowardPodium: true);
+        var layout = vm.CurrentLayoutPublic;
+        var aisles = layout.CellCount - layout.UsableSeatCount;
+        Assert.True(aisles > 0, "U 型应当写入过道标记");
+        Assert.True(vm.CanClearCanvas);
+
+        vm.ClearCanvas();
+
+        Assert.True(vm.Canvas.IsEmpty);
+        Assert.Equal(vm.CurrentLayoutPublic.CellCount, vm.CurrentLayoutPublic.UsableSeatCount);
+        Assert.False(vm.CanClearCanvas);
+    }
+
+    [Fact]
+    public void Vm_ClearCanvasIsUndoable()
+    {
+        // 清空会把人从过道格上退回来（U 型那几格本来就没人），但座位与画布必须一起撤回。
+        var vm = NewViewModel(16);
+        vm.AutoArrange();
+        vm.ApplyUShape(openTowardPodium: true);
+        var before = vm.Canvas;
+        var seatsBefore = vm.AssignedCount;
+
+        vm.ClearCanvas();
+        Assert.True(vm.Canvas.IsEmpty);
+
+        vm.Undo();
+        Assert.Equal(before, vm.Canvas);
+        Assert.Equal(seatsBefore, vm.AssignedCount);
+    }
+
+    [Fact]
+    public void Vm_ClearCanvasOnEmptyCanvasIsANoOp()
+    {
+        var vm = NewViewModel(8);
+        vm.AutoArrange();
+        Assert.False(vm.CanClearCanvas);
+    }
+
     // ----------------------------- 夹具 -----------------------------
 
     private static SeatGridViewModel NewViewModel(int count)

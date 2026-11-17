@@ -752,8 +752,16 @@
                                     <TextBlock Grid.Column="1" Classes="eyebrow" Text="CANVAS" />
                                 </Grid>
                                 <TextBlock Text="{Binding CanvasSummary}" Classes="helper" />
-                                <Button Classes="ghost tool" Content="编辑画布…" Click="OnEditCanvas"
-                                        AutomationProperties.Name="打开教室画布编辑器" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Button Classes="ghost tool" Content="编辑画布…" Click="OnEditCanvas"
+                                            AutomationProperties.Name="打开教室画布编辑器" />
+                                    <!-- 快速形状会写进过道标记，但此前没有任何地方能把它们整体去掉：
+                                         老师只能开编辑器一格一格刷回座位，或者靠撤销。 -->
+                                    <Button Grid.Column="1" Classes="ghost tool" Content="清空画布" Click="OnClearCanvas"
+                                            IsEnabled="{Binding CanClearCanvas}"
+                                            ToolTip.Tip="去掉全部过道标记、走廊与门窗，恢复成普通矩形座位"
+                                            AutomationProperties.Name="清空教室画布" />
+                                </Grid>
                                 <StackPanel Spacing="5">
                                     <TextBlock Classes="field-label" Text="快速形状（会替换当前过道标记）" />
                                     <WrapPanel ItemSpacing="6" LineSpacing="6">

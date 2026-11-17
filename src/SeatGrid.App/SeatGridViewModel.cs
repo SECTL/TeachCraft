@@ -382,7 +382,11 @@ public partial class SeatGridViewModel : ObservableObject
         UpdatePodium();
     }
 
-    partial void OnCanvasChanged(SeatChartCanvas value) => OnPropertyChanged(nameof(CanvasSummary));
+    partial void OnCanvasChanged(SeatChartCanvas value)
+    {
+        OnPropertyChanged(nameof(CanvasSummary));
+        OnPropertyChanged(nameof(CanClearCanvas));
+    }
 
     [ObservableProperty] private double _podiumWidth = 320;
     [ObservableProperty] private Thickness _podiumTopMargin = new(0);
@@ -764,6 +768,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanExportConfig));
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
+        OnPropertyChanged(nameof(CanClearCanvas));
     }
 
     partial void OnRosterHintChanged(string value) => OnPropertyChanged(nameof(HasRosterHint));
@@ -1122,7 +1127,19 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanvasSummary));
     }
 
-    public void ClearCanvas() => ApplyCanvas(SeatChartCanvas.Empty, "已清空画布。");
+    /// <summary>画布上还有东西（过道 / 走廊 / 门窗）才让「清空画布」可点。</summary>
+    public bool CanClearCanvas => IsIdle && !Canvas.IsEmpty;
+
+    public void ClearCanvas()
+    {
+        if (Canvas.IsEmpty)
+        {
+            SetStatus("画布已经是空的，没有过道或门窗要去掉。");
+            return;
+        }
+
+        ApplyCanvas(SeatChartCanvas.Empty, "已清空画布：过道、走廊与门窗都去掉了。");
+    }
 
     // ----------------------------- 末尾增删 -----------------------------
 

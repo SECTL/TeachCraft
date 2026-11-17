@@ -883,6 +883,8 @@ public partial class App : Application
                 if (mode == "exam") window.LoadDemoExam();
                 if (mode == "exam-packed") window.LoadDemoExamPacked();
                 if (mode == "undo") window.LoadDemoUndoState("can-undo");
+                if (mode == "ushape") window.LoadDemoClearCanvas("ushape");
+                if (mode == "cleared") window.LoadDemoClearCanvas("cleared");
                 if (mode == "redo") window.LoadDemoUndoState("can-redo");
                 window.Show();
                 await Task.Delay(1600);
