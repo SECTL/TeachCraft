@@ -136,8 +136,25 @@ public partial class ClassBlockViewModel : ObservableObject
 
         SelectedTemplate = TimetableTemplates.Find(Templates, previousId) ?? PrefsOrDefault();
 
-        if (warnings.Count > 0) SetStatus(warnings[0], true);
+        // 损坏的自定义模板不能只在状态栏闪一条、还会被「已识别 N 个班级」顶掉。
+        // 那是老师自己建的资产，消失必须有个持久的解释（审计 P3-8）。
+        if (warnings.Count > 0)
+        {
+            TemplateWarningText = string.Join("\n", warnings);
+            HasTemplateWarnings = true;
+            SetStatus(warnings[0], true);
+        }
+        else
+        {
+            TemplateWarningText = string.Empty;
+            HasTemplateWarnings = false;
+        }
     }
+
+    /// <summary>自定义模板损坏 / 无法读取的持久提示（与导入警告分开，互不顶替）。</summary>
+    [ObservableProperty] private string _templateWarningText = string.Empty;
+
+    [ObservableProperty] private bool _hasTemplateWarnings;
 
     public void AdoptSavedTemplate(string templateId)
     {

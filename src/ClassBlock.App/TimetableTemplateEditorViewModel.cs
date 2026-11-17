@@ -42,6 +42,22 @@ public partial class TemplateRowEditViewModel : ObservableObject
     [ObservableProperty] private string _staticText = string.Empty;
     [ObservableProperty] private bool _mergeDays;
 
+    /// <summary>
+    /// 绑定行（第 N 节 / 早读 / 午学 / 课服 / 晚修）的「五天合并」由内容是否一致自动决定，
+    /// 勾选框对它们无效——不置灰会让老师反复勾选却看不到变化（审计 P3-10）。
+    /// </summary>
+    public bool CanMergeDays => Slot.Slot == TemplateSlot.None;
+
+    public string MergeDaysHint => CanMergeDays
+        ? string.Empty
+        : "绑定行的合并由五天内容是否一致自动决定。";
+
+    partial void OnSlotChanged(SlotOption value)
+    {
+        OnPropertyChanged(nameof(CanMergeDays));
+        OnPropertyChanged(nameof(MergeDaysHint));
+    }
+
     public TemplateRowEditViewModel(KindOption kind, SlotOption slot)
     {
         _kind = kind;

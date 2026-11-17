@@ -196,11 +196,19 @@
                                    Foreground="{StaticResource MutedBrush}" />
                     </StackPanel>
 
-                    <Border Grid.Row="2" IsVisible="{Binding HasWarnings}" Background="#FDF6F2"
-                            BorderBrush="#E9C4B6" BorderThickness="1" CornerRadius="6" Padding="9,7">
-                        <TextBlock Text="{Binding WarningText}" FontSize="9.5" LineHeight="15"
-                                   Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
-                    </Border>
+                    <StackPanel Grid.Row="2" Spacing="5">
+                        <Border IsVisible="{Binding HasWarnings}" Background="#FDF6F2"
+                                BorderBrush="#E9C4B6" BorderThickness="1" CornerRadius="6" Padding="9,7">
+                            <TextBlock Text="{Binding WarningText}" FontSize="9.5" LineHeight="15"
+                                       Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
+                        </Border>
+                        <!-- 模板损坏是老师自己的资产消失，必须持久可见（审计 P3-8）。 -->
+                        <Border IsVisible="{Binding HasTemplateWarnings}" Background="#FDF6F2"
+                                BorderBrush="#E9C4B6" BorderThickness="1" CornerRadius="6" Padding="9,7">
+                            <TextBlock Text="{Binding TemplateWarningText}" FontSize="9.5" LineHeight="15"
+                                       Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
+                        </Border>
+                    </StackPanel>
 
                     <TextBox Grid.Row="3" Classes="search" Text="{Binding SearchText, Mode=TwoWay}"
                              PlaceholderText="搜索班级 / 班主任"

@@ -123,7 +123,9 @@
                                 <TextBox Grid.Column="1" Text="{Binding StaticText, Mode=TwoWay}"
                                          PlaceholderText="静态内容 / 整行文字" />
                                 <CheckBox Grid.Column="2" IsChecked="{Binding MergeDays, Mode=TwoWay}"
-                                          Content="五天合并" VerticalAlignment="Center" FontSize="11" />
+                                          Content="五天合并" VerticalAlignment="Center" FontSize="11"
+                                          IsEnabled="{Binding CanMergeDays}"
+                                          ToolTip.Tip="{Binding MergeDaysHint}" />
                             </Grid>
                         </StackPanel>
                     </Border>

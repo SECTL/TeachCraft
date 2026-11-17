@@ -98,9 +98,28 @@ public partial class MeetRosterWindow : Window
             e.Cancel = true;
             Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
             {
-                if (await ConfirmDialog.ShowAsync(
+                // 秩序册工程没有逐班原文件，「保存 / 另存为」都是灰的——
+                // 老师改完体检问题后关窗，只有「放弃并关闭」一条路，全部修改重来。
+                // 这里补一句「导出参赛手册留档」的出路（审计 P1-15 最低版 / T23）。
+                if (ViewModel.IsFromOrderBook)
+                {
+                    var export = await ConfirmDialog.ShowAsync(
                         this, "关闭竞名？",
-                        $"当前有未保存的报名表修改（{ViewModel.AllClasses.Count} 个班），关闭后不会保留。可先按「保存」(Ctrl+S) 或「另存为」留档。",
+                        $"当前有未保存的修改（{ViewModel.AllClasses.Count} 个班）。"
+                        + "秩序册工程没有逐班原文件，「保存」不可用；可以先导出参赛手册留档。",
+                        "先导出留档", "放弃并关闭", danger: false);
+                    if (export)
+                    {
+                        // 走既有的导出流程；用户取消保存框时留在编辑态不关窗。
+                        await OnExportHandBookAsync();
+                        if (!File.Exists(_lastExportedPath))
+                            return;
+                    }
+                }
+
+                if (await ConfirmDialog.ShowAsync(
+                        this, "确认关闭？",
+                        "关闭后当前修改不会保留。",
                         "放弃并关闭", "继续编辑", danger: true))
                 {
                     _closeConfirmed = true;
@@ -111,6 +130,9 @@ public partial class MeetRosterWindow : Window
 
         base.OnClosing(e);
     }
+
+    /// <summary>最近一次成功导出的路径；关窗留档用它判断是否真的导出成功。</summary>
+    private string? _lastExportedPath;
 
     /// <summary>设计走查用：把窗口渲染成 PNG；scale 用于放大取证明细。</summary>
     public void CaptureTo(string path, double scale = 1)
@@ -282,7 +304,10 @@ public partial class MeetRosterWindow : Window
     }
 
     /// <summary>导出参赛手册：先选设置，再选保存位置。</summary>
-    private async void OnExportHandBook(object? sender, RoutedEventArgs e)
+    private async void OnExportHandBook(object? sender, RoutedEventArgs e) => await OnExportHandBookAsync();
+
+    /// <summary>导出参赛手册（设置 → 保存框 → 写出）。关窗留档也走这条路径。</summary>
+    private async Task OnExportHandBookAsync()
     {
         try
         {
@@ -318,6 +343,7 @@ public partial class MeetRosterWindow : Window
             }
 
             await ViewModel.ExportHandBookAsync(request, path);
+            _lastExportedPath = path;
         }
         catch (Exception ex)
         {

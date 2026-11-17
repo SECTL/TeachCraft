@@ -107,6 +107,10 @@ public partial class App : Application
                 // 上一次绿色版自替换的结果。失败时用户刚经历「程序关了又开回来还是旧的」，
                 // 不说清楚他会以为更新没生效，反复点。
                 ReportLastPortableReplace(viewModel);
+
+                // 安装包路径的自动重启失败痕迹以前只写不读：程序关了没再回来，
+                // 老师不知道安装其实成功了（审计 P3-19）。
+                ReportLastRestartFailure(viewModel);
             }
 
             if (!CaptureGradeStripIfRequested(desktop) && !CaptureSeatGridIfRequested(desktop) &&
@@ -1236,6 +1240,35 @@ public partial class App : Application
     }
 
     /// <summary>重启帮手失败时留一条本机痕迹，供用户与支持者定位。</summary>
+    /// <summary>
+    /// 上一次安装后自动重启失败的痕迹。写完就读、读完即删——
+    /// 程序关了没再回来，老师只看到「更新装完就没了」，而安装其实已经成功（审计 P3-19）。
+    /// </summary>
+    private static void ReportLastRestartFailure(MainViewModel viewModel)
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TeachCraft", "Update", "restart-failure.txt");
+            if (!File.Exists(path)) return;
+
+            var content = File.ReadAllText(path).Trim();
+            File.Delete(path);
+
+            var firstLine = content.Split('\n').FirstOrDefault()?.Trim();
+            if (string.IsNullOrWhiteSpace(firstLine)) return;
+
+            viewModel.SetStatus(
+                $"上次更新安装完成后没能自动重新打开（{firstLine}）。安装本身可能已经成功，可手动打开知微确认。",
+                error: true);
+        }
+        catch (Exception)
+        {
+            // 读不到就算了，不能因为一条提示拦住启动。
+        }
+    }
+
     private static void WriteRestartFailure(Exception ex)
     {
         try

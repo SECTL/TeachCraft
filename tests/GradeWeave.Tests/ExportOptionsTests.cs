@@ -60,7 +60,9 @@ public sealed class ExportOptionsTests
         vm.SelectedFormat = vm.Formats.First(f => f.Format == WeaveExportFormat.Png);
 
         Assert.False(vm.TryBuild(out _, out var error));
-        Assert.Contains("选择一个班级", error, StringComparison.Ordinal);
+        // 文案在 1.34.x 改为「请选择要导出的班级或教师」——弹窗里现在能直接选，
+        // 不再要求老师「先回主窗口选」。
+        Assert.Contains("选择要导出的班级或教师", error, StringComparison.Ordinal);
     }
 
     [Fact]

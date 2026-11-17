@@ -573,7 +573,8 @@
                                                Foreground="{StaticResource AccentDeepBrush}" FontWeight="SemiBold" />
                                     <TextBlock Grid.Column="1" Text="点击格子切换 · 按学科锁定"
                                                FontSize="9" Foreground="{StaticResource MutedBrush}"
-                                               VerticalAlignment="Center" />
+                                               VerticalAlignment="Center"
+                                               ToolTip.Tip="{Binding ResearchOverview}" />
                                 </Grid>
                             </Border>
 

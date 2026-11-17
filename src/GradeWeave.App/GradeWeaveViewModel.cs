@@ -220,6 +220,40 @@ public partial class GradeWeaveViewModel : ObservableObject
     public int ResearchSlotDay { get; private set; }
     public int ResearchSlotPeriod { get; private set; }
 
+    /// <summary>
+    /// 全学科教研分布一览：网格只画当前选中的学科，老师想检查「星期二第 3 节
+    /// 是不是塞了太多学科」得逐个点着核对（审计 P3-23）。
+    /// 按「星期 + 节次」聚合成一行文字，悬浮即可看全。
+    /// </summary>
+    public string ResearchOverview
+    {
+        get
+        {
+            if (!HasProject || Project.ResearchBlocks.Count == 0) return "还没有设置教研时段";
+
+            var lines = Project.ResearchBlocks
+                .Select(block =>
+                {
+                    var subjects = block.SubjectIds
+                        .Select(id => Project.FindSubject(id)?.Name)
+                        .Where(name => !string.IsNullOrWhiteSpace(name))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
+                    if (subjects.Count == 0) return null;
+
+                    var span = block.StartPeriod == block.EndPeriod
+                        ? $"第 {block.StartPeriod} 节"
+                        : $"第 {block.StartPeriod}–{block.EndPeriod} 节";
+                    return $"{WeaveDefaults.DayName(block.DayIndex)} {span}：{string.Join("、", subjects)}";
+                })
+                .Where(line => line is not null)
+                .OrderBy(line => line, StringComparer.Ordinal)
+                .ToList();
+
+            return lines.Count == 0 ? "还没有设置教研时段" : string.Join("\n", lines);
+        }
+    }
+
     public LayeredClassGroup? EditingLayeredGroup => _editingLayeredGroup;
 
     // ----------------------------- 载入 -----------------------------
