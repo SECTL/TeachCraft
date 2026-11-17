@@ -745,7 +745,9 @@ public partial class MainWindow : Window
         ToolKind.PdfToWord or ToolKind.PdfToImages or ToolKind.PdfMerge or ToolKind.PdfSplit =>
             ("PDF 文档", new[] { "*.pdf" }),
         ToolKind.WordToPdf =>
-            ("Word 文档", new[] { "*.docx" }),
+            // .doc 也放进来：Core 会给出「请先另存为 .docx」的明确指引。
+            // 挡在过滤器外面，老师的文件在选择器里直接「隐身」（审计 P2-26）。
+            ("Word 文档", new[] { "*.docx", "*.doc" }),
         _ =>
             ("图片", new[] { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif" }),
     };

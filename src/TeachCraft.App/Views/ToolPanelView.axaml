@@ -172,6 +172,11 @@
                       Content="保留版面（每页渲染为图片，不可编辑）"
                       IsChecked="{Binding KeepLayout, Mode=TwoWay}" />
 
+            <!-- PDF 转 Word 的图片去向：文字模式会丢图，必须当场说清（审计 P2-28）。 -->
+            <TextBlock IsVisible="{Binding ShowKeepLayout}"
+                       Text="{Binding PdfToWordNote}" FontSize="10" LineHeight="16"
+                       TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+
             <StackPanel Spacing="6" IsVisible="{Binding ShowDpi}">
                 <TextBlock Text="渲染精度 DPI" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
                 <NumericUpDown Minimum="72" Maximum="300" Increment="25"
