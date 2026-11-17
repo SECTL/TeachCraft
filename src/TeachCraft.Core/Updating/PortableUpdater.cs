@@ -44,6 +44,9 @@ public sealed class PortableUpdater
 
         var backup = staging + "-backup";
 
+        // 回滚失败时置真：备份目录是老师唯一的自救材料，必须留在磁盘上。
+        var keepBackup = false;
+
         try
         {
             Directory.CreateDirectory(staging);
@@ -85,11 +88,19 @@ public sealed class PortableUpdater
             catch (Exception ex)
             {
                 var rolledBack = TryRollback(backup, targetDirectory, replaced);
+                if (!rolledBack)
+                {
+                    // 回滚失败时备份就是唯一的自救材料，不能删（见 finally 的 keepBackup）。
+                    keepBackup = true;
+                    return Result.Fail(
+                        $"替换文件时出错，且未能完全恢复：{ex.Message}。"
+                        + $"旧文件备份保留在 {backup}，可手动拷回安装目录。",
+                        rolledBack: false);
+                }
+
                 return Result.Fail(
-                    rolledBack
-                        ? $"替换文件时出错，已恢复到更新前的状态：{ex.Message}"
-                        : $"替换文件时出错，且未能完全恢复：{ex.Message}。请手动重新下载安装。",
-                    rolledBack);
+                    $"替换文件时出错，已恢复到更新前的状态：{ex.Message}",
+                    rolledBack: true);
             }
 
             return Result.Ok();
@@ -101,7 +112,8 @@ public sealed class PortableUpdater
         finally
         {
             TryDelete(staging);
-            TryDelete(backup);
+            // 回滚失败时保留备份：那是老师唯一的自救材料，删掉等于把最后一根绳子剪断。
+            if (!keepBackup) TryDelete(backup);
         }
     }
 

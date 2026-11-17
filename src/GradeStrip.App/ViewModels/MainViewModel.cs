@@ -263,11 +263,17 @@ public partial class MainViewModel : ViewModelBase
         {
             var (gradeSheets, reports, zipCount) = await Task.Run(() => ClassifyDroppedFiles(paths));
 
+            var beforeCount = _sessions.Count;
+            var failed = 0;
             for (var i = 0; i < gradeSheets.Count; i++)
             {
                 if (gradeSheets.Count > 1)
                     BusyText = $"正在导入成绩总表 {i + 1}/{gradeSheets.Count}…";
+
+                var countBefore = _sessions.Count;
                 await AddSessionCoreAsync(gradeSheets[i], isReportHint: false);
+                // AddSessionCoreAsync 内部吞异常，只能从状态色判断这一份是否失败
+                if (_sessions.Count == countBefore && StatusBrush != Palette.Moss) failed++;
             }
 
             if (reports.Count > 0)
@@ -281,6 +287,16 @@ public partial class MainViewModel : ViewModelBase
                 ImportNotice = "压缩包不能直接导入。请先解压后选择其中的 .xlsx / .xls 表格导入；若解压后文件名出现乱码，推荐使用 Windows 自带解压或 Bandizip。";
                 Status = ImportNotice;
                 StatusBrush = Palette.Clay;
+            }
+            else if (gradeSheets.Count > 0)
+            {
+                // 多份拖入时逐条结果会互相覆盖，最后只剩最后一份的消息。
+                // 汇总一句，让老师知道整批到底成了几场（审计 P2-34）。
+                var imported = _sessions.Count - beforeCount;
+                var summary = $"已导入 {imported} 场考试";
+                if (failed > 0) summary += $"，{failed} 份失败";
+                Status = failed > 0 ? summary + "（详见状态栏提示）" : summary;
+                StatusBrush = failed > 0 ? Palette.Clay : Palette.Moss;
             }
         });
     }
@@ -715,6 +731,28 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>把一场考试加入会话列表并激活首场。</summary>
     private ExamSession CreateSession(string path, ExamData data)
     {
+        // 同一份文件重复导入：就地更新那一场，不要新建。
+        // 否则老师会得到两场一模一样的考试，互为对比基准时全班进退步恒为 0，
+        // 而且这个错误是静默的——只在打印出来的纸面上才看得出来（审计 P2-2）。
+        var duplicate = _sessions.FirstOrDefault(s => IsSameFile(path, s.SourcePath));
+        if (duplicate is not null)
+        {
+            var replaced = new ExamSession
+            {
+                Order = duplicate.Order,
+                Label = duplicate.Label,
+                SourcePath = path,
+                SourceFileName = Path.GetFileName(path),
+                Data = data,
+            };
+            replaced.Reports.AddRange(duplicate.Reports);
+            _sessions[_sessions.IndexOf(duplicate)] = replaced;
+
+            _standaloneReports.Clear();
+            SyncExamSessions();
+            return replaced;
+        }
+
         var order = _sessions.Count + 1;
         var session = new ExamSession
         {
@@ -790,6 +828,12 @@ public partial class MainViewModel : ViewModelBase
 
             var data = await Task.Run(() => GradeSheetImporter.Load(path));
             var session = CreateSession(path, data);
+
+            // 新导入的考试成为当前视图：老师的直觉是「我导了它，就该看到它」，
+            // 停在上一场时紧接着点导出会打出旧数据（审计 P2-3）。
+            var index = _sessions.IndexOf(session);
+            if (index >= 0) ActiveExamIndex = index;
+
             ApplyActiveExamAndComparison();
 
             Status = $"已导入【第 {session.Order} 次考试】· 共 {_sessions.Count} 场考试";
