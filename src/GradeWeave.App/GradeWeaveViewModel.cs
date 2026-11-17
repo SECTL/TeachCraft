@@ -1040,6 +1040,10 @@ public partial class GradeWeaveViewModel : ObservableObject
             return;
         }
 
+        // 走班课是 IsFixed=true 的固定课，重排不会清掉（PrepareFixedLessons 只移除未锁定课）。
+        // 组删了而课时留着，就成了任何入口都清不掉的死格——右键拒绝、Delete 拒绝、
+        // 放课拒绝，提示还让「到 03 步调整走班组」，那个组已经不存在了。
+        var removedLessons = Project.Lessons.RemoveAll(l => l.IsLayered && l.GroupId == item.Group.Id);
         Project.LayeredGroups.Remove(item.Group);
         RefreshLayeredList(null);
         if (SelectedLayeredGroup is null)
@@ -1049,7 +1053,7 @@ public partial class GradeWeaveViewModel : ObservableObject
         }
 
         UpdateCounts();
-        SetStatus($"已删除走班组：{item.Name}。");
+        SetStatus($"已删除走班组：{item.Name}。" + (removedLessons > 0 ? $" 同时清除了该组 {removedLessons} 节走班课。" : string.Empty));
         ProjectChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1559,7 +1563,10 @@ public partial class GradeWeaveViewModel : ObservableObject
 
         LayeredClassGroup? layeredGroup = null;
         ConstraintRules.TryGetLayeredGroupAt(Project, classId, dayIndex, period, out layeredGroup);
-        if (lesson.IsLayered || layeredGroup is not null)
+        // 组已不存在的孤儿走班课放行清除：留着就成了死格，提示里的「到 03 步调整」也无从谈起。
+        var groupStillExists = !string.IsNullOrEmpty(lesson.GroupId)
+            && Project.LayeredGroups.Any(g => g.Id == lesson.GroupId);
+        if ((lesson.IsLayered && groupStillExists) || layeredGroup is not null)
         {
             SetStatus("这是走班课，由走班组统一安排；请到 03 步调整走班组，不能单独清除。", true);
             return;
@@ -1569,7 +1576,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         var className = Project.FindClass(classId)?.Name ?? "该班";
         Project.RemoveLessonAt(classId, dayIndex, period);
 
-        SetStatus($"已清除 {className} {WeaveDefaults.SlotText(dayIndex, period, period)} 的 {subjectName}，不会自动补课。");
+        SetStatus(lesson.IsLayered
+            ? "已清除残留的走班课。"
+            : $"已清除 {className} {WeaveDefaults.SlotText(dayIndex, period, period)} 的 {subjectName}，不会自动补课。");
         UpdateScheduleHeader();
         ScheduleInvalidated?.Invoke(this, EventArgs.Empty);
         _ = RefreshConflictsAsync(quiet: true, announce: false);
