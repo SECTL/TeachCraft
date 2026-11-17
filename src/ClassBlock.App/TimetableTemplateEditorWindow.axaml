@@ -144,7 +144,7 @@
                         IsVisible="{Binding IsBuiltin}" />
                 <Button Classes="primary" Content="保存模板" Click="OnSave"
                         IsVisible="{Binding !IsBuiltin}" IsEnabled="{Binding CanSave}" />
-                <Button Classes="ghost" Content="删除模板" x:Name="DeleteButton" Click="OnDelete"
+                <Button Classes="ghost" Content="删除模板" Click="OnDelete"
                         IsVisible="{Binding CanDelete}" />
                 <Button Classes="ghost" Content="关闭" Click="OnClose" IsCancel="True" />
             </StackPanel>

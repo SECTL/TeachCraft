@@ -212,4 +212,110 @@ public sealed class ClassBlockTemplateTests : IDisposable
         Assert.Equal("builtin-grade-9", restored.LastTemplateByGrade["九年级"]);
         Assert.Empty(ClassBlockPrefsStore.Load(Path.Combine(_root, "missing")).LastTemplateByGrade);
     }
+
+    // ------------------------------------------------------------------
+    // 新建模板分叉编号（P2-9）：startAsCopy 来自自定义模板时不得覆写原文件。
+
+    [Fact]
+    public void NewTemplateFromCustom_ForksIdAndKeepsOriginalFile()
+    {
+        var dir = Path.Combine(_root, "fork");
+        var source = SampleTemplate();
+        source.Id = "custom-1";
+        TimetableTemplateIO.SaveCustom(source, dir);
+        var originalJson = File.ReadAllText(Path.Combine(dir, "custom-1.json"));
+
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(source, startAsCopy: true);
+
+        Assert.NotEqual("custom-1", editor.TemplateId);
+        Assert.Equal("测试作息 · 副本", editor.TemplateName);
+        Assert.False(editor.IsPersisted);
+        Assert.False(editor.IsBuiltin);
+
+        TimetableTemplateIO.SaveCustom(editor.BuildTemplate(), dir);
+
+        // 原文件与副本同时存在，原文件逐字节未动。
+        Assert.True(File.Exists(Path.Combine(dir, "custom-1.json")));
+        Assert.True(File.Exists(Path.Combine(dir, $"{editor.TemplateId}.json")));
+        Assert.Equal(originalJson, File.ReadAllText(Path.Combine(dir, "custom-1.json")));
+
+        var (templates, warnings) = TimetableTemplateIO.LoadCustomTemplates(dir);
+        Assert.Empty(warnings);
+        Assert.Equal(2, templates.Count);
+    }
+
+    [Fact]
+    public void NewTemplateFromBuiltin_KeepsBuiltinIdUntilCopyAsCustom()
+    {
+        var builtin = TimetableTemplates.DefaultForGrade("九年级");
+
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(builtin, startAsCopy: true);
+
+        // 内置模板仍走「复制为自定义」显式分叉，构造时不改编号（保存按钮被 IsBuiltin 禁用）。
+        Assert.Equal(builtin.Id, editor.TemplateId);
+        Assert.Equal(builtin.Name, editor.TemplateName);
+        Assert.True(editor.IsBuiltin);
+        Assert.False(editor.IsPersisted);
+    }
+
+    // ------------------------------------------------------------------
+    // 未保存提示（P1-17）：IsDirty 对比构造时快照。
+
+    [Fact]
+    public void IsDirty_FalseAtConstruction_TrueAfterRename()
+    {
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: false);
+
+        Assert.False(editor.IsDirty);
+
+        editor.TemplateName = "改过的名字";
+
+        Assert.True(editor.IsDirty);
+    }
+
+    [Fact]
+    public void IsDirty_ForkedCopy_StartsClean()
+    {
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: true);
+
+        // 副本分叉后未做任何编辑，不算脏，不应弹关窗确认。
+        Assert.False(editor.IsDirty);
+    }
+
+    // ------------------------------------------------------------------
+    // 删除模板备份（P2-36）。
+
+    [Fact]
+    public void DeleteCustom_WithBackup_LeavesBakFile()
+    {
+        var dir = Path.Combine(_root, "backup");
+        var template = SampleTemplate();
+        template.Id = "custom-bak";
+        TimetableTemplateIO.SaveCustom(template, dir);
+        var json = File.ReadAllText(Path.Combine(dir, "custom-bak.json"));
+
+        TimetableTemplateIO.DeleteCustom("custom-bak", dir, backup: true);
+
+        Assert.False(File.Exists(Path.Combine(dir, "custom-bak.json")));
+        Assert.True(File.Exists(Path.Combine(dir, "custom-bak.json.bak")));
+        Assert.Equal(json, File.ReadAllText(Path.Combine(dir, "custom-bak.json.bak")));
+
+        var (templates, warnings) = TimetableTemplateIO.LoadCustomTemplates(dir);
+        Assert.Empty(warnings); // 「*.json」为 4 字符扩展名，只做精确匹配，.bak 不会混进模板列表
+        Assert.Empty(templates);
+    }
+
+    [Fact]
+    public void DeleteCustom_WithoutBackup_RemovesFileOnly()
+    {
+        var dir = Path.Combine(_root, "nobackup");
+        var template = SampleTemplate();
+        template.Id = "custom-nobak";
+        TimetableTemplateIO.SaveCustom(template, dir);
+
+        TimetableTemplateIO.DeleteCustom("custom-nobak", dir);
+
+        Assert.False(File.Exists(Path.Combine(dir, "custom-nobak.json")));
+        Assert.False(File.Exists(Path.Combine(dir, "custom-nobak.json.bak")));
+    }
 }
