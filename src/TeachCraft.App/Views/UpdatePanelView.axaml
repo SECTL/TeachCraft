@@ -109,6 +109,14 @@
                              Foreground="{StaticResource AccentBrush}"
                              Background="{StaticResource LineBrush}" />
 
+                <!-- 速度与剩余时间：「12.4 MB / 58.2 MB · 1.4 MB/s · 剩余约 32 秒」。
+                     等下载的时候，老师真正想知道的是「还要多久」，光一个百分比答不了。 -->
+                <TextBlock Text="{Binding UpdateProgressDetail}" FontFamily="{StaticResource MonoFont}"
+                           FontSize="10" Foreground="{StaticResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasUpdateSpeed}"
+                           AutomationProperties.Name="下载速度与剩余时间" />
+
                 <!-- 有新版时才出现的解释：升级路径 + 完整性信任边界 -->
                 <TextBlock Text="{Binding UpdateExplanation}" FontSize="10.5" LineHeight="18"
                            TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"

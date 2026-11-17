@@ -17,6 +17,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using TeachCraft.App.Controls;
+using TeachCraft.Core.Updating;
 using SeatGrid.App;
 using ClassBlock.App;
 using TeachCraft.App.ViewModels;
@@ -66,8 +67,14 @@ public partial class MainWindow : Window
     {
         try
         {
-            var progress = new Progress<int>(percent =>
-                ViewModel.SetStatus($"正在下载更新… {percent}%"));
+            // 状态栏也带速度：老师在这儿等的时候，最想知道的是「还要多久」。
+            var progress = new Progress<DownloadProgress>(p =>
+            {
+                var detail = DownloadText.ProgressLine(p);
+                ViewModel.SetStatus(detail.Length > 0
+                    ? $"正在下载更新… {detail}"
+                    : "正在下载更新…");
+            });
 
             var message = await ViewModel.DownloadAndInstallAsync(progress);
             ViewModel.SetStatus(message);
@@ -121,15 +128,21 @@ public partial class MainWindow : Window
         {
             ViewModel.IsUpdateBusy = true;
             ViewModel.UpdateProgress = 0;
+            ViewModel.UpdateProgressDetail = string.Empty;
 
-            var progress = new Progress<int>(percent =>
+            var progress = new Progress<DownloadProgress>(p =>
             {
-                ViewModel.UpdateProgress = percent;
-                ViewModel.UpdateStateText = $"正在下载… {percent}%";
+                ViewModel.UpdateProgress = p.IsSizeKnown ? p.Percent : 0;
+                // 百分比已经写在上面那行状态里，速度行不再重复，只报量 / 速度 / 剩余。
+                ViewModel.UpdateProgressDetail = DownloadText.AmountLine(p);
+                ViewModel.UpdateStateText = p.IsSizeKnown
+                    ? $"正在下载… {p.Percent}%"
+                    : "正在下载…";
             });
 
             var message = await ViewModel.DownloadAndInstallAsync(progress);
             ViewModel.UpdateStateText = message;
+            ViewModel.UpdateProgressDetail = string.Empty;
         }
         catch (Exception ex)
         {
@@ -138,6 +151,8 @@ public partial class MainWindow : Window
         finally
         {
             ViewModel.IsUpdateBusy = false;
+            // 速度行只在下载时有意义；收尾必须清掉，否则会停在最后一个读数上冒充「还在下」。
+            ViewModel.UpdateProgressDetail = string.Empty;
         }
     }
 

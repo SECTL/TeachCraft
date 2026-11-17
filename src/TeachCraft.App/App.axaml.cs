@@ -1638,6 +1638,24 @@ public partial class App : Application
                     await Task.Delay(400);
                 }
 
+                // 走查缝：把「正在下载 + 速度行」摆出来。
+                // 真跑去下 60MB 不现实，这里只喂一段假进度给界面，不联网、不落盘。
+                var speedIndex = Array.IndexOf(args, "--preview-update-speed");
+                if (speedIndex >= 0 && window.DataContextAsMainViewModel is { } updateVm)
+                {
+                    updateVm.IsUpdateBusy = true;
+                    updateVm.UpdateProgress = 45;
+                    updateVm.UpdateStateText = "正在下载… 45%";
+                    updateVm.UpdateProgressDetail = TeachCraft.Core.Updating.DownloadText.AmountLine(
+                        new TeachCraft.Core.Updating.DownloadProgress(
+                            Percent: 45,
+                            BytesReceived: (long)(26.2 * 1024 * 1024),
+                            TotalBytes: (long)(58.2 * 1024 * 1024),
+                            BytesPerSecond: 1.42 * 1024 * 1024,
+                            IsSizeKnown: true));
+                    await Task.Delay(300);
+                }
+
                 var metricsIndex = Array.IndexOf(args, "--shot-metrics");
                 if (metricsIndex >= 0 && metricsIndex + 1 < args.Length)
                     window.DumpCardLayout(args[metricsIndex + 1]);

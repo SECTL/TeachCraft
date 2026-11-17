@@ -214,6 +214,17 @@ public partial class MainViewModel : ObservableObject
     /// <summary>下载进度百分比；仅在下载阶段有意义。</summary>
     [ObservableProperty] private int _updateProgress;
 
+    /// <summary>
+    /// 下载详细情况：「12.4 MB / 58.2 MB · 1.4 MB/s · 剩余约 32 秒」。
+    /// 与百分比分开：百分比驱动进度条，这一行回答「还要等多久」。
+    /// </summary>
+    [ObservableProperty] private string _updateProgressDetail = string.Empty;
+
+    /// <summary>进度条下方那行速度文本是否该出现（没在下载就藏起来，不留空行）。</summary>
+    public bool HasUpdateSpeed => !string.IsNullOrEmpty(UpdateProgressDetail);
+
+    partial void OnUpdateProgressDetailChanged(string value) => OnPropertyChanged(nameof(HasUpdateSpeed));
+
     /// <summary>上次检查时间，取自本机状态文件。</summary>
     [ObservableProperty] private string _lastCheckedText = "从未检查";
 
@@ -669,9 +680,25 @@ public partial class MainViewModel : ObservableObject
     /// 分级：Windows 安装包可以真正装完并重启；其余形态只把下载好的文件位置
     /// 与可执行的替换步骤告诉用户——不自替换正在运行的程序。
     /// </summary>
-    public async Task<string> DownloadAndInstallAsync(
+    public Task<string> DownloadAndInstallAsync(
         IProgress<int>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        // 旧重载保留：状态栏那条只显示百分比的路径不该被迫接一个新类型。
+        DownloadAndInstallCoreAsync(
+            progress is null ? null : new Progress<DownloadProgress>(p => progress.Report(p.Percent)),
+            cancellationToken);
+
+    /// <summary>
+    /// 带速度的下载。界面用 <see cref="DownloadProgress"/> 同时驱动进度条与速度行。
+    /// </summary>
+    public Task<string> DownloadAndInstallAsync(
+        IProgress<DownloadProgress>? progress,
+        CancellationToken cancellationToken = default) =>
+        DownloadAndInstallCoreAsync(progress, cancellationToken);
+
+    private async Task<string> DownloadAndInstallCoreAsync(
+        IProgress<DownloadProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var proposal = PendingUpdate;
         if (proposal is null) return "没有待安装的更新。";

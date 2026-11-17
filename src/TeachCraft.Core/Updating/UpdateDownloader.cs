@@ -82,12 +82,38 @@ public sealed class UpdateDownloader
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "TeachCraft", "Update", "downloads");
 
-    public async Task<DownloadResult> DownloadAsync(
+    public Task<DownloadResult> DownloadAsync(
         ReleaseAsset asset,
         string tag,
         string? expectedSha256,
         CancellationToken cancellationToken = default,
-        IProgress<int>? progress = null)
+        IProgress<int>? progress = null) =>
+        // 旧重载保留：调用方只关心百分比时不该被迫接一个新类型。
+        DownloadDetailedAsync(asset, tag, expectedSha256, cancellationToken, ProgressAdapter(progress));
+
+    /// <summary>
+    /// 带字节数与速度的下载。界面据此显示「45% · 12.4 MB / 58.2 MB · 1.4 MB/s · 剩余约 32 秒」。
+    ///
+    /// 速度只在这里算：下载循环是唯一知道「某个字节何时到」的地方，
+    /// 放到 ViewModel 里算就只能靠百分比反推，粒度粗到 1% 一档，根本量不出速度。
+    /// </summary>
+    public Task<DownloadResult> DownloadAsync(
+        ReleaseAsset asset,
+        string tag,
+        string? expectedSha256,
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress>? progress) =>
+        DownloadDetailedAsync(asset, tag, expectedSha256, cancellationToken, progress);
+
+    private static IProgress<DownloadProgress>? ProgressAdapter(IProgress<int>? inner) =>
+        inner is null ? null : new Progress<DownloadProgress>(p => inner.Report(p.Percent));
+
+    private async Task<DownloadResult> DownloadDetailedAsync(
+        ReleaseAsset asset,
+        string tag,
+        string? expectedSha256,
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress>? progress)
     {
         var targetDir = Path.Combine(_root, Sanitize(tag));
 
@@ -117,9 +143,49 @@ public sealed class UpdateDownloader
                 await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 await using var destination = File.Create(partPath);
 
+                // 总大小：响应头与实际声明都要校验。
+                //
+                // 只信响应头不够——资产声明 1024、响应头也写 1024、实际只给 512 时，
+                // 「读到的字节数 == 响应头」会通过，半截文件被当成完好的。
+                // 只信 asset.Size 也不够——镜像或重定向可能改写大小。
+                // 所以进度用响应头（更贴近这次实际在传的量），**结束时的完整性两个都比**。
+                var headerLength = response.Content.Headers.ContentLength is { } length && length > 0
+                    ? length
+                    : 0;
+                var totalBytes = headerLength > 0 ? headerLength : asset.Size;
+                var sizeKnown = totalBytes > 0;
+
                 var buffer = new byte[81920];
                 long total = 0;
                 var lastReported = -1;
+
+                var meter = new DownloadSpeedMeter();
+                var startedAt = DateTimeOffset.UtcNow;
+
+                // 节流：速度数字每变一次就发会刷屏，250ms 一次既跟得上又不至于抖成噪声。
+                //
+                // 初值用 null 而不是 TimeSpan.MinValue：MinValue 参与 lastEmit 的减法会直接
+                // overflow（Stopwatch.Elapsed 是个正常值，减去 MinValue 就超出 TimeSpan 范围），
+                // 抛出的是 OverflowException，被外层 catch 包装成「请检查网络后重试」——
+                // 一个纯计算 bug 伪装成网络故障，最难查的那种。
+                TimeSpan? lastEmit = null;
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                void Emit()
+                {
+                    if (progress is null) return;
+
+                    var now = DateTimeOffset.UtcNow;
+                    var elapsed = stopwatch.Elapsed;
+                    if (lastEmit is { } prev && elapsed - prev < TimeSpan.FromMilliseconds(250)) return;
+                    lastEmit = elapsed;
+
+                    var percent = sizeKnown ? (int)Math.Min(100, total * 100 / totalBytes) : 0;
+                    var speed = meter.Sample(now, total);
+                    progress.Report(new DownloadProgress(percent, total, totalBytes, speed, sizeKnown));
+                }
+
+                meter.Start(startedAt, 0);
 
                 while (true)
                 {
@@ -129,13 +195,18 @@ public sealed class UpdateDownloader
                     await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                     total += read;
 
-                    if (asset.Size > 0 && progress is not null)
+                    Emit();
+
+                    // 百分比首次进入新档位时补一发：大文件按 250ms 节流会跳档，
+                    // 而「45%」这种整数台阶是用户最直接看的参照物。
+                    if (sizeKnown)
                     {
-                        var percent = (int)Math.Min(100, total * 100 / asset.Size);
-                        if (percent != lastReported)
+                        var percent = (int)Math.Min(100, total * 100 / totalBytes);
+                        if (percent != lastReported && progress is not null)
                         {
                             lastReported = percent;
-                            progress.Report(percent);
+                            var speed = meter.Sample(DateTimeOffset.UtcNow, total);
+                            progress.Report(new DownloadProgress(percent, total, totalBytes, speed, sizeKnown));
                         }
                     }
                 }
@@ -144,7 +215,10 @@ public sealed class UpdateDownloader
                 destination.Close();
 
                 // 长度不符：删掉半截文件，别让用户以为下好了。
-                if (asset.Size > 0 && total != asset.Size)
+                // 两个基准都比：响应头（本次实际在传的量）与 asset.Size（发布页声明）。
+                var shortAgainstHeader = headerLength > 0 && total != headerLength;
+                var shortAgainstAsset = asset.Size > 0 && total != asset.Size;
+                if (shortAgainstHeader || shortAgainstAsset)
                 {
                     TryDelete(partPath);
                     return DownloadResult.Fail(UpdateErrorText.DownloadFailed);
@@ -152,6 +226,10 @@ public sealed class UpdateDownloader
 
                 if (expectedSha256 is not null)
                 {
+                    // 校验阶段读的是本地文件，速度已无意义——显式发 0，界面不要停在上一个速度上。
+                    progress?.Report(new DownloadProgress(
+                        sizeKnown ? 100 : 0, total, totalBytes, 0, sizeKnown));
+
                     var actual = await ComputeSha256Async(partPath, cancellationToken).ConfigureAwait(false);
                     if (!string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase))
                     {
@@ -162,7 +240,7 @@ public sealed class UpdateDownloader
             }
 
             File.Move(partPath, finalPath, overwrite: true);
-            progress?.Report(100);
+            progress?.Report(new DownloadProgress(100, asset.Size, asset.Size, 0, asset.Size > 0));
             return DownloadResult.Ok(finalPath);
         }
         catch (OperationCanceledException)
