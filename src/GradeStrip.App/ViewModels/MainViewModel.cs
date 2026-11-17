@@ -7,6 +7,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -392,8 +393,6 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HeaderTitle));
     }
 
-    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanExport));
-
     partial void OnSectionChanged(int value)
     {
         OnPropertyChanged(nameof(IsOverviewVisible));
@@ -777,6 +776,37 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>统一的忙碌态包装：耗时操作全部在后台完成，UI 线程只更新状态与集合。</summary>
+    /// <summary>忙碌遮罩是否可见：置忙后延迟 400ms 才亮，快操作不闪一下。</summary>
+    [ObservableProperty] private bool _showBusyOverlay;
+
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+    private CancellationTokenSource? _busyCts;
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanExport));
+
+        if (!value)
+        {
+            _busyCts?.Cancel();
+            _busyCts = null;
+            ShowBusyOverlay = false;
+            return;
+        }
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested && IsBusy) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
+    }
+
     private async Task RunBusyAsync(string text, Func<Task> action)
     {
         IsBusy = true;

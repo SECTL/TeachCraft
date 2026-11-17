@@ -1846,10 +1846,12 @@
             </Border>
         </Grid>
 
-        <!-- 忙碌遮罩：导入 / 解析 / 导出期间挡住重复操作，旋转弧线提示程序仍在工作 -->
+        <!-- 忙碌遮罩：导入 / 解析 / 导出期间挡住重复操作，旋转弧线提示程序仍在工作。
+             绑 ShowBusyOverlay 而不是 IsBusy：置忙后延迟 400ms 才亮，
+             导出 30 人成绩条这种 200ms 的操作不再整屏闪一下（审计 P3-24）。 -->
         <Grid Grid.ColumnSpan="2" Background="#66141413"
-              IsVisible="{Binding IsBusy}">
-            <Border Classes="card" Classes.busy-in="{Binding IsBusy}"
+              IsVisible="{Binding ShowBusyOverlay}">
+            <Border Classes="card" Classes.busy-in="{Binding ShowBusyOverlay}"
                     Width="284" Padding="26,24"
                     Background="{StaticResource PaperBrush}"
                     HorizontalAlignment="Center" VerticalAlignment="Center">

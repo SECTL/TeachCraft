@@ -1072,7 +1072,7 @@
                                     </Grid>
                                 </StackPanel>
                                 <TextBlock Classes="helper"
-                                           Text="方向按当前视角计算，超出边缘自动绕回。行首排号与列尾 ⠿ 把手可按住拖动，与目标整排 / 整列对调。" />
+                                           Text="方向按当前视角计算，超出边缘自动绕回。行首排号与列尾 ⠿ 把手可按住拖动，与目标整排 / 整列对调；双击有人的座位可按姓名或拼音快速换人。" />
                                 <StackPanel Spacing="6">
                                     <TextBlock Classes="field-label" Text="周轮转（只换组，行列不动）" />
                                     <Grid ColumnDefinitions="*,*" ColumnSpacing="6">

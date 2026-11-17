@@ -967,7 +967,17 @@ public partial class MainWindow : Window
 
         var tool = ViewModel.SelectedTool;
         if (tool.IsMultiFile) tool.AddFiles(paths);
-        else tool.ReplaceFiles(paths.Take(1));
+        else
+        {
+            tool.ReplaceFiles(paths.Take(1));
+            // 多文件拖到单文件工具上时不能静默丢掉其余的：
+            // 老师以为 30 张都转好了，其实只处理了第一张（审计 P2-25）。
+            if (paths.Count > 1)
+                ViewModel.SetStatus($"{tool.Name} · 一次只能处理一个文件，已取第一个：{Path.GetFileName(paths[0])}", true);
+            else
+                ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.Files.Count} 个文件");
+            return;
+        }
 
         ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.Files.Count} 个文件");
     }
