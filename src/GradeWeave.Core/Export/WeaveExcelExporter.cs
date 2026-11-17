@@ -121,7 +121,7 @@ public sealed partial class WeaveExcelExporter
 
         WriteTitle(ws, columnCount,
             WeaveExportSupport.Heading(project, "总课表"),
-            $"导出时间：{DateTime.Now:yyyy-MM-dd HH:mm} · 本机生成，文件不上传");
+            $"导出时间：{DateTime.Now:yyyy-MM-dd HH:mm} · 本机生成");
 
         var corner = ws.Range(3, 1, 4, 1);
         if (corner.Cells().Count() > 1) corner.Merge();

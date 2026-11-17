@@ -260,7 +260,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private IBrush _statusBrush = Moss;
 
     /// <summary>状态栏默认/复位文案。默认文案与复位文案必须是同一个常量，否则用完面板后旧口径会复活。</summary>
-    public const string DefaultStatusText = "本机运行 · 文件不上传（仅检查更新会联网）";
+    public const string DefaultStatusText = "本机处理 · 联网仅限更新与集控";
 
     /// <summary>是否有可用新版本。与 StatusText 分开，提示条是独立的一块视觉。</summary>
     [ObservableProperty] private bool _isUpdateAvailable;

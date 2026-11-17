@@ -112,9 +112,14 @@ public sealed class OobeContentTests
     }
 
     [Fact]
-    public void Copy_StatesThatOnlyUpdateCheckGoesOnline()
+    public void Copy_StatesBothNetworkSurfaces()
     {
-        Assert.Contains("检查更新", AllText(), StringComparison.Ordinal);
+        // 2026-11-16 起联网有两处。引导页必须把「集控默认关闭」讲清楚，
+        // 否则老师会以为软件背着他在连网。
+        var text = AllText();
+        Assert.Contains("检查更新", text, StringComparison.Ordinal);
+        Assert.Contains("集控", text, StringComparison.Ordinal);
+        Assert.Contains("默认关闭", text, StringComparison.Ordinal);
     }
 
     /// <summary>

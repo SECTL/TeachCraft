@@ -1238,7 +1238,7 @@
                 <TextBlock Grid.Column="1" Text="{Binding SeatStats}"
                            FontFamily="{StaticResource MonoFont}" FontSize="9"
                            Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="2" Text="LOCAL ONLY · 名单不上传"
+                <TextBlock Grid.Column="2" Text="LOCAL ONLY · 本机处理"
                            FontFamily="{StaticResource MonoFont}" FontSize="8.5"
                            LetterSpacing="1.2" Foreground="{StaticResource MossBrush}"
                            VerticalAlignment="Center" />

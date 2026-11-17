@@ -1411,7 +1411,7 @@
                                FontSize="9" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis"
                                MaxWidth="360" />
                 </StackPanel>
-                <TextBlock Grid.Column="2" Text="LOCAL ONLY · 本机运行 · 文件不上传"
+                <TextBlock Grid.Column="2" Text="LOCAL ONLY · 本机运行"
                            FontFamily="{StaticResource MonoFont}" FontSize="8.5"
                            LetterSpacing="1.1" Foreground="{StaticResource MossBrush}"
                            VerticalAlignment="Center" />

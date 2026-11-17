@@ -135,7 +135,7 @@
                                Foreground="{StaticResource MutedBrush}"
                                TextWrapping="Wrap" IsVisible="{Binding HasData}" />
                     <Border Height="1" Background="{StaticResource LineBrush}" />
-                    <TextBlock Text="LOCAL ONLY · 文件不上传" Classes="mono-label" FontSize="9" />
+                    <TextBlock Text="LOCAL ONLY · 本机处理" Classes="mono-label" FontSize="9" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -1873,7 +1873,7 @@
                     <StackPanel Spacing="6" HorizontalAlignment="Center">
                         <TextBlock Text="{Binding BusyText}" Classes="display" FontSize="15"
                                    HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-                        <TextBlock Text="LOCAL ONLY · 本机解析 · 文件不上传" Classes="mono-label"
+                        <TextBlock Text="LOCAL ONLY · 本机解析" Classes="mono-label"
                                    FontSize="9.5" LetterSpacing="1.2" HorizontalAlignment="Center" />
                     </StackPanel>
                 </StackPanel>

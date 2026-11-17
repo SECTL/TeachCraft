@@ -52,3 +52,23 @@ outputs/
 
 # Claude Code 会话工具配置（本机）
 .claude/
+
+# 集控凭据（2026-11-16）
+# 运行时凭据只写 %LOCALAPPDATA%\TeachCraft\Control\，正常不会落进仓库；
+# 这几行是防手滑：调试时若把凭据写在项目目录里，git add -A 必须加不进去。
+# 只忽略具体文件名，不忽略整个 Control 目录 —— 代码（SectlControlClient.cs 等）要提交。
+**/Control/credential.json
+**/Control/device_secret*
+**/Control/*.secret
+src/TeachCraft.Core/Control/*.json
+src/TeachCraft.App/Control/*.json
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 原子写的中间文件（UpdateStateStore / ControlSettingsStore 都是先写 .tmp 再 Move）
+*.tmp
+*.bak
+

@@ -67,7 +67,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         ? "名单来自合成示例，可随意点选与修改。"
         : !HasRegistrationData
             ? "从右上角导入班级报名表开始；文件仅在本机处理。"
-            : "导入的数据仅在本机处理，不上传。";
+            : "导入的数据仅在本机处理。";
 
     public bool HasAnyData => AllClasses.Count > 0 || _project.Days.Count > 0;
     public bool HasRegistrationData => _isDemo ||

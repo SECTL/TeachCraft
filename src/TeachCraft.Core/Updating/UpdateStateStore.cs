@@ -1,6 +1,6 @@
 namespace TeachCraft.Core.Updating;
 
-/// <summary>本机更新状态。只存与本机有关的东西，不上传。</summary>
+/// <summary>本机更新状态。只存与本机有关的东西，不经过网络。</summary>
 /// <param name="LastCheckUtc">上次检查时间。</param>
 /// <param name="SkippedVersions">用户点过「跳过」的版本。</param>
 /// <param name="PreferredSource">用户手动选定的更新源；null 表示用默认（GitHub + 自动回退）。</param>

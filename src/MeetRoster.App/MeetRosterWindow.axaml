@@ -1481,7 +1481,7 @@
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                     <Ellipse Width="5" Height="5" Fill="{StaticResource MossBrush}" />
-                    <TextBlock Text="本机运行 · 文件不上传" FontFamily="{StaticResource MonoFont}" FontSize="10"
+                    <TextBlock Text="本机运行 · 本机处理" FontFamily="{StaticResource MonoFont}" FontSize="10"
                                LetterSpacing="0.6" Foreground="{StaticResource MossBrush}" />
                     <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="10"
                                Foreground="{StaticResource LineStrongBrush}" />

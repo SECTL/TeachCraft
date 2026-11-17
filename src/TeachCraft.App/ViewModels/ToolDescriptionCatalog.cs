@@ -49,7 +49,7 @@ public static class ToolDescriptionCatalog
             new[] { "三格式互转", "EXIF 摆正", "白底兜底", "画质可调" },
             "PNG / JPG / WebP / BMP / GIF",
             "*-转换.png | jpg | webp",
-            "本机 SkiaSharp 解码与编码，文件不上传",
+            "本机 SkiaSharp 解码与编码，本机处理",
             new[]
             {
                 "格式任选：PNG 无损，JPG / WebP 可调画质 40–100。",
@@ -63,7 +63,7 @@ public static class ToolDescriptionCatalog
             new[] { "宽高像素", "等比缩放", "百分比", "方向摆正" },
             "任意常见图片（PNG / JPG / WebP / BMP / GIF）",
             "*-缩放.<原扩展名>",
-            "本机 SkiaSharp 三次卷积缩放，文件不上传",
+            "本机 SkiaSharp 三次卷积缩放，本机处理",
             new[]
             {
                 "只填宽度或高度，另一边按原图比例自动算，不会被拉变形。",
@@ -105,7 +105,7 @@ public static class ToolDescriptionCatalog
             new[] { "文字可编辑", "版面保真", "DPI 72–300", "分页保留" },
             "PDF（加密文档需先解除密码）",
             "*-转换.docx",
-            "本机 PdfPig 提取 / PDFium 渲染，文件不上传",
+            "本机 PdfPig 提取 / PDFium 渲染，本机处理",
             new[]
             {
                 "文字模式逐行抽取正文并保留分页，适合二次编辑。",
@@ -119,7 +119,7 @@ public static class ToolDescriptionCatalog
             new[] { "A4 自动排版", "表格保留", "页脚页码", "无需装 Word" },
             ".docx（Word 文档）",
             "与原文件同名的 .pdf（可另选位置）",
-            "本机 QuestPDF 排版，文件不上传",
+            "本机 QuestPDF 排版，本机处理",
             new[]
             {
                 "读段落与表格后按 A4 排版，不依赖本机是否装了 Word。",
@@ -133,7 +133,7 @@ public static class ToolDescriptionCatalog
             new[] { "顺序可控", "横竖自适应", "A4 居中", "一页一图" },
             "多张图片（可一次多选，也可以追加）",
             "图片合成.pdf",
-            "本机 QuestPDF 排版，图片不上传",
+            "本机 QuestPDF 排版，本机处理",
             new[]
             {
                 "列表里每行都能上移、下移、移除，顺序就是最终页序。",
@@ -147,7 +147,7 @@ public static class ToolDescriptionCatalog
             new[] { "逐页 PNG", "DPI 72–300", "进度可见", "输出到文件夹" },
             "PDF 文档",
             "<输出文件夹>\\*-第N页.png",
-            "本机 PDFium 渲染，逐页写盘，不上传",
+            "本机 PDFium 渲染，逐页写盘，本机处理",
             new[]
             {
                 "逐页渲染逐页写盘，几十页的扫描件也不会把内存撑爆。",
@@ -161,7 +161,7 @@ public static class ToolDescriptionCatalog
             new[] { "顺序可调", "至少两份", "原文件不动", "输出保护" },
             "多份 PDF（至少 2 份）",
             "合并结果.pdf",
-            "本机 PDFsharp 导入页对象，文件不上传",
+            "本机 PDFsharp 导入页对象，本机处理",
             new[]
             {
                 "少于两份会提示先补齐，不会生成一份空文件。",
@@ -175,7 +175,7 @@ public static class ToolDescriptionCatalog
             new[] { "页码范围", "中英文逗号", "越界即报错", "原文件不动" },
             "PDF 文档",
             "*-提取.pdf",
-            "本机 PDFsharp 复制页对象，文件不上传",
+            "本机 PDFsharp 复制页对象，本机处理",
             new[]
             {
                 "支持 1-3,5 与 1–3、1~3 等写法，中英文逗号都能识别。",
@@ -192,7 +192,7 @@ public static class ToolDescriptionCatalog
             new[] { "成绩条导出", "多考对比", "学科诊断", "学生画像" },
             ".xlsx / .xlsm / .xls（成绩总表与智学网分析报表）",
             "A4 横向成绩条 .xlsx",
-            "文件不上传",
+            "本机处理",
             new[]
             {
                 "多场考试按时间排序，任选一场作基准算进退步。",
@@ -206,7 +206,7 @@ public static class ToolDescriptionCatalog
             new[] { "名单自动识别", "八种排法", "考场与桌贴", "教室画布" },
             ".xlsx / .xls / .csv（带表头或不带表头的名单都认）",
             "PNG / A4 PDF / Excel 座位表 + 考场桌贴 + 配置 .xlsx",
-            "本机 SkiaSharp + QuestPDF，文件不上传",
+            "本机 SkiaSharp + QuestPDF，本机处理",
             new[]
             {
                 "排法：名单顺序、男女交替、随机、按身高、按视力、同性同桌、成绩均衡、成绩分层。",
@@ -220,7 +220,7 @@ public static class ToolDescriptionCatalog
             new[] { "只收 xlsx", "班级自动识别", "作息模板", "PNG + PDF" },
             ".xlsx 课程总表（带分工表、午学、课服 / 晚修更好）",
             "PNG 图片 / A4 PDF",
-            "本机 ClosedXML 读取 + QuestPDF 排版，文件不上传",
+            "本机 ClosedXML 读取 + QuestPDF 排版，本机处理",
             new[]
             {
                 "行序由作息模板驱动，内置七 / 八 / 九三套预设可另存。",
@@ -234,7 +234,7 @@ public static class ToolDescriptionCatalog
             new[] { "五步流程", "自动编排", "七类冲突", "Excel / PNG / PDF" },
             "年级工作簿 .xlsx（分工表 / 确认表 / 课程表 / 会议备注）或 .weave.json 工程",
             "总表 / 分工表 / 教师职位表 / 班级课表 / 教师课表 / 冲突页",
-            "本机 ClosedXML + QuestPDF，课表不上传",
+            "本机 ClosedXML + QuestPDF，本机处理",
             new[]
             {
                 "作息未确认时生成按钮禁用，节次一改就要重新确认。",
@@ -248,7 +248,7 @@ public static class ToolDescriptionCatalog
             new[] { "秩序册整本导入", "规则体检", "单班高亮", "导出参赛手册" },
             "班级报名表 .xlsx（可多选）、秩序册 .xlsx，或往届「竞赛日程 / 项目分组表」",
             "按班回写的报名表 + 全部或单班的 Excel / PDF 参赛手册",
-            "本机 ClosedXML 读写、SkiaSharp 排版，报名表与秩序册不上传",
+            "本机 ClosedXML 读写、SkiaSharp 排版，本机处理",
             new[]
             {
                 "秩序册一次读齐名单与赛程，号码布、领队与工作人员都带进来。",

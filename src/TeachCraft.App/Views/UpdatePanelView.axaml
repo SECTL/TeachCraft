@@ -144,7 +144,7 @@
                     <TextBlock Text="LOCAL ONLY" FontFamily="{StaticResource MonoFont}" FontSize="9"
                                LetterSpacing="1.6" Foreground="{StaticResource MossBrush}" />
                 </StackPanel>
-                <TextBlock Text="点「检查更新」时，程序只向所选更新源读取版本号，不发送任何本机信息，也没有账号与遥测。你的文件从不上传。"
+                <TextBlock Text="点「检查更新」时，程序只向所选更新源读取版本号，不发送任何本机信息，也没有账号与遥测。这一项与集控是两条独立通道：集控另在设置里开启，默认关闭。"
                            FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
                            Foreground="{StaticResource InkSoftBrush}" />
                 <TextBlock Text="GitHub 在部分校园网里连不上，此时可改用 SECTL 镜像：它是同一批发布资产的副本，校验清单一致，只换下载地址。"

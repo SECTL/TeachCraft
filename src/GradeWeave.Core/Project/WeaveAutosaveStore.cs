@@ -47,7 +47,7 @@ public sealed record WeaveAutosaveResult(
 
 /// <summary>
 /// 自动保存落盘。有当前工程文件时原子写回该文件；没有路径或工程文件不可写时，
-/// 写本机恢复文件与元数据，下次启动可恢复。所有文件都在本机，不上传。
+/// 写本机恢复文件与元数据，下次启动可恢复。所有文件都在本机，不经过网络。
 /// </summary>
 public sealed class WeaveAutosaveStore
 {
