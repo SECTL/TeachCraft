@@ -47,9 +47,10 @@ public sealed class SeatCanvasEditorWindow : Window
 
         Title = "编辑教室画布";
         Width = 720;
-        SizeToContent = SizeToContent.Height;
-        MaxHeight = 760;
-        CanResize = false;
+        Height = 700;
+        MinWidth = 520;
+        MinHeight = 540;
+        CanResize = true;
         ShowInTaskbar = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = Paper;
@@ -60,25 +61,48 @@ public sealed class SeatCanvasEditorWindow : Window
 
     private Control BuildContent()
     {
-        var root = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 14 };
+        var root = new Grid
+        {
+            Margin = new Thickness(24, 20, 24, 20),
+            RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,Auto"),
+        };
 
-        root.Children.Add(new TextBlock
+        var title = new TextBlock
         {
             Text = "编辑教室画布", FontSize = 17, FontWeight = FontWeight.SemiBold, Foreground = Ink,
-        });
-        root.Children.Add(new TextBlock
+        };
+        root.Children.Add(title);
+
+        var hint = new TextBlock
         {
             Text = $"当前布局 {_layout.Groups} 组 × {_layout.Rows} 排 × {_layout.Columns} 列。点格子切换「座位 / 过道」。",
             FontSize = 11.5, Foreground = Muted, TextWrapping = TextWrapping.Wrap, LineHeight = 18,
-        });
+            Margin = new Thickness(0, 6, 0, 10),
+        };
+        Grid.SetRow(hint, 1);
+        root.Children.Add(hint);
 
-        root.Children.Add(BuildGrid());
+        // 网格必须可滚动：8 组 × 10 排时格子总宽 828 DIP、总高 616+，
+        // 720 宽的固定窗口装不下，两侧格子与底部按钮一起被裁（P2-37）。
+        // 滚动容器右缘留 14px：Avalonia 的滚动条覆盖在内容上（见 .memory/06 的既有踩坑）。
+        var scroller = new ScrollViewer
+        {
+            Content = BuildGrid(),
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Margin = new Thickness(0, 0, 14, 0),
+        };
+        Grid.SetRow(scroller, 2);
+        root.Children.Add(scroller);
 
-        root.Children.Add(new TextBlock
+        var note = new TextBlock
         {
             Text = "灰色格子不会坐人，也不会出现在自动排座里。走廊通道请在右侧面板调间距。",
             FontSize = 10, LineHeight = 16, Foreground = Muted, TextWrapping = TextWrapping.Wrap,
-        });
+            Margin = new Thickness(0, 10, 0, 10),
+        };
+        Grid.SetRow(note, 3);
+        root.Children.Add(note);
 
         var buttons = new StackPanel
         {
@@ -87,6 +111,7 @@ public sealed class SeatCanvasEditorWindow : Window
         buttons.Children.Add(MakeButton("清空画布", Muted, clear: true));
         buttons.Children.Add(MakeButton("取消", Muted, cancel: true));
         buttons.Children.Add(MakeButton("确定", Ink, confirm: true));
+        Grid.SetRow(buttons, 4);
         root.Children.Add(buttons);
 
         return root;

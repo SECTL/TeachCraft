@@ -84,12 +84,14 @@ public static class TimetableTemplateIO
         return path;
     }
 
-    public static void DeleteCustom(string id, string? directory = null)
+    public static void DeleteCustom(string id, string? directory = null, bool backup = false)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
 
         var path = Path.Combine(directory ?? GetCustomDirectory(), $"{id}.json");
-        if (File.Exists(path)) File.Delete(path);
+        if (!File.Exists(path)) return;
+        if (backup) File.Copy(path, path + ".bak", overwrite: true);
+        File.Delete(path);
     }
 }
 

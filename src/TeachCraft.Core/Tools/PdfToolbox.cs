@@ -33,13 +33,24 @@ public static class PdfToolbox
         {
             using var target = new PdfDocument();
             var pages = 0;
-            foreach (var file in inputs)
+            for (var index = 0; index < inputs.Count; index++)
             {
-                using var source = PdfReader.Open(file, PdfDocumentOpenMode.Import);
-                for (var i = 0; i < source.PageCount; i++)
+                var file = inputs[index];
+                // 逐文件包一层：8 份合并到第 5 份坏了，必须说清是第几份、叫什么，
+                // 否则老师只能一份份重试排查（审计 P2-27）。
+                try
                 {
-                    target.AddPage(source.Pages[i]);
-                    pages++;
+                    using var source = PdfReader.Open(file, PdfDocumentOpenMode.Import);
+                    for (var i = 0; i < source.PageCount; i++)
+                    {
+                        target.AddPage(source.Pages[i]);
+                        pages++;
+                    }
+                }
+                catch (Exception ex) when (ex is not ToolboxException)
+                {
+                    throw new ToolboxException(
+                        $"第 {index + 1} 份「{Path.GetFileName(file)}」读取失败：{ExplainPdfError(ex)}");
                 }
             }
 
@@ -74,12 +85,15 @@ public static class PdfToolbox
         }
     }
 
-    public static string ImagesToPdf(IReadOnlyList<string> images, string output)
+    public static string ImagesToPdf(
+        IReadOnlyList<string> images, string output, IProgress<int>? progress = null)
     {
         if (images.Count == 0) throw new ToolboxException("请先选择图片。");
 
         try
         {
+            var index = 0;
+            var total = Math.Max(1, images.Count);
             Document.Create(container =>
             {
                 foreach (var file in images)
@@ -92,6 +106,9 @@ public static class PdfToolbox
                         page.PageColor(Colors.White);
                         page.Content().AlignCenter().AlignMiddle().Image(file).FitArea();
                     });
+
+                    // 30 张照片合成 PDF 要几秒到十几秒，逐张上报（审计 P2-30）。
+                    progress?.Report(++index * 100 / total);
                 }
             }).GeneratePdf(output);
 
@@ -147,7 +164,8 @@ public static class PdfToolbox
     }
 
     /// <summary>PDF 转 Word。keepLayout 为真时把每页渲染成图片嵌入 DOCX，版式不变但不可编辑。</summary>
-    public static string PdfToWord(string input, string output, bool keepLayout, int dpi = 150)
+    public static string PdfToWord(
+        string input, string output, bool keepLayout, int dpi = 150, IProgress<int>? progress = null)
     {
         EnsureDistinct(new[] { input }, output);
         try
@@ -181,6 +199,10 @@ public static class PdfToolbox
                     imagePart.FeedData(png);
                     body.Append(CreateImageParagraph(main, imagePart, bitmap.Width, bitmap.Height, index + 1));
                     if (index < pageCount - 1) body.Append(PageBreakParagraph());
+
+                    // 逐页上报：80 页扫描件按 300 DPI 保留版面要跑几分钟，
+                    // 没有进度的话进度条恒为 0%，老师会以为死机并强关（审计 P2-30）。
+                    progress?.Report((index + 1) * 100 / Math.Max(1, pageCount));
                 }
 
                 AppendSectionProperties(body);
@@ -241,6 +263,12 @@ public static class PdfToolbox
     public static string WordToPdf(string input, string output)
     {
         EnsureDistinct(new[] { input }, output);
+
+        // .doc 是旧二进制格式，OpenXml 读不了。给它一句明确的出路，
+        // 而不是让底层抛一堆英文（审计 P2-26）。
+        if (string.Equals(Path.GetExtension(input), ".doc", StringComparison.OrdinalIgnoreCase))
+            throw new ToolboxException("这是旧版 Word 文档（.doc），请先用 Word 或 WPS 另存为 .docx 再转换。");
+
         try
         {
             using var word = WordprocessingDocument.Open(input, false);
@@ -545,6 +573,23 @@ public static class PdfToolbox
         catch (Exception ex)
         {
             throw new ToolboxException($"无法读取 PDF：{ExplainPdfError(ex)}");
+        }
+    }
+
+    /// <summary>
+    /// 供 <see cref="ToolDispatcher"/> 的输出保护使用：PDF 转图片要按页判断
+    /// `-第N页.png` 是否已存在。与内部 <see cref="PageCount"/> 同一实现，
+    /// 只多一层容错——页数读不出来时按 1 页处理，让后续渲染自己报准确错误。
+    /// </summary>
+    internal static int PageCountForGuard(string path)
+    {
+        try
+        {
+            return PageCount(path);
+        }
+        catch (ToolboxException)
+        {
+            return 1;
         }
     }
 

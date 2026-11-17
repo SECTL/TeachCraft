@@ -42,6 +42,12 @@ public partial class ToolItemViewModel : ObservableObject
     [ObservableProperty] private decimal? _dpiValue = 150;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private double _progress;
+
+    /// <summary>真的开始推进时才显示进度条：恒为 0% 的进度条看起来像死机（审计 P2-30）。</summary>
+    [ObservableProperty] private bool _hasProgress;
+
+    /// <summary>老师已点过「取消」，按钮据此切换文案。</summary>
+    [ObservableProperty] private bool _cancelRequested;
     [ObservableProperty] private string _resultText = string.Empty;
     [ObservableProperty] private bool _hasResult;
     [ObservableProperty] private bool _resultIsError;
@@ -122,20 +128,48 @@ public partial class ToolItemViewModel : ObservableObject
     public bool IsMultiFile => Kind is ToolKind.ImagesToPdf or ToolKind.PdfMerge;
     public bool ShowFormat => Kind == ToolKind.ImageConvert;
 
-    /// <summary>画质滑块只在有损编码下有意义：PNG 无损，转换到 JPG/WebP 或压缩时才显示。</summary>
+    /// <summary>
+    /// 画质滑块只在有损编码下有意义：PNG 无损，转换到 JPG/WebP 或压缩时才显示。
+    /// 压缩工具也要看所选文件的格式——PNG 上拖画质滑块毫无变化，
+    /// 老师会以为软件坏了（审计 P2-29）。
+    /// </summary>
     public bool ShowQuality => Kind switch
     {
-        ToolKind.ImageCompress => true,
+        ToolKind.ImageCompress => SelectedFileIsLossy,
         ToolKind.ImageConvert => SelectedFormat is "JPG" or "WebP",
         _ => false,
     };
+
+    /// <summary>所选第一份文件的扩展名是否属于有损格式。没有文件时按有损处理（默认显示）。</summary>
+    private bool SelectedFileIsLossy
+    {
+        get
+        {
+            if (Files.Count == 0) return true;
+            var extension = Path.GetExtension(Files[0]).ToLowerInvariant();
+            return extension is ".jpg" or ".jpeg" or ".webp";
+        }
+    }
+
     public bool ShowResize => Kind == ToolKind.ImageResize;
     public bool ShowCompress => Kind == ToolKind.ImageCompress;
     public bool ShowWatermark => Kind == ToolKind.ImageWatermark;
     public bool ShowPageRange => Kind == ToolKind.PdfSplit;
-    public bool ShowDpi => Kind is ToolKind.PdfToImages or ToolKind.PdfToWord;
+
+    /// <summary>DPI 只对 PDF 转图片有意义；PDF 转 Word 只有「保留版面」模式才用它。</summary>
+    public bool ShowDpi => Kind == ToolKind.PdfToImages || (Kind == ToolKind.PdfToWord && KeepLayout);
+
     public bool ShowKeepLayout => Kind == ToolKind.PdfToWord;
+
     public bool ShowPlainNote => Kind is ToolKind.WordToPdf or ToolKind.ImagesToPdf or ToolKind.PdfMerge;
+
+    /// <summary>
+    /// PDF 转 Word 的图片去向必须披露：文字模式只抽文本，图文并茂的通知转完图全没了，
+    /// 而 word-pdf 那边有小注明说「图片暂不参与」，反方向一字不提（审计 P2-28）。
+    /// </summary>
+    public string PdfToWordNote => KeepLayout
+        ? "版面模式：每页渲成图片嵌入，视觉保真但不可编辑。"
+        : "文字模式：只提取可编辑文字，图片不会保留；需要图片请勾选「保留版面」。";
 
     public string PlainNote => Kind switch
     {
@@ -243,6 +277,8 @@ public partial class ToolItemViewModel : ObservableObject
         OnPropertyChanged(nameof(HasFiles));
         OnPropertyChanged(nameof(CanRun));
         OnPropertyChanged(nameof(FileSummary));
+        // 压缩工具的「画质」滑块跟着所选文件的格式显隐：PNG 上拖它毫无变化。
+        OnPropertyChanged(nameof(ShowQuality));
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -253,6 +289,13 @@ public partial class ToolItemViewModel : ObservableObject
     partial void OnSelectedFormatChanged(string value)
     {
         OnPropertyChanged(nameof(ShowQuality));
+    }
+
+    partial void OnKeepLayoutChanged(bool value)
+    {
+        // DPI 只在「保留版面」模式下起作用；PDF 转 Word 的披露文案也随之切换。
+        OnPropertyChanged(nameof(ShowDpi));
+        OnPropertyChanged(nameof(PdfToWordNote));
     }
 
     partial void OnLastOutputPathChanged(string? value)

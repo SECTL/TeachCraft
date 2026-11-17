@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using GradeWeave.Core.Models;
+using TeachCraft.Shared;
 
 namespace GradeWeave.App;
 
@@ -23,7 +24,7 @@ public partial class ActivityEditorWindow : Window
     {
         _viewModel = new ActivityEditorViewModel(project, existing);
         DataContext = _viewModel;
-        Opened += (_, _) => ScreenFit.Clamp(this);
+        Opened += (_, _) => WindowFit.Clamp(this);
     }
 
     private void OnSave(object? sender, RoutedEventArgs e)

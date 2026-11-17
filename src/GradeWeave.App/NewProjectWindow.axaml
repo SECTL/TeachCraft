@@ -110,6 +110,11 @@
                             AutomationProperties.Name="添加学科" />
                 </Grid>
 
+                <!-- 超额必然排不下、满额加走班后没有空节次：这两句以前都没有（审计 P3-13）。 -->
+                <TextBlock Text="{Binding HoursHint}" IsVisible="{Binding HasHoursHint}"
+                           FontSize="10" LineHeight="16" TextWrapping="Wrap" Margin="0,2,0,0"
+                           Foreground="{StaticResource MutedBrush}" />
+
                 <Border Background="#FCFBF7" BorderBrush="{StaticResource LineBrush}"
                         BorderThickness="1" CornerRadius="7" Padding="8">
                     <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">

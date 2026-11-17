@@ -153,15 +153,17 @@
 
                     <StackPanel Spacing="8" IsVisible="{Binding IsImageOrPdf}">
                         <TextBlock Classes="field-label" Text="导出对象" />
-                        <Border Background="{StaticResource WashBrush}" BorderBrush="{StaticResource LineBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="12">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="{Binding TargetText}" FontSize="14"
-                                           FontFamily="{StaticResource SerifFont}"
-                                           Foreground="{StaticResource InkBrush}" />
-                                <TextBlock Classes="helper" Text="{Binding TargetHint}" />
-                            </StackPanel>
-                        </Border>
+                        <!-- 直接在弹窗里选，不用关弹窗回主窗口挑（审计 P2-18）：
+                             主窗口当前选择只作初始值。 -->
+                        <ComboBox Classes="field" HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding ClassTargets}"
+                                  SelectedItem="{Binding SelectedClassTarget, Mode=TwoWay}"
+                                  AutomationProperties.Name="选择导出班级" />
+                        <ComboBox Classes="field" HorizontalAlignment="Stretch"
+                                  ItemsSource="{Binding TeacherTargets}"
+                                  SelectedItem="{Binding SelectedTeacherTarget, Mode=TwoWay}"
+                                  AutomationProperties.Name="选择导出教师" />
+                        <TextBlock Classes="helper" Text="{Binding TargetHint}" />
                     </StackPanel>
 
                     <Border IsVisible="{Binding HasError}" Background="{StaticResource AccentWashBrush}"

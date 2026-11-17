@@ -22,6 +22,9 @@ public partial class GradeWeaveViewModel : ObservableObject
     private static readonly IBrush SuccessBrush = new SolidColorBrush(Color.Parse("#5A7A4B"));
     private static readonly IBrush ErrorBrush = new SolidColorBrush(Color.Parse("#C6613F"));
     private static readonly IBrush MutedBrush = new SolidColorBrush(Color.Parse("#6F6A5E"));
+
+    /// <summary>「成功但有提醒」的中性色，与对话框里的提醒色一致。</summary>
+    private static readonly IBrush NoticeBrush = new SolidColorBrush(Color.Parse("#8A6D3B"));
     private static readonly string[] MeetingRoles =
         ["班主任", "科组长", "备课组长", "年级长", "主任", "副主任", "校长"];
 
@@ -217,6 +220,40 @@ public partial class GradeWeaveViewModel : ObservableObject
     public int ResearchSlotDay { get; private set; }
     public int ResearchSlotPeriod { get; private set; }
 
+    /// <summary>
+    /// 全学科教研分布一览：网格只画当前选中的学科，老师想检查「星期二第 3 节
+    /// 是不是塞了太多学科」得逐个点着核对（审计 P3-23）。
+    /// 按「星期 + 节次」聚合成一行文字，悬浮即可看全。
+    /// </summary>
+    public string ResearchOverview
+    {
+        get
+        {
+            if (!HasProject || Project.ResearchBlocks.Count == 0) return "还没有设置教研时段";
+
+            var lines = Project.ResearchBlocks
+                .Select(block =>
+                {
+                    var subjects = block.SubjectIds
+                        .Select(id => Project.FindSubject(id)?.Name)
+                        .Where(name => !string.IsNullOrWhiteSpace(name))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
+                    if (subjects.Count == 0) return null;
+
+                    var span = block.StartPeriod == block.EndPeriod
+                        ? $"第 {block.StartPeriod} 节"
+                        : $"第 {block.StartPeriod}–{block.EndPeriod} 节";
+                    return $"{WeaveDefaults.DayName(block.DayIndex)} {span}：{string.Join("、", subjects)}";
+                })
+                .Where(line => line is not null)
+                .OrderBy(line => line, StringComparer.Ordinal)
+                .ToList();
+
+            return lines.Count == 0 ? "还没有设置教研时段" : string.Join("\n", lines);
+        }
+    }
+
     public LayeredClassGroup? EditingLayeredGroup => _editingLayeredGroup;
 
     // ----------------------------- 载入 -----------------------------
@@ -272,11 +309,30 @@ public partial class GradeWeaveViewModel : ObservableObject
             MeetingSuggestions.Add(new MeetingBlockItemViewModel(block));
         OnPropertyChanged(nameof(HasMeetingSuggestions));
 
+        // 导入器算出的「哪里没读懂」必须让老师看见。
+        // 这些诊断一直躺在 result.Warnings / project.Warnings 里，UI 却一条都不展示——
+        // 周课时全为 0 时生成出来是整片空白，冲突台也不报（应排 0 = 实排 0），
+        // 老师只能逐格比对原工作簿才能发现（审计 P1-9）。
+        ImportWarnings.Clear();
+        foreach (var warning in result.Warnings)
+            ImportWarnings.Add(warning);
+        OnPropertyChanged(nameof(HasImportWarnings));
+
         var meetingHint = result.SuggestedMeetingBlocks.Count == 0
             ? string.Empty
             : $"；{result.SuggestedMeetingBlocks.Count} 条会议建议待 04 步确认";
-        SetStatus($"识别 {result.SuggestedResearchBlocks.Count} 条教研（已应用）{meetingHint}。");
+        var warningHint = result.Warnings.Count == 0
+            ? string.Empty
+            : $"；{result.Warnings.Count} 条导入提醒（见 02 步侧栏）";
+        SetStatus($"识别 {result.SuggestedResearchBlocks.Count} 条教研（已应用）{meetingHint}{warningHint}。");
     }
+
+    /// <summary>导入工作簿时收集到的提醒；数据来自 WeaveImportResult.Warnings。</summary>
+    public ObservableCollection<string> ImportWarnings { get; } = new();
+
+    public bool HasImportWarnings => ImportWarnings.Count > 0;
+
+    public string ImportWarningSummary => $"导入提醒（{ImportWarnings.Count} 条）";
 
     public void LoadDemoProject()
     {
@@ -437,6 +493,20 @@ public partial class GradeWeaveViewModel : ObservableObject
     {
         StatusText = message;
         StatusBrush = isError ? ErrorBrush : SuccessBrush;
+    }
+
+    /// <summary>
+    /// 带提醒的成功状态：操作确实成功了，但有需要老师留意的地方。
+    ///
+    /// 用中性色而不是错误色——「已导出希沃全校课表…某班年级识别失败」用红点点亮，
+    /// 老师会以为导出失败并反复重导（P3-16）。提醒不是失败。
+    /// </summary>
+    public void SetStatusWithNotice(string message) => SetStatusCore(message, NoticeBrush);
+
+    private void SetStatusCore(string message, IBrush brush)
+    {
+        StatusText = message;
+        StatusBrush = brush;
     }
 
     /// <summary>生成或导入进行中时拒绝一切改课动作，避免后台任务读到半改状态。</summary>
@@ -1029,8 +1099,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         SetStatus("已新建走班组草稿，填写后点「保存走班组」。");
     }
 
+    /// <summary>由窗口层的确认弹窗在用户确认后调用；也保留为命令供其它入口复用。</summary>
     [RelayCommand]
-    private void DeleteLayeredGroup()
+    public void DeleteLayeredGroup()
     {
         if (RejectWhileBusy()) return;
 
@@ -1040,6 +1111,10 @@ public partial class GradeWeaveViewModel : ObservableObject
             return;
         }
 
+        // 走班课是 IsFixed=true 的固定课，重排不会清掉（PrepareFixedLessons 只移除未锁定课）。
+        // 组删了而课时留着，就成了任何入口都清不掉的死格——右键拒绝、Delete 拒绝、
+        // 放课拒绝，提示还让「到 03 步调整走班组」，那个组已经不存在了。
+        var removedLessons = Project.Lessons.RemoveAll(l => l.IsLayered && l.GroupId == item.Group.Id);
         Project.LayeredGroups.Remove(item.Group);
         RefreshLayeredList(null);
         if (SelectedLayeredGroup is null)
@@ -1049,7 +1124,7 @@ public partial class GradeWeaveViewModel : ObservableObject
         }
 
         UpdateCounts();
-        SetStatus($"已删除走班组：{item.Name}。");
+        SetStatus($"已删除走班组：{item.Name}。" + (removedLessons > 0 ? $" 同时清除了该组 {removedLessons} 节走班课。" : string.Empty));
         ProjectChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1247,8 +1322,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         SetStatus("已新建会议时段草稿，填写后点「保存会议时段」。");
     }
 
+    /// <summary>同上：确认在窗口层做，这里只负责删。</summary>
     [RelayCommand]
-    private void DeleteMeetingBlock()
+    public void DeleteMeetingBlock()
     {
         if (RejectWhileBusy()) return;
 
@@ -1559,7 +1635,10 @@ public partial class GradeWeaveViewModel : ObservableObject
 
         LayeredClassGroup? layeredGroup = null;
         ConstraintRules.TryGetLayeredGroupAt(Project, classId, dayIndex, period, out layeredGroup);
-        if (lesson.IsLayered || layeredGroup is not null)
+        // 组已不存在的孤儿走班课放行清除：留着就成了死格，提示里的「到 03 步调整」也无从谈起。
+        var groupStillExists = !string.IsNullOrEmpty(lesson.GroupId)
+            && Project.LayeredGroups.Any(g => g.Id == lesson.GroupId);
+        if ((lesson.IsLayered && groupStillExists) || layeredGroup is not null)
         {
             SetStatus("这是走班课，由走班组统一安排；请到 03 步调整走班组，不能单独清除。", true);
             return;
@@ -1569,7 +1648,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         var className = Project.FindClass(classId)?.Name ?? "该班";
         Project.RemoveLessonAt(classId, dayIndex, period);
 
-        SetStatus($"已清除 {className} {WeaveDefaults.SlotText(dayIndex, period, period)} 的 {subjectName}，不会自动补课。");
+        SetStatus(lesson.IsLayered
+            ? "已清除残留的走班课。"
+            : $"已清除 {className} {WeaveDefaults.SlotText(dayIndex, period, period)} 的 {subjectName}，不会自动补课。");
         UpdateScheduleHeader();
         ScheduleInvalidated?.Invoke(this, EventArgs.Empty);
         _ = RefreshConflictsAsync(quiet: true, announce: false);
@@ -2097,11 +2178,45 @@ public partial class GradeWeaveViewModel : ObservableObject
         if (!_loadingDraft) RaiseLayeredPreview();
     }
 
+    /// <summary>
+    /// 忙碌遮罩：置 IsBusy 后延迟 400ms 才亮，快操作不闪一下。
+    /// 与归位 / 竞名 / 时序同一套阈值——此前织序是即时显示，
+    /// 导出 Excel 这种 1–2 秒的操作会让整屏闪一下，被老师读成「卡了一下」（审计 P2-31）。
+    /// </summary>
+    [ObservableProperty] private bool _showBusyOverlay;
+
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+    private CancellationTokenSource? _busyCts;
+
+    /// <summary>遮罩上的具体动作名；没有时退回通用文案。</summary>
+    public string BusyOverlayTitle =>
+        string.IsNullOrWhiteSpace(StatusText) ? "正在处理…" : StatusText;
+
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(CanOperate));
         OnPropertyChanged(nameof(CanGenerate));
+
+        if (!value)
+        {
+            _busyCts?.Cancel();
+            _busyCts = null;
+            ShowBusyOverlay = false;
+            return;
+        }
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested && IsBusy) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
     }
 
     partial void OnHasProjectChanged(bool value)

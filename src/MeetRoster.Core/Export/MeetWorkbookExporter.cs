@@ -23,6 +23,16 @@ public static class MeetWorkbookExporter
             throw new InvalidOperationException("还没有导入任何班级，无法导出。");
 
         var target = Path.GetFullPath(path);
+
+        // 纵深防御：UI 层已有 IsExportPathBlocked，这里再拦一次——
+        // 「只含赛程的工作簿」这条路曾在两处同时漏防（审计 P1-1），
+        // 单靠 UI 层一处的检查一旦被新入口绕过就是原件被覆盖。
+        if (!string.IsNullOrWhiteSpace(project.SourcePath) &&
+            string.Equals(target, Path.GetFullPath(project.SourcePath), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("导出文件不能覆盖导入的原工作簿，请换一个文件名。");
+        }
+
         foreach (var source in project.Classes
                      .Select(c => c.SourcePath)
                      .Where(p => !string.IsNullOrWhiteSpace(p)))

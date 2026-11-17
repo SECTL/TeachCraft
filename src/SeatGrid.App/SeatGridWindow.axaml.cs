@@ -953,11 +953,18 @@ public partial class SeatGridWindow : Window
 
     private async void OnClearSeat(object? sender, RoutedEventArgs e)
     {
-        var name = ViewModel.SelectedStudent?.Name;
-        if (string.IsNullOrWhiteSpace(name)) return;
+        // 按「座位上坐着谁」弹确认，而不是按名单侧选中的学生——
+        // 两者可以不同，写错人名比不弹窗更伤信任（审计 P2-23）。
+        var occupantName = ViewModel.SelectedSeatOccupantName;
+        if (string.IsNullOrWhiteSpace(occupantName))
+        {
+            ViewModel.SetStatus("这是空座位，没有需要清空的人。", true);
+            return;
+        }
+
         if (!await ConfirmDialog.ShowAsync(
                 this, "清空这个座位？",
-                $"将清空「{name}」的座位，学生仍保留在名单中。",
+                $"将清空「{occupantName}」的座位，学生仍保留在名单中。",
                 "清空座位", "取消", danger: true))
             return;
         ViewModel.ClearSelectedSeat();
@@ -1022,7 +1029,7 @@ public partial class SeatGridWindow : Window
             return;
         }
 
-        if (e.Key == Key.Delete && ViewModel.SelectedStudent is not null)
+        if (e.Key == Key.Delete && ViewModel.SelectedStudent is not null && !IsTextInputFocused())
         {
             _ = DeleteSelectedStudentAsync();
             e.Handled = true;
@@ -1030,7 +1037,8 @@ public partial class SeatGridWindow : Window
         }
 
         // L 锁定 / 解锁当前选中座位，与织序「选中课程格按 L 锁定」保持同一肌肉记忆。
-        if (e.Key == Key.L && ViewModel.SelectedSeat is not null)
+        // 输入框里按 L 只是在打字，不能抢。
+        if (e.Key == Key.L && ViewModel.SelectedSeat is not null && !IsTextInputFocused())
         {
             ViewModel.ToggleSelectedSeatPin();
             e.Handled = true;
@@ -1060,6 +1068,30 @@ public partial class SeatGridWindow : Window
     }
 
     private void OnClearCanvas(object? sender, RoutedEventArgs e) => ViewModel.ClearCanvas();
+
+    private void OnClearSeatSearch(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.SearchText = string.Empty;
+        ViewModel.SetStatus("已清除搜索");
+    }
+
+    /// <summary>
+    /// 清空全部未锁定座位（锁定座位保留，走 ClearSeats 因而是可撤销的一步）。
+    /// 能力在 ViewModel 里早就有，只是从来没有任何按钮调用它——想清场只能逐座点几十次。
+    /// </summary>
+    private async void OnClearAllSeats(object? sender, RoutedEventArgs e)
+    {
+        var assigned = ViewModel.AssignedCount;
+        if (assigned == 0) return;
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "清空全部座位？",
+                $"将清空 {assigned} 个座位，锁定座位保留不动。可以撤销。",
+                "清空座位", "取消", danger: true))
+            return;
+
+        ViewModel.ClearSeats();
+    }
 
     private void OnUnpinAll(object? sender, RoutedEventArgs e)
     {
@@ -1144,6 +1176,43 @@ public partial class SeatGridWindow : Window
 
     private void OnTogglePin(object? sender, RoutedEventArgs e) => ViewModel.ToggleSelectedSeatPin();
 
+    /// <summary>
+    /// 一个「搜索框 + 过滤下拉」的学生选择位。
+    /// 搜索走 <see cref="SeatGridViewModel.FindStudents"/>，与快速换人同一套姓名 / 拼音匹配；
+    /// 搜索框为空时列出全部学生，选中后搜索框保留结果不打扰。
+    /// </summary>
+    private (ComboBox Picker, TextBox Search) BuildStudentPicker()
+    {
+        var picker = new ComboBox
+        {
+            ItemsSource = ViewModel.AllStudents.Select(s => s.Name).ToList(),
+            FontSize = 11.5,
+            MinHeight = 30,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var search = new TextBox
+        {
+            FontSize = 11,
+            MinHeight = 28,
+            PlaceholderText = "输入姓名或拼音首字母筛选，如 ZS",
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        search.TextChanged += (_, _) =>
+        {
+            var keyword = search.Text?.Trim() ?? string.Empty;
+            var names = keyword.Length == 0
+                ? ViewModel.AllStudents.Select(s => s.Name).ToList()
+                : ViewModel.FindStudents(keyword, limit: 20).Select(s => s.Name).ToList();
+
+            picker.ItemsSource = names;
+            if (names.Count > 0) picker.SelectedIndex = 0;
+        };
+
+        return (picker, search);
+    }
+
     /// <summary>添加互斥 / 结对规则：两个可搜索的学生选择器 + 类型单选。</summary>
     private async Task ShowPairRuleDialogAsync()
     {
@@ -1164,8 +1233,11 @@ public partial class SeatGridWindow : Window
             Background = DialogPaper,
         };
 
-        var first = new ComboBox { ItemsSource = ViewModel.AllStudents, FontSize = 11.5, MinHeight = 30 };
-        var second = new ComboBox { ItemsSource = ViewModel.AllStudents, FontSize = 11.5, MinHeight = 30 };
+        // 每个选择位 = 一个搜索框 + 一个过滤后的下拉。
+        // 55 人的班里给两位学生设「绝不相邻」以前要滚动翻找两次，
+        // 而同应用的快速换人早就有姓名 + 拼音搜索（审计 P2-40）。
+        var (first, firstSearch) = BuildStudentPicker();
+        var (second, secondSearch) = BuildStudentPicker();
         var mutex = new RadioButton { Content = "绝不相邻 · 前后左右都不挨着", IsChecked = true, FontSize = 11.5 };
         var deskmate = new RadioButton { Content = "必须同桌 · 坐同一张双人桌", FontSize = 11.5 };
         var error = new TextBlock { FontSize = 10.5, Foreground = DialogTerracotta, TextWrapping = TextWrapping.Wrap };
@@ -1193,7 +1265,13 @@ public partial class SeatGridWindow : Window
 
         confirm.Click += (_, _) =>
         {
-            if (first.SelectedItem is not StudentViewModel a || second.SelectedItem is not StudentViewModel b)
+            // 选择位里放的是姓名（搜索过滤后重建列表时会丢对象引用），按姓名找回学生。
+            var a = ViewModel.AllStudents.FirstOrDefault(s =>
+                string.Equals(s.Name, first.SelectedItem as string, StringComparison.Ordinal));
+            var b = ViewModel.AllStudents.FirstOrDefault(s =>
+                string.Equals(s.Name, second.SelectedItem as string, StringComparison.Ordinal));
+
+            if (a is null || b is null)
             {
                 error.Text = "请选择两名学生。";
                 return;
@@ -1233,8 +1311,10 @@ public partial class SeatGridWindow : Window
         });
 
         panel.Children.Add(new TextBlock { Text = "第一位学生", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(firstSearch);
         panel.Children.Add(first);
         panel.Children.Add(new TextBlock { Text = "第二位学生", FontSize = 10.5, Foreground = DialogMuted });
+        panel.Children.Add(secondSearch);
         panel.Children.Add(second);
         panel.Children.Add(mutex);
         panel.Children.Add(deskmate);
@@ -1575,8 +1655,19 @@ public partial class SeatGridWindow : Window
             var path = Path.Combine(directory, SafeFileName("-打印.pdf"));
             await Task.Run(() => SeatChartRenderer.RenderPdf(document, path));
 
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
+            // 渲染成功与「唤起阅读器失败」必须分开报：
+            // 没装 PDF 阅读器的新系统上，PDF 其实已经生成在临时目录里，
+            // 旧实现说「生成打印文件失败」，老师重试永远失败，也永远拿不到那个文件（P3-16）。
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
+            }
+            catch (Exception openEx)
+            {
+                ViewModel.SetStatus(
+                    $"PDF 已生成，但没有找到能打开它的程序：{path}（{openEx.Message}）", true);
+            }
         }
         catch (Exception ex)
         {

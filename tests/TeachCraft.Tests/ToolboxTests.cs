@@ -106,6 +106,100 @@ public sealed class ToolboxTests : IDisposable
         Assert.Equal(2, Directory.GetFiles(folder, "*.png").Length);
     }
 
+    // ---- 输出保护：ToolDispatcher 入口的 EnsureOutputDoesNotOverwriteInput ----
+
+    [Fact]
+    public void Run_RejectsOutputEqualToInput_ForImageTool()
+    {
+        var source = MakeImage("guard.png", 200, 200);
+        var request = new ToolRequest
+        {
+            Kind = ToolKind.ImageCompress,
+            Inputs = new[] { source },
+            Output = source,
+        };
+
+        var ex = Assert.Throws<ToolboxException>(() => ToolDispatcher.Run(request));
+        Assert.Contains("不能覆盖", ex.Message);
+    }
+
+    [Fact]
+    public void Run_RejectsOutputEqualToInput_CaseInsensitive()
+    {
+        var source = MakeImage("CaseGuard.png", 200, 200);
+        var samePathDifferentCase = Path.Combine(_root, "caseguard.PNG");
+        var request = new ToolRequest
+        {
+            Kind = ToolKind.ImageResize,
+            Inputs = new[] { source },
+            Output = samePathDifferentCase,
+            Percent = 50,
+        };
+
+        var ex = Assert.Throws<ToolboxException>(() => ToolDispatcher.Run(request));
+        Assert.Contains("不能覆盖", ex.Message);
+    }
+
+    [Fact]
+    public void Run_AllowsDistinctOutput()
+    {
+        var source = MakeImage("ok.png", 200, 200);
+        var output = Path.Combine(_root, "ok-converted.webp");
+        var summary = ToolDispatcher.Run(new ToolRequest
+        {
+            Kind = ToolKind.ImageConvert,
+            Inputs = new[] { source },
+            Output = output,
+            Format = "webp",
+        });
+
+        Assert.Contains("ok-converted", summary);
+        Assert.True(File.Exists(output));
+    }
+
+    [Fact]
+    public void Run_PdfToImages_RejectsWhenTargetPagePngExists()
+    {
+        var first = MakeImage("guard1.png", 300, 200);
+        var pdf = Path.Combine(_root, "guard-two.pdf");
+        PdfToolbox.ImagesToPdf(new[] { first }, pdf);
+
+        var folder = Path.Combine(_root, "guard-pages");
+        Directory.CreateDirectory(folder);
+        // 预先放一个与将要写出的文件名相同的文件：PdfToImages 会 File.Create 截断它
+        File.WriteAllBytes(Path.Combine(folder, "guard-two-第1页.png"), Array.Empty<byte>());
+
+        var ex = Assert.Throws<ToolboxException>(() => ToolDispatcher.Run(new ToolRequest
+        {
+            Kind = ToolKind.PdfToImages,
+            Inputs = new[] { pdf },
+            Output = folder,
+            Dpi = 96,
+        }));
+        Assert.Contains("已有", ex.Message);
+    }
+
+    [Fact]
+    public void Run_PdfToImages_AllowsOutputFolderSameAsSourceFolder()
+    {
+        var image = MakeImage("same-folder.png", 300, 200);
+        var pdf = Path.Combine(_root, "same-folder.pdf");
+        PdfToolbox.ImagesToPdf(new[] { image }, pdf);
+
+        // 输出目录 == 源 PDF 所在目录，且没有同名页图：合法
+        var summary = ToolDispatcher.Run(new ToolRequest
+        {
+            Kind = ToolKind.PdfToImages,
+            Inputs = new[] { pdf },
+            Output = _root,
+            Dpi = 96,
+        });
+
+        Assert.Contains("PNG", summary);
+        Assert.True(File.Exists(Path.Combine(_root, "same-folder-第1页.png")));
+    }
+
+
     [Fact]
     public void WordToPdf_And_PdfToWord_RoundTripText()
     {

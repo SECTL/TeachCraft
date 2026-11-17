@@ -107,6 +107,10 @@ public partial class App : Application
                 // 上一次绿色版自替换的结果。失败时用户刚经历「程序关了又开回来还是旧的」，
                 // 不说清楚他会以为更新没生效，反复点。
                 ReportLastPortableReplace(viewModel);
+
+                // 安装包路径的自动重启失败痕迹以前只写不读：程序关了没再回来，
+                // 老师不知道安装其实成功了（审计 P3-19）。
+                ReportLastRestartFailure(viewModel);
             }
 
             if (!CaptureGradeStripIfRequested(desktop) && !CaptureSeatGridIfRequested(desktop) &&
@@ -1034,6 +1038,25 @@ public partial class App : Application
                 StartRestartHelper(installer.Id, Environment.ProcessId, exe);
             }
 
+            // 关窗之前先问一句：Shutdown 会绕过各窗口自己的 OnClosing 确认。
+            // 手动点 X 有防线、点「更新」反而没有，这个不对称最伤（审计 P1-3）。
+            var unsaved = Updating.UnsavedWindowGuard.FindUnsaved(
+                desktop.Windows.Select(w => (
+                    w.Title ?? "某个窗口",
+                    Updating.UnsavedWindowGuard.HasUnsavedWork(w.DataContext))));
+            if (unsaved.Count > 0)
+            {
+                var proceed = await TeachCraft.Shared.ConfirmDialog.ShowAsync(
+                    desktop.MainWindow ?? desktop.Windows.First(),
+                    "安装更新会关闭所有窗口",
+                    $"{string.Join("、", unsaved)} 还有未保存的内容。建议先导出或保存，再安装更新。仍要继续吗？",
+                    "继续安装",
+                    "暂不安装",
+                    danger: true);
+                if (!proceed)
+                    return "已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。";
+            }
+
             // 到这里安装包已经在跑，可以安全退出。
             // **必须先释放单实例锁**：帮手进程装完后会拉起新版本，
             // 若此时锁仍被本进程持有（Mutex 还没随进程销毁），新进程 TryAcquire 会失败并直接 Exit(0)，
@@ -1217,6 +1240,35 @@ public partial class App : Application
     }
 
     /// <summary>重启帮手失败时留一条本机痕迹，供用户与支持者定位。</summary>
+    /// <summary>
+    /// 上一次安装后自动重启失败的痕迹。写完就读、读完即删——
+    /// 程序关了没再回来，老师只看到「更新装完就没了」，而安装其实已经成功（审计 P3-19）。
+    /// </summary>
+    private static void ReportLastRestartFailure(MainViewModel viewModel)
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TeachCraft", "Update", "restart-failure.txt");
+            if (!File.Exists(path)) return;
+
+            var content = File.ReadAllText(path).Trim();
+            File.Delete(path);
+
+            var firstLine = content.Split('\n').FirstOrDefault()?.Trim();
+            if (string.IsNullOrWhiteSpace(firstLine)) return;
+
+            viewModel.SetStatus(
+                $"上次更新安装完成后没能自动重新打开（{firstLine}）。安装本身可能已经成功，可手动打开知微确认。",
+                error: true);
+        }
+        catch (Exception)
+        {
+            // 读不到就算了，不能因为一条提示拦住启动。
+        }
+    }
+
     private static void WriteRestartFailure(Exception ex)
     {
         try

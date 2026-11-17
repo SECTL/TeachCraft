@@ -55,6 +55,11 @@ public static class ToolDispatcher
                 throw new ToolboxException($"找不到文件：{Path.GetFileName(input)}");
         }
 
+        // 输出保护只在这一层做一次，覆盖全部十件工具。
+        // 十个工具各自的实现不再各写一套——曾因只有 PdfToolbox 写了 EnsureDistinct、
+        // 图片四件与 PDF 转图片没写，老师可以在保存框里选中原图把原件覆盖掉。
+        EnsureOutputDoesNotOverwriteInput(request);
+
         var first = request.Inputs[0];
         return request.Kind switch
         {
@@ -69,9 +74,10 @@ public static class ToolDispatcher
                 request.WatermarkPosition,
                 request.WatermarkOpacity,
                 request.WatermarkScale),
-            ToolKind.PdfToWord => PdfToolbox.PdfToWord(first, request.Output, request.KeepLayout, request.Dpi),
+            ToolKind.PdfToWord => PdfToolbox.PdfToWord(
+                first, request.Output, request.KeepLayout, request.Dpi, progress),
             ToolKind.WordToPdf => PdfToolbox.WordToPdf(first, request.Output),
-            ToolKind.ImagesToPdf => PdfToolbox.ImagesToPdf(request.Inputs, request.Output),
+            ToolKind.ImagesToPdf => PdfToolbox.ImagesToPdf(request.Inputs, request.Output, progress),
             ToolKind.PdfToImages => PdfToolbox.PdfToImages(first, request.Output, request.Dpi, progress),
             ToolKind.PdfMerge => PdfToolbox.Merge(request.Inputs, request.Output),
             ToolKind.PdfSplit => PdfToolbox.Split(first, request.Output, request.PageRange ?? string.Empty),
@@ -85,5 +91,48 @@ public static class ToolDispatcher
             request.Inputs[0], request.Output, request.Quality, request.MaxEdge, out var before);
         _ = before;
         return summary;
+    }
+
+    /// <summary>
+    /// 输出不得覆盖任何输入文件。
+    ///
+    /// 两类语义要分开：绝大部分工具把 <see cref="ToolRequest.Output"/> 当**文件路径**，
+    /// 同路径即拒绝；<see cref="ToolKind.PdfToImages"/> 把它当**目录**，写的是
+    /// `<源文件基名>-第N页.png` 新文件——目录与输入所在目录相同是合法的，但只要那些
+    /// 目标文件名已存在，就会被 File.Create 静默截断（P2-12），所以对目录形态检查
+    /// 「将要写出的具体文件名」而不是目录本身。
+    /// </summary>
+    private static void EnsureOutputDoesNotOverwriteInput(ToolRequest request)
+    {
+        if (request.Kind == ToolKind.PdfToImages)
+        {
+            EnsurePdfToImagesTargetsFree(request.Inputs[0], request.Output);
+            return;
+        }
+
+        var target = Path.GetFullPath(request.Output);
+        foreach (var input in request.Inputs)
+        {
+            if (string.Equals(Path.GetFullPath(input), target, StringComparison.OrdinalIgnoreCase))
+                throw new ToolboxException("输出文件不能覆盖原始文件，请换一个文件名。");
+        }
+    }
+
+    /// <summary>PDF 转图片：输出目录允许与源 PDF 同目录，但 `-第N页.png` 不得已存在。</summary>
+    private static void EnsurePdfToImagesTargetsFree(string input, string outputDirectory)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(input);
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+            baseName = baseName.Replace(invalid, '_');
+        if (string.IsNullOrWhiteSpace(baseName)) baseName = "文档";
+
+        var pageCount = PdfToolbox.PageCountForGuard(input);
+        for (var page = 1; page <= pageCount; page++)
+        {
+            var candidate = Path.Combine(outputDirectory, $"{baseName}-第{page}页.png");
+            if (File.Exists(candidate))
+                throw new ToolboxException(
+                    $"输出文件夹里已有「{Path.GetFileName(candidate)}」，继续会覆盖它，请换一个文件夹。");
+        }
     }
 }

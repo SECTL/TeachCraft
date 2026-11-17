@@ -65,8 +65,14 @@ public partial class MainWindow : Window
     /// </summary>
     private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e)
     {
+        // 状态栏这颗 mini 按钮也要守卫：自包含包上百 MB、下载几分钟，
+        // 老师以为没点中再点一次，两个下载会写同一个 .part 并互相删掉（审计 P1-5）。
+        // 面板版 OnPanelInstallUpdate 早就有这道守卫，这里漏了。
+        if (ViewModel.IsUpdateBusy) return;
+
         try
         {
+            ViewModel.IsUpdateBusy = true;
             // 状态栏也带速度：老师在这儿等的时候，最想知道的是「还要多久」。
             var progress = new Progress<DownloadProgress>(p =>
             {
@@ -82,6 +88,10 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ViewModel.SetStatus(ErrorText.Describe(ex, "更新"), error: true);
+        }
+        finally
+        {
+            ViewModel.IsUpdateBusy = false;
         }
     }
 
@@ -189,7 +199,8 @@ public partial class MainWindow : Window
     private void OnPanelDismissUpdate(object? sender, EventArgs e)
     {
         ViewModel.DismissUpdate();
-        ViewModel.UpdateStateText = "已跳过这个版本，之后不再提示；要恢复提示请删除 TeachCraft\\Update\\state.json。";
+        ViewModel.UpdateStateText =
+            "已跳过这个版本，之后不再提示；要恢复提示请删除 %LOCALAPPDATA%\\TeachCraft\\Update\\state.json。";
     }
 
     /// <summary>把窗口渲染成 PNG，供设计走查使用（--shot 参数触发）。</summary>
@@ -663,22 +674,52 @@ public partial class MainWindow : Window
     {
         tool.IsBusy = true;
         tool.Progress = 0;
+        tool.HasProgress = false;
         tool.ResultText = string.Empty;
         tool.HasResult = false;
+        tool.CancelRequested = false;
         ViewModel.SetStatus($"正在处理 {tool.Name}…");
+
+        var cancellation = new CancellationTokenSource();
+        _toolCancellation = cancellation;
 
         try
         {
-            var progress = new Progress<int>(value => tool.Progress = value);
+            var progress = new Progress<int>(value =>
+            {
+                tool.Progress = value;
+                // 0% 不动看起来像死机；只有在真的开始推进时才显示进度条（审计 P2-30）。
+                if (value > 0) tool.HasProgress = true;
+            });
             var request = tool.ToRequest(output);
-            var summary = await Task.Run(() => ToolDispatcher.Run(request, progress));
+            var token = cancellation.Token;
+
+            var summary = await Task.Run(() =>
+            {
+                token.ThrowIfCancellationRequested();
+                var result = ToolDispatcher.Run(request, progress);
+                // 长任务在逐页/逐张循环里无法中途抛出（QuestPDF / OpenXml 的写盘不可中断），
+                // 所以在完成点检查一次：取消过的任务不把输出当成成功。
+                token.ThrowIfCancellationRequested();
+                return result;
+            }, token);
 
             tool.Progress = 100;
+            tool.HasProgress = true;
             tool.ResultText = summary;
             tool.HasResult = true;
             tool.ResultIsError = false;
             tool.LastOutputPath = output;
             ViewModel.SetStatus("处理完成 · " + summary);
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消后清理半成品：留下一个用户没要的残缺文件比什么都不留更糟。
+            TryDeletePartialOutput(tool, output);
+            tool.ResultText = "已取消。";
+            tool.HasResult = true;
+            tool.ResultIsError = true;
+            ViewModel.SetStatus("已取消处理。");
         }
         catch (ToolboxException ex)
         {
@@ -697,8 +738,37 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _toolCancellation = null;
+            cancellation.Dispose();
             tool.IsBusy = false;
+            tool.CancelRequested = false;
         }
+    }
+
+    /// <summary>取消后删掉这个任务写出的半成品；PdfToImages 的输出是目录，交给它自己留着。</summary>
+    private static void TryDeletePartialOutput(ToolItemViewModel tool, string output)
+    {
+        try
+        {
+            if (tool.Kind == ToolKind.PdfToImages) return;
+            if (File.Exists(output) && string.Equals(tool.LastOutputPath, output, StringComparison.OrdinalIgnoreCase))
+                File.Delete(output);
+        }
+        catch
+        {
+            // 删不掉不影响「已取消」这个结论。
+        }
+    }
+
+    /// <summary>当前在跑的工具任务；面板上的「取消」按钮用它。</summary>
+    private CancellationTokenSource? _toolCancellation;
+
+    private void OnCancelTool(object? sender, EventArgs e)
+    {
+        var cancellation = _toolCancellation;
+        if (cancellation is null) return;
+        if (ViewModel.SelectedTool is { } tool) tool.CancelRequested = true;
+        cancellation.Cancel();
     }
 
     private async Task<string?> PickOutputAsync(ToolItemViewModel tool)
@@ -734,7 +804,9 @@ public partial class MainWindow : Window
         ToolKind.PdfToWord or ToolKind.PdfToImages or ToolKind.PdfMerge or ToolKind.PdfSplit =>
             ("PDF 文档", new[] { "*.pdf" }),
         ToolKind.WordToPdf =>
-            ("Word 文档", new[] { "*.docx" }),
+            // .doc 也放进来：Core 会给出「请先另存为 .docx」的明确指引。
+            // 挡在过滤器外面，老师的文件在选择器里直接「隐身」（审计 P2-26）。
+            ("Word 文档", new[] { "*.docx", "*.doc" }),
         _ =>
             ("图片", new[] { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif" }),
     };
@@ -954,7 +1026,17 @@ public partial class MainWindow : Window
 
         var tool = ViewModel.SelectedTool;
         if (tool.IsMultiFile) tool.AddFiles(paths);
-        else tool.ReplaceFiles(paths.Take(1));
+        else
+        {
+            tool.ReplaceFiles(paths.Take(1));
+            // 多文件拖到单文件工具上时不能静默丢掉其余的：
+            // 老师以为 30 张都转好了，其实只处理了第一张（审计 P2-25）。
+            if (paths.Count > 1)
+                ViewModel.SetStatus($"{tool.Name} · 一次只能处理一个文件，已取第一个：{Path.GetFileName(paths[0])}", true);
+            else
+                ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.Files.Count} 个文件");
+            return;
+        }
 
         ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.Files.Count} 个文件");
     }

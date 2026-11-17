@@ -173,8 +173,15 @@
 
                     <StackPanel Spacing="5">
                         <TextBlock Classes="field-label" Text="文件名" />
-                        <TextBox Classes="field" Text="{Binding FileName, Mode=TwoWay}"
-                                 AutomationProperties.Name="文件名" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <TextBox Classes="field" Text="{Binding FileName, Mode=TwoWay}"
+                                     AutomationProperties.Name="文件名" />
+                            <Button Grid.Column="1" Classes="ghost" Content="自动" FontSize="10.5"
+                                    Padding="10,4" VerticalAlignment="Stretch"
+                                    Click="OnResetFileName"
+                                    ToolTip.Tip="按导出对象重新生成文件名"
+                                    AutomationProperties.Name="重新自动命名" />
+                        </Grid>
                         <TextBlock Classes="helper"
                                    Text="保存位置在下一步选择；若目标文件夹已有同名文件会先询问是否覆盖。" />
                     </StackPanel>

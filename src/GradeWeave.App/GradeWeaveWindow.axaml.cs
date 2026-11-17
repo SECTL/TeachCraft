@@ -1387,6 +1387,10 @@ public partial class GradeWeaveWindow : Window
             SelectCell(tag, cellBorder);
             if (ViewModel.IsClassView || ViewModel.IsMasterView)
                 _ = OpenLessonEditorAsync(tag);
+            else if (ViewModel.IsTeacherView)
+                // 教师视角的格子只有选中框亮一下、什么都不发生，老师会以为软件坏了。
+                // 右键其实能改课，但没人会去试一个静默失效的左键（审计 P2-17）。
+                ViewModel.SetStatus("教师视角只读：请切到班级视角修改，或右键本格直接调整。", true);
         }
     }
 
@@ -1934,6 +1938,37 @@ public partial class GradeWeaveWindow : Window
     // ----------------------------- 顶栏动作 -----------------------------
 
     /// <summary>
+    /// 删除走班组：删的是多条配置（A/B 层、教师、教室、参与班），
+    /// 与「切换工程」「删班级」同属不可撤销操作，必须先问后果（审计 P0-3 / P2-15）。
+    /// </summary>
+    private async void OnDeleteLayeredGroup(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedLayeredGroup is not { } item) { ViewModel.DeleteLayeredGroup(); return; }
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "删除走班组？",
+                $"将删除「{item.Name}」及其 A/B 层教师与教室配置，该组已生成的走班课也会一并清除，无法撤销。",
+                "删除", "取消", danger: true))
+            return;
+
+        ViewModel.DeleteLayeredGroup();
+    }
+
+    /// <summary>删除会议时段：解除该时段对教师的锁定，同样不可撤销。</summary>
+    private async void OnDeleteMeetingBlock(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedMeetingBlock is not { } item) { ViewModel.DeleteMeetingBlock(); return; }
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "删除会议时段？",
+                $"将删除「{item.Name}」对该时段的教师锁定，无法撤销。",
+                "删除", "取消", danger: true))
+            return;
+
+        ViewModel.DeleteMeetingBlock();
+    }
+
+    /// <summary>
     /// 切换工程前的确认。无路径工程的实体只存在于恢复文件里，而各入口都会 clearRecovery，
     /// 所以这里必须拦一次，否则误点「载入示例数据」会连恢复副本一起抹掉。
     /// </summary>
@@ -2326,7 +2361,11 @@ public partial class GradeWeaveWindow : Window
             var warnings = new List<string>();
             await Task.Run(() => WeaveSeewoExporter.Export(project, path, warnings));
             var note = warnings.Count > 0 ? " " + string.Join(" ", warnings) : string.Empty;
-            ViewModel.SetStatus($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd(), warnings.Count > 0);
+            // 带提醒的成功用中性色：红点会让老师以为导出失败而反复重导（P3-16）。
+            if (warnings.Count > 0)
+                ViewModel.SetStatusWithNotice($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd());
+            else
+                ViewModel.SetStatus($"已导出希沃全校课表，可直接上传希沃平台。{note}".TrimEnd());
         }
         catch (Exception ex)
         {

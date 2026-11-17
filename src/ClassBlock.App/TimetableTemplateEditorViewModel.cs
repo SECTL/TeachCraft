@@ -42,6 +42,22 @@ public partial class TemplateRowEditViewModel : ObservableObject
     [ObservableProperty] private string _staticText = string.Empty;
     [ObservableProperty] private bool _mergeDays;
 
+    /// <summary>
+    /// 绑定行（第 N 节 / 早读 / 午学 / 课服 / 晚修）的「五天合并」由内容是否一致自动决定，
+    /// 勾选框对它们无效——不置灰会让老师反复勾选却看不到变化（审计 P3-10）。
+    /// </summary>
+    public bool CanMergeDays => Slot.Slot == TemplateSlot.None;
+
+    public string MergeDaysHint => CanMergeDays
+        ? string.Empty
+        : "绑定行的合并由五天内容是否一致自动决定。";
+
+    partial void OnSlotChanged(SlotOption value)
+    {
+        OnPropertyChanged(nameof(CanMergeDays));
+        OnPropertyChanged(nameof(MergeDaysHint));
+    }
+
     public TemplateRowEditViewModel(KindOption kind, SlotOption slot)
     {
         _kind = kind;
@@ -121,15 +137,25 @@ public partial class TimetableTemplateEditorViewModel : ObservableObject
     public string TemplateId { get; private set; } = string.Empty;
     public string GradeTag { get; }
     public bool IsPersisted { get; }
+
+    private readonly string _initialSnapshot;
+
+    /// <summary>当前编辑内容与打开时（分叉后）的快照是否不同；关窗守卫的依据。</summary>
+    public bool IsDirty => !string.Equals(
+        _initialSnapshot, TimetableTemplateIO.ToJson(BuildTemplate()), StringComparison.Ordinal);
+
     public bool CanEdit => !IsBuiltin;
     public bool CanDelete => !IsBuiltin && IsPersisted;
     public bool CanSave => CanEdit && TemplateName.Trim().Length > 0 && Rows.Count > 0;
 
     public TimetableTemplateEditorViewModel(TimetableTemplate source, bool startAsCopy)
     {
-        TemplateId = source.Id;
+        // 「新建模板」来自自定义模板时立即分叉编号：否则保存会按原 Id 原地覆写原模板文件，
+        // 而唯一能改编号的「复制为自定义」按钮在非内置模板下恰好隐藏（P2-9）。
+        var forkOfCustom = startAsCopy && !source.IsBuiltin;
+        TemplateId = forkOfCustom ? Guid.NewGuid().ToString("N") : source.Id;
         GradeTag = source.GradeTag;
-        TemplateName = source.Name;
+        TemplateName = forkOfCustom ? $"{source.Name} · 副本" : source.Name;
         IsBuiltin = source.IsBuiltin;
         IsPersisted = !startAsCopy && !source.IsBuiltin;
 
@@ -137,6 +163,9 @@ public partial class TimetableTemplateEditorViewModel : ObservableObject
             Rows.Add(TemplateRowEditViewModel.FromSpec(spec, KindOptions, SlotOptions));
 
         SelectedRow = Rows.Count > 0 ? Rows[0] : null;
+
+        // 基线快照在分叉之后取样：副本未被编辑过不算脏，不弹关窗确认。
+        _initialSnapshot = TimetableTemplateIO.ToJson(BuildTemplate());
     }
 
     [RelayCommand]

@@ -443,7 +443,7 @@
                     </Border>
 
                     <Border Grid.Column="2" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <StackPanel Grid.Row="0" Spacing="1">
                                 <TextBlock Text="编排将使用的节次" Classes="section-title" />
                                 <TextBlock Text="确认后编译为正课 + 扩展时段"
@@ -500,7 +500,7 @@
                 <!-- ==================== 02 教研 ==================== -->
                 <Grid IsVisible="{Binding IsResearchStep}" ColumnDefinitions="280,*" ColumnSpacing="12">
                     <Border Grid.Column="0" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="学科" Classes="section-title" />
                                 <Border Grid.Column="1" Classes="small-badge" VerticalAlignment="Center">
@@ -533,6 +533,24 @@
                             </ListBox>
                             <TextBlock Grid.Row="3" Classes="helper"
                                        Text="同一学科可有多段，例如上午 1—4 节、下午 5—7 节；相邻格子会自动合并。" />
+                            <!-- 导入提醒：导入器算出的「哪里没读懂」不能只躺在 Project.Warnings 里。
+                                 周课时全为 0 时生成出来是整片空白、冲突台也不报，老师只能逐格比对原件。 -->
+                            <Expander Grid.Row="4" IsVisible="{Binding HasImportWarnings}"
+                                      HorizontalAlignment="Stretch" Margin="0,4,0,0">
+                                <Expander.Header>
+                                    <TextBlock Text="{Binding ImportWarningSummary}" FontSize="10.5"
+                                               Foreground="{StaticResource AccentDeepBrush}" />
+                                </Expander.Header>
+                                <ItemsControl ItemsSource="{Binding ImportWarnings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" FontSize="10" LineHeight="16"
+                                                       TextWrapping="Wrap" Margin="0,2,0,0"
+                                                       Foreground="{StaticResource InkSoftBrush}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
                         </Grid>
                     </Border>
 
@@ -555,7 +573,8 @@
                                                Foreground="{StaticResource AccentDeepBrush}" FontWeight="SemiBold" />
                                     <TextBlock Grid.Column="1" Text="点击格子切换 · 按学科锁定"
                                                FontSize="9" Foreground="{StaticResource MutedBrush}"
-                                               VerticalAlignment="Center" />
+                                               VerticalAlignment="Center"
+                                               ToolTip.Tip="{Binding ResearchOverview}" />
                                 </Grid>
                             </Border>
 
@@ -618,7 +637,7 @@
                             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
                                 <Button Classes="primary" Content="新增" Command="{Binding AddLayeredGroupCommand}"
                                         FontSize="11" Padding="12,5" />
-                                <Button Classes="ghost" Content="删除" Command="{Binding DeleteLayeredGroupCommand}"
+                                <Button Classes="ghost" Content="删除" Click="OnDeleteLayeredGroup"
                                         FontSize="11" Padding="12,5" />
                             </StackPanel>
                             <TextBlock Grid.Row="4" Classes="helper"
@@ -785,7 +804,7 @@
                     </Border>
 
                     <Border Grid.Column="2" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <StackPanel Grid.Row="0" Spacing="1">
                                 <TextBlock Text="走班锁定" Classes="section-title" />
                                 <TextBlock Text="{Binding LayeredLockText}" FontSize="9.5"
@@ -847,7 +866,7 @@
                             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
                                 <Button Classes="primary" Content="新增" Command="{Binding AddMeetingBlockCommand}"
                                         FontSize="11" Padding="12,5" />
-                                <Button Classes="ghost" Content="删除" Command="{Binding DeleteMeetingBlockCommand}"
+                                <Button Classes="ghost" Content="删除" Click="OnDeleteMeetingBlock"
                                         FontSize="11" Padding="12,5" />
                             </StackPanel>
                             <Border Grid.Row="4" Height="1" Background="{StaticResource LineBrush}" />
@@ -903,6 +922,11 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="4">
                                         <TextBlock Classes="field-label" Text="开始节次" />
+                                        <!-- 作息未确认时下拉里只有正课：说明为什么没有课服 / 晚修（审计 P3-14）。 -->
+                                        <TextBlock Text="先到 01 步确认作息，才有课服 / 晚修时段可选。"
+                                                   IsVisible="{Binding IsTimetableUnconfirmed}"
+                                                   FontSize="9" LineHeight="14" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource AccentDeepBrush}" />
                                         <ComboBox Classes="field" ItemsSource="{Binding MeetingPeriodOptions}"
                                                   SelectedItem="{Binding MeetingStartPeriod, Mode=TwoWay}">
                                             <ComboBox.ItemTemplate>
@@ -1248,7 +1272,7 @@
                     </Border>
 
                     <Border Grid.Column="2" Classes="panel-card">
-                        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="9">
+                        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="9">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                                 <TextBlock Text="冲突" Classes="section-title" />
                                 <Border Grid.Column="1" Classes="small-badge" VerticalAlignment="Center">
@@ -1376,15 +1400,23 @@
                     </Border>
                 </Border>
 
-                <!-- ==================== 忙碌遮罩 ==================== -->
-                <Border IsVisible="{Binding IsBusy}" Background="#B3FAF9F5" ZIndex="50">
+                <!-- ==================== 忙碌遮罩 ====================
+                     绑 ShowBusyOverlay 而不是 IsBusy：置忙后延迟 400ms 才亮，
+                     快操作（导出 Excel 1–2 秒）不再整屏闪一下。 -->
+                <Border IsVisible="{Binding ShowBusyOverlay}" Background="#B3FAF9F5" ZIndex="50">
                     <Border Classes="panel-card" Padding="26,20" HorizontalAlignment="Center"
                             VerticalAlignment="Center">
                         <StackPanel Spacing="10" HorizontalAlignment="Center">
-                            <TextBlock Text="正在处理…" FontFamily="{StaticResource SerifFont}" FontSize="18"
-                                       Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding BusyOverlayTitle}" FontFamily="{StaticResource SerifFont}"
+                                       FontSize="18" Foreground="{StaticResource InkBrush}"
+                                       HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
+                                       TextAlignment="Center" />
                             <ProgressBar IsIndeterminate="True" Width="220" />
-                            <TextBlock Text="文件只在本机解析，不会上传。" Classes="helper"
+                            <TextBlock Text="本机处理，不会上传。" Classes="helper"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="处理期间请勿关闭窗口"
+                                       FontFamily="{StaticResource MonoFont}" FontSize="8.5"
+                                       LetterSpacing="0.8" Foreground="{StaticResource MutedBrush}"
                                        HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
@@ -1399,7 +1431,8 @@
                     <Ellipse Width="5" Height="5" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding StatusText}" FontSize="10.5"
                                Foreground="{StaticResource MutedBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="820" />
+                               TextTrimming="CharacterEllipsis" MaxWidth="820"
+                               ToolTip.Tip="{Binding StatusText}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14"
                             HorizontalAlignment="Right" VerticalAlignment="Center">

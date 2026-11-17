@@ -557,6 +557,16 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             var detail = errors.Count > 0
                 ? string.Join(Environment.NewLine, errors)
                 : string.Empty;
+
+            // 逐份失败原因进「导入提示」面板：与名单导入的处理一致。
+            // 状态栏只有 560px 宽、明细藏在悬浮提示里，老师根本不会悬停（P3-17）。
+            if (errors.Count > 0)
+            {
+                _importIssues[RosterIssueKey] =
+                    errors.Select(e => new RegistrationIssue(e, true)).ToList();
+                RebuildImportNotices();
+            }
+
             SetStatus(message, errors.Count > 0, detail, success: errors.Count == 0);
     
         }
@@ -755,9 +765,10 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
     }
 
-    /// <summary>导出路径不得覆盖任何一份导入来源（报名表或秩序册）。</summary>
+    /// <summary>导出路径不得覆盖任何一份导入来源（报名表、秩序册或只含赛程的工作簿）。</summary>
     public bool IsExportPathBlocked(string path) =>
         _orderBookSources.Any(source => SamePath(path, source)) ||
+        (!string.IsNullOrWhiteSpace(_project.SourcePath) && SamePath(path, _project.SourcePath!)) ||
         AllClasses.Any(c => !string.IsNullOrWhiteSpace(c.Source.SourcePath) &&
                             SamePath(path, c.Source.SourcePath!));
 
@@ -1174,6 +1185,23 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         StatusDetail = string.IsNullOrWhiteSpace(detail) ? text : detail;
     }
 
+    /// <summary>
+    /// 移除一个班（及其全部运动员与报名）。
+    ///
+    /// 「多选导入」必然带来选错的可能，而错了以前只能关窗全部重导（审计 P2-22）。
+    /// 走 LoadProject 之外的最小刷新：只动这个班与列表，不重建赛程视图。
+    /// </summary>
+    public void RemoveClass(string className)
+    {
+        var target = AllClasses.FirstOrDefault(c => string.Equals(c.Name, className, StringComparison.Ordinal));
+        if (target is null) return;
+
+        _project.Classes.Remove(target.Source);
+        LoadProject(_project, _isDemo, _scheduleImported);
+
+        SetStatus($"已移除「{className}」及其全部报名。");
+    }
+
     private void LoadProject(MeetProject project, bool isDemo, bool scheduleImported,
         string? preferredClassName = null)
     {
@@ -1342,7 +1370,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         {
             HasScheduleSlots = false;
             ScheduleEmptyText = _project.Days.Count == 0
-                ? "点击右上角“导入赛程”，选择含“竞赛日程 + 项目分组表”的工作簿。"
+                ? "点击右上角「导入秩序册」，选择含「竞赛日程 + 项目分组表」的工作簿（只有赛程、没有名单也可以）。"
                 : "当前还没有赛程。";
             return;
         }
@@ -1385,7 +1413,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             ScheduleDayTitle = "赛程表";
             ScheduleDaySummary = string.Empty;
             ScheduleEmptyText = _project.Days.Count == 0
-                ? "点击右上角“导入赛程”，选择含“竞赛日程 + 项目分组表”的工作簿。"
+                ? "点击右上角「导入秩序册」，选择含「竞赛日程 + 项目分组表」的工作簿（只有赛程、没有名单也可以）。"
                 : "当前还没有赛程。";
             return;
         }

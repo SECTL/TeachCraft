@@ -7,6 +7,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -135,6 +136,12 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string TitleOverride { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 上一次展示的考试标识（场次 + 源文件路径）。切对比基准、上下移考试都不换主考，
+    /// 据此判断「展示的考试有没有真的变」，决定要不要重置手改标题与班级筛选（审计 P2-1）。
+    /// </summary>
+    private string? _lastExamKey;
+
     [ObservableProperty]
     public partial bool IncludeLegend { get; set; } = true;
 
@@ -257,11 +264,17 @@ public partial class MainViewModel : ViewModelBase
         {
             var (gradeSheets, reports, zipCount) = await Task.Run(() => ClassifyDroppedFiles(paths));
 
+            var beforeCount = _sessions.Count;
+            var failed = 0;
             for (var i = 0; i < gradeSheets.Count; i++)
             {
                 if (gradeSheets.Count > 1)
                     BusyText = $"正在导入成绩总表 {i + 1}/{gradeSheets.Count}…";
+
+                var countBefore = _sessions.Count;
                 await AddSessionCoreAsync(gradeSheets[i], isReportHint: false);
+                // AddSessionCoreAsync 内部吞异常，只能从状态色判断这一份是否失败
+                if (_sessions.Count == countBefore && StatusBrush != Palette.Moss) failed++;
             }
 
             if (reports.Count > 0)
@@ -275,6 +288,16 @@ public partial class MainViewModel : ViewModelBase
                 ImportNotice = "压缩包不能直接导入。请先解压后选择其中的 .xlsx / .xls 表格导入；若解压后文件名出现乱码，推荐使用 Windows 自带解压或 Bandizip。";
                 Status = ImportNotice;
                 StatusBrush = Palette.Clay;
+            }
+            else if (gradeSheets.Count > 0)
+            {
+                // 多份拖入时逐条结果会互相覆盖，最后只剩最后一份的消息。
+                // 汇总一句，让老师知道整批到底成了几场（审计 P2-34）。
+                var imported = _sessions.Count - beforeCount;
+                var summary = $"已导入 {imported} 场考试";
+                if (failed > 0) summary += $"，{failed} 份失败";
+                Status = failed > 0 ? summary + "（详见状态栏提示）" : summary;
+                StatusBrush = failed > 0 ? Palette.Clay : Palette.Moss;
             }
         });
     }
@@ -369,8 +392,6 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasDataMeta));
         OnPropertyChanged(nameof(HeaderTitle));
     }
-
-    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanExport));
 
     partial void OnSectionChanged(int value)
     {
@@ -709,6 +730,28 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>把一场考试加入会话列表并激活首场。</summary>
     private ExamSession CreateSession(string path, ExamData data)
     {
+        // 同一份文件重复导入：就地更新那一场，不要新建。
+        // 否则老师会得到两场一模一样的考试，互为对比基准时全班进退步恒为 0，
+        // 而且这个错误是静默的——只在打印出来的纸面上才看得出来（审计 P2-2）。
+        var duplicate = _sessions.FirstOrDefault(s => IsSameFile(path, s.SourcePath));
+        if (duplicate is not null)
+        {
+            var replaced = new ExamSession
+            {
+                Order = duplicate.Order,
+                Label = duplicate.Label,
+                SourcePath = path,
+                SourceFileName = Path.GetFileName(path),
+                Data = data,
+            };
+            replaced.Reports.AddRange(duplicate.Reports);
+            _sessions[_sessions.IndexOf(duplicate)] = replaced;
+
+            _standaloneReports.Clear();
+            SyncExamSessions();
+            return replaced;
+        }
+
         var order = _sessions.Count + 1;
         var session = new ExamSession
         {
@@ -733,6 +776,37 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>统一的忙碌态包装：耗时操作全部在后台完成，UI 线程只更新状态与集合。</summary>
+    /// <summary>忙碌遮罩是否可见：置忙后延迟 400ms 才亮，快操作不闪一下。</summary>
+    [ObservableProperty] private bool _showBusyOverlay;
+
+    private static readonly TimeSpan BusyOverlayDelay = TimeSpan.FromMilliseconds(400);
+    private CancellationTokenSource? _busyCts;
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanExport));
+
+        if (!value)
+        {
+            _busyCts?.Cancel();
+            _busyCts = null;
+            ShowBusyOverlay = false;
+            return;
+        }
+
+        _busyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _busyCts = cts;
+        _ = Task.Delay(BusyOverlayDelay, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested && IsBusy) ShowBusyOverlay = true;
+            });
+        }, TaskScheduler.Default);
+    }
+
     private async Task RunBusyAsync(string text, Func<Task> action)
     {
         IsBusy = true;
@@ -784,6 +858,12 @@ public partial class MainViewModel : ViewModelBase
 
             var data = await Task.Run(() => GradeSheetImporter.Load(path));
             var session = CreateSession(path, data);
+
+            // 新导入的考试成为当前视图：老师的直觉是「我导了它，就该看到它」，
+            // 停在上一场时紧接着点导出会打出旧数据（审计 P2-3）。
+            var index = _sessions.IndexOf(session);
+            if (index >= 0) ActiveExamIndex = index;
+
             ApplyActiveExamAndComparison();
 
             Status = $"已导入【第 {session.Order} 次考试】· 共 {_sessions.Count} 场考试";
@@ -1009,7 +1089,18 @@ public partial class MainViewModel : ViewModelBase
         ExamName = string.IsNullOrWhiteSpace(displayData.ExamName) ? activeSession.DisplayName : displayData.ExamName;
         StudentCount = displayData.Students.Count;
         SubjectCount = displayData.Subjects.Count;
-        TitleOverride = displayData.DefaultTitle;
+
+        // 标题与班级筛选只在「展示的考试真的变了」时才重置。
+        // 切对比基准、上下移一场考试都不会换主考数据，却曾经把老师手改的标题
+        // 和筛好的班级一起冲回默认——7 个入口都走这里（审计 P2-1）。
+        var examKey = $"{activeSession.Order}:{activeSession.SourcePath}";
+        var examChanged = !string.Equals(_lastExamKey, examKey, StringComparison.Ordinal);
+        if (examChanged)
+        {
+            _lastExamKey = examKey;
+            TitleOverride = displayData.DefaultTitle;
+        }
+
         ImportNotice = displayData.ImportNotice;
         if (!string.IsNullOrWhiteSpace(displayData.ImportNotice))
         {
@@ -1018,7 +1109,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         HasData = true;
-        SyncStripClasses(displayData);
+        SyncStripClasses(displayData, resetSelection: examChanged);
 
         // 只重建当前页签需要的集合，其余页签切过去时再按需构建。
         _overviewDirty = true;
@@ -1044,6 +1135,15 @@ public partial class MainViewModel : ViewModelBase
     public async Task ExportAsync(string path)
     {
         if (_data is null || IsBusy) return;
+
+        // 导出路径不得覆盖任何一份导入的成绩总表：
+        // 保存对话框的覆盖提示只说「文件已存在」，看不出这是刚用来算成绩的原件。
+        if (WouldOverwriteImportedSource(path, _sessions.Select(s => s.SourcePath)))
+        {
+            Status = "导出路径不能覆盖已导入的成绩总表，请换一个文件名。";
+            StatusBrush = Palette.Seal;
+            return;
+        }
 
         await RunBusyAsync("正在导出成绩条…", async () =>
         {
@@ -1082,6 +1182,39 @@ public partial class MainViewModel : ViewModelBase
         });
     }
 
+    /// <summary>
+    /// 导出前检查：目标路径不得是任何一场考试的导入源。
+    ///
+    /// 抽成公开静态方法是为了可测——<see cref="ExportAsync"/> 走 RunBusyAsync，
+    /// 其中 `Dispatcher.UIThread.InvokeAsync` 在无 UI 线程的测试环境会永久挂起，
+    /// 所以守护逻辑本身必须能脱离导入流程单独断言。
+    /// </summary>
+    public static bool WouldOverwriteImportedSource(
+        string exportPath, IEnumerable<string> importedSourcePaths)
+    {
+        foreach (var source in importedSourcePaths)
+        {
+            if (IsSameFile(exportPath, source)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>两个路径是否指向同一个文件（大小写不敏感，相对路径先转绝对）。</summary>
+    private static bool IsSameFile(string path, string? other)
+    {
+        if (string.IsNullOrWhiteSpace(other)) return false;
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(path), Path.GetFullPath(other), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>把底层异常翻译成中文提示，避免状态栏出现英文堆栈信息。</summary>
     private static string FriendlyError(Exception ex, string prefix)
     {
@@ -1106,10 +1239,13 @@ public partial class MainViewModel : ViewModelBase
 
     public string SuggestedFileName()
     {
-        // 选中具体班级时文件名带上班级（如「九2班-…-成绩条.xlsx」）；「全年级」沿用原命名
+        // 选中具体班级时文件名带上班级（如「九2班-…-成绩条.xlsx」）；
+        // 「全年级」用「全年级」本身，而不是 ClassName——后者在跨班总表里是
+        // 「未识别班级」这个界面兜底文案，会直接泄漏进文件名（P3-20）。
         var scope = string.IsNullOrWhiteSpace(SelectedStripClass) || SelectedStripClass == OverviewReportFilter.AllClasses
-            ? ClassName
+            ? (ClassName == "未识别班级" ? "全年级" : ClassName)
             : SelectedStripClass;
+        scope = string.IsNullOrWhiteSpace(scope) ? "全年级" : scope;
         var name = $"{scope}-{ExamName}-成绩条".Replace("/", "-").Replace("\\", "-");
         return string.IsNullOrWhiteSpace(name) ? "成绩条.xlsx" : $"{name}.xlsx";
     }
@@ -1712,7 +1848,14 @@ public partial class MainViewModel : ViewModelBase
     /// 同步成绩条页的班级下拉：首项固定「全年级」，其后为总表中的有效班级。
     /// 会话加载或切换时重置回「全年级」。
     /// </summary>
-    private void SyncStripClasses(ExamData data)
+    /// <summary>
+    /// 同步成绩条页的班级下拉：首项固定「全年级」，其后为总表中的有效班级。
+    ///
+    /// <paramref name="resetSelection"/> 为真才把筛选拨回「全年级」——切换/加载考试时该重置；
+    /// 而切对比基准、上下移考试这类「主考没变」的操作不该冲掉老师筛好的班级（审计 P2-1）。
+    /// 列表本身变了时仍需先置 null 再回设，否则 ComboBox 容器不重建（见下面的注释）。
+    /// </summary>
+    private void SyncStripClasses(ExamData data, bool resetSelection = true)
     {
         _syncingStripClasses = true;
         try
@@ -1731,7 +1874,8 @@ public partial class MainViewModel : ViewModelBase
                 foreach (var className in desired) StripClasses.Add(className);
             }
 
-            SelectedStripClass = OverviewReportFilter.AllClasses;
+            if (resetSelection || !desired.Contains(SelectedStripClass ?? string.Empty))
+                SelectedStripClass = OverviewReportFilter.AllClasses;
         }
         finally
         {

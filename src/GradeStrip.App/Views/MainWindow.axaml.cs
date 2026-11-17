@@ -15,6 +15,8 @@ namespace GradeStrip.App.Views;
 
 public partial class MainWindow : Window
 {
+    private bool _closeConfirmed;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -31,6 +33,50 @@ public partial class MainWindow : Window
         {
             Classes.Add("allow-motion");
         }
+
+        // 与其余窗口一致：打开后把窗口钳进屏幕工作区（此前是唯一引入 WindowFit 却从不调用的窗口）。
+        Opened += (_, _) => WindowFit.Clamp(this);
+    }
+
+    /// <summary>
+    /// 关窗是否要先确认。分晓的考试会话只存在内存里——没有自动保存、也没有工程文件，
+    /// 一次误触 X 就丢掉整个下午的导入与设置（审计 P0-1）。
+    ///
+    /// 抽成纯函数是为了可测：走查工具集只截图、不碰窗口生命周期。
+    /// 走查必须放行，否则一次 --gradestrip-shot 就会被确认框卡住。
+    /// public 是刻意的：测试工程要能直接断言这条门控。
+    /// </summary>
+    public static bool ShouldConfirmOnClose(bool hasData, bool closeConfirmed, bool isWalkthrough) =>
+        hasData && !closeConfirmed && !isWalkthrough;
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        var args = Environment.GetCommandLineArgs();
+        var isWalkthrough = args.Skip(1).Any(a => a.StartsWith("--", StringComparison.Ordinal));
+
+        if (!ShouldConfirmOnClose(ViewModel.HasData, _closeConfirmed, isWalkthrough))
+        {
+            base.OnClosing(e);
+            return;
+        }
+
+        e.Cancel = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+        {
+            var discard = await ConfirmDialog.ShowAsync(
+                this,
+                "关闭分晓？",
+                $"当前 {ViewModel.StudentCount} 名学生的成绩与报表只保存在内存中，关闭后不会保留。"
+                + "可先「导出成绩条」留档。",
+                "放弃并关闭",
+                "继续编辑",
+                danger: true);
+
+            if (!discard) return;
+
+            _closeConfirmed = true;
+            Close();
+        });
     }
 
     /// <summary>把窗口内容渲染成 PNG，用于设计走查（--shot 参数触发）。</summary>

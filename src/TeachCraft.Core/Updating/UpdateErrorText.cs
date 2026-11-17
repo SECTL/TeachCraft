@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -29,6 +30,12 @@ public static class UpdateErrorText
     public const string DownloadFailed = "安装包没有下载完整，已清理残留文件，请重试。";
     public const string ChecksumMismatch = "安装包校验失败，可能下载过程中出错，已删除，请重试。";
 
+    /// <summary>
+    /// 本机文件被别的进程打断（并发下载时两个实例互删 .part 的典型症状）。
+    /// 归到网络故障里会让老师白白去查校园网（审计 P1-5）。
+    /// </summary>
+    public const string DownloadInterrupted = "下载被本机其他进程打断，请重试；若反复出现请反馈。";
+
     /// <summary>镜像上还没有这个软件的任何版本——通常是镜像尚未同步，不代表出错。</summary>
     public const string MirrorHasNoProject = "SECTL 镜像上暂时没有这个软件的版本记录，可能还在同步，请稍后重试或改用 GitHub。";
 
@@ -53,6 +60,11 @@ public static class UpdateErrorText
 
             case SocketException:
                 return NoNetwork;
+
+            // 本机 IO 失败不是网络问题：并发下载互删 .part 时抛的正是 IOException，
+            // 旧实现归到通用兜底「请检查网络后重试」，把本机冲突误导成校园网故障。
+            case IOException:
+                return DownloadInterrupted;
 
             default:
                 return null;

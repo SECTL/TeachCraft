@@ -855,7 +855,13 @@ public static class GradeSheetImporter
     {
         // 「九6班-全学科成绩汇总-…」→「九6班」
         var head = title.Split('-', '－')[0].Trim();
-        return head.Length is > 0 and <= 12 ? head : string.Empty;
+        if (head.Length is 0 or > 12) return string.Empty;
+
+        // 纯数字段不是班级：「2026-2027学年期末成绩」的首段是年份，
+        // 当成班级后大标题会变成「2026 · 2026-2027学年… · 个人成绩条」（审计 P2-5）。
+        if (head.All(char.IsDigit)) return string.Empty;
+
+        return head;
     }
 
     private static string ExtractExamName(string sourceTitle)

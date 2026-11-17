@@ -164,6 +164,12 @@ public sealed class SeatUndoStack
     /// 变更前的状态与栈顶内容相同就整个跳过：那意味着上一次所谓「变更」其实什么都没改
     /// （滑块同一档位连发、点了没反应的按钮）。跳过而不是覆盖栈顶——栈顶是上一步的真实
     /// 起点，覆盖它会让那一步撤不回去。
+    ///
+    /// 注意这条守卫能挡住的只是「连续两次 before 相同」的情形（第一次入栈、第二次命中）；
+    /// 真实变更之后的第一次假编辑仍会入栈一次。要彻底消除空转步骤，得让调用方同时持有
+    /// before 与 after 并在此之外比对——滑块路径已经这么做了（见
+    /// `SeatGridViewModel.EndInteractiveLayoutChange`）。**不要**在没有替代机制的前提下
+    /// 删掉这道守卫：无变化操作会逐次清空重做栈。
     /// </summary>
     public void Push(SeatStateSnapshot before, string label)
     {

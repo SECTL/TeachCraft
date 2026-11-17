@@ -49,6 +49,26 @@ public partial class NewProjectViewModel : ObservableObject
     public string TotalHoursText =>
         $"共 {Subjects.Sum(item => Math.Max(0, item.WeeklyHours))} 节 / 一周约 35 格";
 
+    /// <summary>
+    /// 课时总量提示：超出必然排不下，恰好占满则加走班后会没有空节次。
+    /// 旧实现只给一句中性灰字，错误被推迟到生成阶段才以「班级教学时段不足」爆雷（P3-13）。
+    /// </summary>
+    public string HoursHint
+    {
+        get
+        {
+            var total = Subjects.Sum(item => Math.Max(0, item.WeeklyHours));
+            if (total > 35) return $"共 {total} 节，超过一周约 35 格，生成时会有 {total - 35} 节排不下。";
+            if (total == 35) return "已占满一周 35 格：再加分层走班将没有空节次，建议留 2–3 节余量。";
+            return string.Empty;
+        }
+    }
+
+    public bool HasHoursHint => HoursHint.Length > 0;
+
+    /// <summary>超额（而非满额）时才用错误色。</summary>
+    public bool IsHoursOverflow => Subjects.Sum(item => Math.Max(0, item.WeeklyHours)) > 35;
+
     /// <summary>周课时为 0 的学科不会出现在课表里；用红字提醒老师。</summary>
     public string ZeroHourHint
     {
@@ -79,6 +99,9 @@ public partial class NewProjectViewModel : ObservableObject
         OnPropertyChanged(nameof(TotalHoursText));
         OnPropertyChanged(nameof(ZeroHourHint));
         OnPropertyChanged(nameof(HasZeroHour));
+        OnPropertyChanged(nameof(HoursHint));
+        OnPropertyChanged(nameof(HasHoursHint));
+        OnPropertyChanged(nameof(IsHoursOverflow));
     };
 
     [ObservableProperty] private string _schoolName = string.Empty;

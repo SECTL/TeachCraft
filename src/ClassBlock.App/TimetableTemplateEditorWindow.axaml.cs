@@ -1,9 +1,11 @@
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using ClassBlock.Core;
 using ClassBlock.Core.Timetable;
+using TeachCraft.Shared;
 
 namespace ClassBlock.App;
 
@@ -12,7 +14,8 @@ public partial class TimetableTemplateEditorWindow : Window
     /// <summary>保存成功时带回模板编号；关闭/删除时为 null。</summary>
     public string? SavedTemplateId { get; private set; }
 
-    private bool _confirmDelete;
+    private bool _closeReady;
+    private bool _guardOpen;
 
     public TimetableTemplateEditorWindow()
         : this(new TimetableTemplate(), startAsCopy: false)
@@ -23,6 +26,7 @@ public partial class TimetableTemplateEditorWindow : Window
     {
         InitializeComponent();
         DataContext = new TimetableTemplateEditorViewModel(source, startAsCopy);
+        Opened += (_, _) => WindowFit.Clamp(this);
     }
 
     private TimetableTemplateEditorViewModel ViewModel => (TimetableTemplateEditorViewModel)DataContext!;
@@ -40,6 +44,7 @@ public partial class TimetableTemplateEditorWindow : Window
             var template = ViewModel.BuildTemplate();
             TimetableTemplateIO.SaveCustom(template);
             SavedTemplateId = template.Id;
+            _closeReady = true;
             Close();
         }
         catch (ClassBlockException ex)
@@ -52,18 +57,20 @@ public partial class TimetableTemplateEditorWindow : Window
         }
     }
 
-    private void OnDelete(object? sender, RoutedEventArgs e)
+    private async void OnDelete(object? sender, RoutedEventArgs e)
     {
-        if (!_confirmDelete)
-        {
-            _confirmDelete = true;
-            DeleteButton.Content = "确认删除";
-            return;
-        }
+        if (ViewModel.IsBuiltin || !ViewModel.IsPersisted) return;
+
+        var delete = await ConfirmDialog.ShowAsync(
+            this, "删除模板？",
+            $"「{ViewModel.TemplateName}」将被删除，且无法恢复（会先留一份 .bak 备份）。",
+            "删除", "取消", danger: true);
+        if (!delete) return;
 
         try
         {
-            TimetableTemplateIO.DeleteCustom(ViewModel.TemplateId);
+            TimetableTemplateIO.DeleteCustom(ViewModel.TemplateId, backup: true);
+            _closeReady = true;
             Close();
         }
         catch (Exception ex)
@@ -73,6 +80,29 @@ public partial class TimetableTemplateEditorWindow : Window
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        if (_closeReady || _guardOpen || !ViewModel.IsDirty) return;
+
+        e.Cancel = true;
+        _guardOpen = true;
+        _ = ConfirmDiscardAsync();
+    }
+
+    private async Task ConfirmDiscardAsync()
+    {
+        var discard = await ConfirmDialog.ShowAsync(
+            this, "放弃未保存的模板改动？",
+            "当前模板的改动尚未保存，关闭后会丢失。", "放弃并关闭", "继续编辑", danger: true);
+        _guardOpen = false;
+        if (discard)
+        {
+            _closeReady = true;
+            Close();
+        }
+    }
 
     private void SetEditorStatus(string message)
     {

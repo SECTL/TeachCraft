@@ -98,9 +98,28 @@ public partial class MeetRosterWindow : Window
             e.Cancel = true;
             Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
             {
-                if (await ConfirmDialog.ShowAsync(
+                // 秩序册工程没有逐班原文件，「保存 / 另存为」都是灰的——
+                // 老师改完体检问题后关窗，只有「放弃并关闭」一条路，全部修改重来。
+                // 这里补一句「导出参赛手册留档」的出路（审计 P1-15 最低版 / T23）。
+                if (ViewModel.IsFromOrderBook)
+                {
+                    var export = await ConfirmDialog.ShowAsync(
                         this, "关闭竞名？",
-                        $"当前有未保存的报名表修改（{ViewModel.AllClasses.Count} 个班），关闭后不会保留。可先按「保存」(Ctrl+S) 或「另存为」留档。",
+                        $"当前有未保存的修改（{ViewModel.AllClasses.Count} 个班）。"
+                        + "秩序册工程没有逐班原文件，「保存」不可用；可以先导出参赛手册留档。",
+                        "先导出留档", "放弃并关闭", danger: false);
+                    if (export)
+                    {
+                        // 走既有的导出流程；用户取消保存框时留在编辑态不关窗。
+                        await OnExportHandBookAsync();
+                        if (!File.Exists(_lastExportedPath))
+                            return;
+                    }
+                }
+
+                if (await ConfirmDialog.ShowAsync(
+                        this, "确认关闭？",
+                        "关闭后当前修改不会保留。",
                         "放弃并关闭", "继续编辑", danger: true))
                 {
                     _closeConfirmed = true;
@@ -111,6 +130,9 @@ public partial class MeetRosterWindow : Window
 
         base.OnClosing(e);
     }
+
+    /// <summary>最近一次成功导出的路径；关窗留档用它判断是否真的导出成功。</summary>
+    private string? _lastExportedPath;
 
     /// <summary>设计走查用：把窗口渲染成 PNG；scale 用于放大取证明细。</summary>
     public void CaptureTo(string path, double scale = 1)
@@ -154,9 +176,11 @@ public partial class MeetRosterWindow : Window
             else
             {
                 // 廉价预读各文件的"参赛单位"，把"新增 / 替换 / 保留"算给用户看；预读失败按新增对待。
-                var peeked = paths
+                // 必须放后台：每份文件都要完整开一次 XLWorkbook，一次选 30 份会在 UI 线程上
+                // 白屏几秒（审计 P2-8）。
+                var peeked = await Task.Run(() => paths
                     .Select(path => (Path: path, Name: RegistrationWorkbookImporter.PeekClassName(path)))
-                    .ToList();
+                    .ToList());
                 var existingNames = ViewModel.AllClasses.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
                 var replaceNames = peeked
                     .Where(p => p.Name is not null && existingNames.Contains(p.Name))
@@ -205,11 +229,18 @@ public partial class MeetRosterWindow : Window
             // 整份工作簿只打开一次：判类型与后续导入共用同一个实例（60 班秩序册原先要解析三遍）。
             // 打开与判类型都在后台线程；文件以共享读打开，会话存活期间 Excel 仍能同时打开同一份文件。
             // 生命周期由本方法负责（using），ViewModel 只借用、不释放——否则会用到已释放的实例。
-            var (session, kind) = await Task.Run(() => OpenAndDetect(path));
+            var (session, kind, openError) = await Task.Run(() => OpenAndDetect(path));
 
-            if (session is null || kind == MeetWorkbookKind.Unknown)
+            // 打不开与认不出去分两种话术：前者是文件损坏 / 加密，后者是表型不符。
+            if (session is null)
             {
-                session?.Dispose();
+                ViewModel.SetStatus($"这份文件打不开：{openError}（请确认文件未损坏、未被密码保护）", true);
+                return;
+            }
+
+            if (kind == MeetWorkbookKind.Unknown)
+            {
+                session.Dispose();
                 ViewModel.SetStatus(
                     "这份工作簿里既没有「代表队名单」，也没有「竞赛日程 / 项目分组表」，认不出是什么表。"
                     + "请确认选的是秩序册或往届赛程。", true);
@@ -249,28 +280,34 @@ public partial class MeetRosterWindow : Window
     }
 
     /// <summary>
-    /// 打开工作簿并判断这是秩序册还是只有赛程。打开 / 解析失败一律按「认不出」返回，
-    /// 与旧 <see cref="OrderBookImporter.DetectKind(string)"/> 的容忍行为一致：
-    /// 老师看到的是一句可操作的提示，而不是「文件被占用」这类技术异常。
+    /// 打开工作簿并判断这是秩序册还是只有赛程。
+    ///
+    /// 失败时必须把「打不开」与「认不出」分开：损坏 / 加密的文件打不开，
+    /// 报「认不出是什么表」会让老师反复核对文件类型而永远不成功（审计 P2-38）。
     /// 失败时已经打开的会话当场收掉，成功时把所有权交给调用方。
     /// </summary>
-    private static (WorkbookSession? Session, MeetWorkbookKind Kind) OpenAndDetect(string path)
+    private static (WorkbookSession? Session, MeetWorkbookKind Kind, string? Error) OpenAndDetect(string path)
     {
         WorkbookSession? session = null;
         try
         {
             session = WorkbookSession.Open(path);
-            return (session, OrderBookImporter.DetectKind(session.Workbook));
+            return (session, OrderBookImporter.DetectKind(session.Workbook), null);
         }
-        catch
+        catch (Exception ex)
         {
             session?.Dispose();
-            return (null, MeetWorkbookKind.Unknown);
+            // 复用 WorkbookIO 已经写好的中文话术（损坏 / 被密码保护）。
+            var message = ex is InvalidDataException ? ex.Message : ErrorText.Describe(ex, "打开工作簿");
+            return (null, MeetWorkbookKind.Unknown, message);
         }
     }
 
     /// <summary>导出参赛手册：先选设置，再选保存位置。</summary>
-    private async void OnExportHandBook(object? sender, RoutedEventArgs e)
+    private async void OnExportHandBook(object? sender, RoutedEventArgs e) => await OnExportHandBookAsync();
+
+    /// <summary>导出参赛手册（设置 → 保存框 → 写出）。关窗留档也走这条路径。</summary>
+    private async Task OnExportHandBookAsync()
     {
         try
         {
@@ -306,6 +343,7 @@ public partial class MeetRosterWindow : Window
             }
 
             await ViewModel.ExportHandBookAsync(request, path);
+            _lastExportedPath = path;
         }
         catch (Exception ex)
         {
@@ -593,6 +631,20 @@ public partial class MeetRosterWindow : Window
     }
 
     private void OnClearClassSearch(object? sender, RoutedEventArgs e) => ViewModel.ClearClassSearch();
+
+    /// <summary>移除一个班（及其全部报名），先问后果。</summary>
+    private async void OnRemoveClass(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ClassItemViewModel item }) return;
+
+        if (!await ConfirmDialog.ShowAsync(
+                this, "移除这个班？",
+                $"将移除「{item.Name}」及其 {item.AthleteCount} 名运动员与全部报名，无法撤销。",
+                "移除", "取消", danger: true))
+            return;
+
+        ViewModel.RemoveClass(item.Name);
+    }
 
     private void OnDismissImportNotices(object? sender, RoutedEventArgs e) =>
         ViewModel.DismissImportNotices();

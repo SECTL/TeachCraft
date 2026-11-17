@@ -150,7 +150,7 @@
                                    FontFamily="{StaticResource MonoFont}" FontSize="10.5"
                                    Foreground="{StaticResource InkBrush}" />
                     </Grid>
-                    <Slider Minimum="0.4" Maximum="3" Value="{Binding WatermarkScale, Mode=TwoWay}" />
+                    <Slider Minimum="0.4" Maximum="4" Value="{Binding WatermarkScale, Mode=TwoWay}" />
                 </StackPanel>
                 <StackPanel Spacing="4" Margin="0,4,0,0">
                     <Grid ColumnDefinitions="*,Auto">
@@ -160,6 +160,21 @@
                                    Foreground="{StaticResource InkBrush}" />
                     </Grid>
                     <Slider Minimum="0.05" Maximum="1" Value="{Binding WatermarkOpacity, Mode=TwoWay}" />
+                </StackPanel>
+
+                <!-- 水印是纯视觉调参：字号倍率与不透明度对非技术老师没有直觉，
+                     以前只能「改 → 存 → 打开看 → 再改」，每轮起一个新文件名（审计 P2-28）。 -->
+                <StackPanel Spacing="5" Margin="0,6,0,0">
+                    <TextBlock Text="效果预览" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                    <Border Background="{StaticResource PaperDeepBrush}" BorderBrush="{StaticResource LineBrush}"
+                            BorderThickness="1" CornerRadius="6" Height="120" ClipToBounds="True">
+                        <Panel>
+                            <Image x:Name="WatermarkPreview" Stretch="Uniform" />
+                            <TextBlock x:Name="WatermarkPreviewHint" Text="选择图片后显示预览"
+                                       FontSize="10" Foreground="{StaticResource MutedBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Panel>
+                    </Border>
                 </StackPanel>
             </StackPanel>
 
@@ -171,6 +186,11 @@
             <CheckBox IsVisible="{Binding ShowKeepLayout}"
                       Content="保留版面（每页渲染为图片，不可编辑）"
                       IsChecked="{Binding KeepLayout, Mode=TwoWay}" />
+
+            <!-- PDF 转 Word 的图片去向：文字模式会丢图，必须当场说清（审计 P2-28）。 -->
+            <TextBlock IsVisible="{Binding ShowKeepLayout}"
+                       Text="{Binding PdfToWordNote}" FontSize="10" LineHeight="16"
+                       TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
 
             <StackPanel Spacing="6" IsVisible="{Binding ShowDpi}">
                 <TextBlock Text="渲染精度 DPI" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
@@ -212,12 +232,22 @@
         </Border>
 
         <!-- 运行 -->
-        <ProgressBar IsVisible="{Binding IsBusy}" Minimum="0" Maximum="100"
+        <ProgressBar IsVisible="{Binding HasProgress}" Minimum="0" Maximum="100"
                      Value="{Binding Progress}" Margin="0,18,0,0" />
         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}" Margin="0,8,0,0">
             <TextBlock Text="正在处理…" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+            <!-- 没有真实进度的工具不再显示 0%：那看起来像死机（审计 P2-30）。 -->
             <TextBlock Text="{Binding Progress, StringFormat='{}{0:0}%'}" FontFamily="{StaticResource MonoFont}"
-                       FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}" />
+                       FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}"
+                       IsVisible="{Binding HasProgress}" />
+            <Button Classes="link" Content="取消" FontSize="10.5"
+                    Foreground="{StaticResource MutedBrush}"
+                    IsVisible="{Binding !CancelRequested}"
+                    VerticalAlignment="Center"
+                    Click="OnCancelTool"
+                    AutomationProperties.Name="取消处理" />
+            <TextBlock Text="正在取消…" FontSize="10.5" Foreground="{StaticResource MutedBrush}"
+                       IsVisible="{Binding CancelRequested}" VerticalAlignment="Center" />
         </StackPanel>
 
         <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}" FontSize="11"

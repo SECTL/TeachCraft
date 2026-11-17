@@ -100,9 +100,19 @@ public partial class ClassBlockWindow : Window
     {
         var path = await PickOpenAsync("导入课程总表", new FilePickerFileType("Excel 总表")
         {
-            Patterns = new[] { "*.xlsx" },
+            // .xls 也放进来：Core 里有一条「请先把 Excel 另存为 xlsx」的友好提示，
+            // 过滤器挡在外面它就永远没机会说出来，老师只会看到文件「隐身」（审计 P2-11）。
+            Patterns = new[] { "*.xlsx", "*.xls" },
         });
         if (path is null) return;
+
+        // 导入是整表替换：已有的班级选择、标题、导出的图都会作废。
+        // 时序是五只应用里唯一没有确认弹窗的（审计 P2-36）。
+        if (ViewModel.HasMaster && !await ConfirmDialog.ShowAsync(
+                this, "替换当前总表？",
+                $"当前已识别 {ViewModel.MasterSummary}，导入新总表会整体替换，无法撤销。",
+                "替换", "取消", danger: true))
+            return;
 
         ViewModel.BeginBusy("正在读取总表…", "识别年级 / 班级 / 七天课表与课服、午学、晚修；文件只在本机处理。");
         try

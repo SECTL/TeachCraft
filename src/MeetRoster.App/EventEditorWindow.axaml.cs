@@ -46,6 +46,11 @@ public partial class EventEditorWindow : Window
     {
         if (e.Key != Avalonia.Input.Key.Enter || _viewModel.IsGroupMode) return;
 
+        // 没搜索时按回车等于「关闭」，不该替老师选第一项。
+        // 旧实现无条件取 FirstOrDefault，老师点开只想看看有哪些项目、
+        // 随手按回车想关窗，格子就被写成「100米」并顶掉原报的项目（审计 P2-20）。
+        if (string.IsNullOrWhiteSpace(_viewModel.SearchText)) return;
+
         var first = _viewModel.Choices.FirstOrDefault();
         if (first is null) return;
 
