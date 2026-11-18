@@ -138,6 +138,8 @@ public sealed class QuickSwapWindow : Window
 
         if (matches.Count > 0) _results.SelectedIndex = 0;
 
+        // 用户继续打字时清掉上一次的红色失败提示：那是上一轮输入的结论。
+        _hint.Foreground = Muted;
         _hint.Text = keyword.Length == 0
             ? "输入姓名或拼音首字母，如 ZS"
             : matches.Count == 0
@@ -171,7 +173,16 @@ public sealed class QuickSwapWindow : Window
         var keyword = _search.Text ?? string.Empty;
         if (keyword.Trim().Length == 0) return;
 
-        _viewModel.QuickSwapByName(_source, keyword);
+        // 失败时不关窗：重名「张」、没找到、对方没座位、锁定……这些都是可以在浮窗里
+        // 改几个字再试的。原先把窗口关掉、只把原因写进背后的状态栏，
+        // 老师看到的是「点了回车窗口没了，座位却没换」。
+        if (!_viewModel.QuickSwapByName(_source, keyword))
+        {
+            _hint.Text = _viewModel.StatusText;
+            _hint.Foreground = new SolidColorBrush(Color.Parse("#A34A36"));
+            return;
+        }
+
         Applied = true;
         Close();
     }

@@ -37,6 +37,13 @@ public sealed class SeatStateSnapshot
     public required IReadOnlyDictionary<Guid, SeatZoneState> Zones { get; init; }
 
     /// <summary>
+    /// 显示样式：配色、字号、加粗、讲台间距等。**必须进快照**——
+    /// 「恢复默认样式」走 RecordChange，但样式字段原先不在快照里，撤销后颜色仍是默认值，
+    /// 看起来像撤销没生效。
+    /// </summary>
+    public required SeatStyleState Style { get; init; }
+
+    /// <summary>
     /// 拍照时是否处在考场模式，以及（在考场里时）那份考场安排。
     ///
     /// 考场不是一个普通字段：它把 <c>CurrentLayout</c> 整体换成 <c>_examPlan.Layout</c>，
@@ -48,6 +55,20 @@ public sealed class SeatStateSnapshot
 
     /// <summary>考场安排；只有 <see cref="IsExam"/> 为真时才有值。</summary>
     public ExamPlanSnapshot? Exam { get; init; }
+
+    /// <summary>
+    /// 考场快照携带的**日常侧**数据；只有 <see cref="IsExam"/> 为真时才有值。
+    ///
+    /// 为什么需要它：考场态快照（<c>IsExam=true</c>）里 <see cref="Layout"/> 与
+    /// <see cref="Assignments"/> 记的都是考场那一份，日常座位只存在于 EnterExamMode
+    /// 的 before 快照里。一旦用户进了考场、改了一笔、再撤销，栈顶换成了考场态快照，
+    /// 日常侧就再也找不回来——「返回日常座位」静默失效。
+    ///
+    /// 独立可空字段而不是塞进 <see cref="ExamPlanSnapshot"/>：那是考场侧的结构，
+    /// 日常侧不该跟着它一起重建。可空且不设 required，旧测试的 Snapshot() 工厂
+    /// 不需要改动。
+    /// </summary>
+    public DailySideSnapshot? DailySide { get; init; }
 
     /// <summary>这一步做了什么，供状态栏显示「已撤销：自动排座」。</summary>
     public required string Label { get; init; }
@@ -95,12 +116,57 @@ public sealed class SeatStateSnapshot
 
         // 考场模式下布局本身就是考场布局，上面已比过；座号表由 ExamPlanner 决定，不单独比。
 
+        if (!Style.Equals(other.Style)) return false;
+
         // 画布：过道集合 + 三条走廊 + 门窗。SeatChartCanvas 自己实现了结构相等。
         return Canvas.Equals(other.Canvas);
     }
 
     private static bool PairsEqual(IReadOnlyList<SeatPairState> a, IReadOnlyList<SeatPairState> b) =>
         a.Count == b.Count && a.Zip(b).All(p => p.First == p.Second);
+}
+
+/// <summary>
+/// 显示样式的快照形态。字段与 <c>SeatGridViewModel.ResetStyleCore</c> 触碰的集合一致：
+/// 配色九项、字号、加粗、隐藏空座、女生标记、两字姓名加空、组排提示、讲台间距。
+/// </summary>
+public sealed class SeatStyleState
+{
+    public required string SeatBackground { get; init; }
+    public required string EmptySeatBackground { get; init; }
+    public required string SeatText { get; init; }
+    public required string SeatBorder { get; init; }
+    public required string PodiumBackground { get; init; }
+    public required string PodiumText { get; init; }
+    public required string GroupLabel { get; init; }
+    public required string RowLabel { get; init; }
+    public required string FemaleMark { get; init; }
+    public required int NameFontSize { get; init; }
+    public required bool BoldNames { get; init; }
+    public required bool HideEmptySeats { get; init; }
+    public required bool MarkFemales { get; init; }
+    public required bool SpaceTwoCharNames { get; init; }
+    public required bool ShowGroupRowHints { get; init; }
+    public required int PodiumGap { get; init; }
+
+    public bool Equals(SeatStyleState? other) =>
+        other is not null &&
+        SeatBackground == other.SeatBackground &&
+        EmptySeatBackground == other.EmptySeatBackground &&
+        SeatText == other.SeatText &&
+        SeatBorder == other.SeatBorder &&
+        PodiumBackground == other.PodiumBackground &&
+        PodiumText == other.PodiumText &&
+        GroupLabel == other.GroupLabel &&
+        RowLabel == other.RowLabel &&
+        FemaleMark == other.FemaleMark &&
+        NameFontSize == other.NameFontSize &&
+        BoldNames == other.BoldNames &&
+        HideEmptySeats == other.HideEmptySeats &&
+        MarkFemales == other.MarkFemales &&
+        SpaceTwoCharNames == other.SpaceTwoCharNames &&
+        ShowGroupRowHints == other.ShowGroupRowHints &&
+        PodiumGap == other.PodiumGap;
 }
 
 /// <summary>约束里的一对（互斥 / 结对 / 上期同桌）。与 Core 的 StudentPair 同构，但可序列化比较。</summary>
@@ -210,6 +276,20 @@ public sealed class SeatUndoStack
         _undo.Clear();
         _redo.Clear();
     }
+}
+
+/// <summary>
+/// 考场快照里的日常侧：进考场前的日常布局、座位、设置与标题。
+///
+/// 只留重建 <c>_dailySnapshot</c> 所需的东西。座位按学生 Id 记，恢复时换回当前
+/// ViewModel 实例（与撤销的其他路径同一套做法，新造会让选中状态脱钩）。
+/// </summary>
+public sealed class DailySideSnapshot
+{
+    public required SeatChartLayout Layout { get; init; }
+    public required IReadOnlyDictionary<SeatPosition, Guid> Assignments { get; init; }
+    public required SeatChartSettings Settings { get; init; }
+    public required string Title { get; init; }
 }
 
 /// <summary>

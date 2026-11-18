@@ -79,6 +79,8 @@ public partial class SeatGridWindow : Window
         AddHandler(PointerPressedEvent, OnLayoutSliderPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, OnLayoutSliderPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerCaptureLostEvent, OnLayoutSliderCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(GotFocusEvent, OnLayoutSliderGotFocus, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(LostFocusEvent, OnLayoutSliderLostFocus, RoutingStrategies.Bubble, handledEventsToo: true);
 
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
 
@@ -601,6 +603,19 @@ public partial class SeatGridWindow : Window
     private void OnLayoutSliderCaptureLost(object? sender, PointerCaptureLostEventArgs e) =>
         ViewModel.EndInteractiveLayoutChange();
 
+    // 键盘路径：Tab 聚焦滑块后按方向键改值不经过指针事件，此前直接 BuildGrid、
+    // 全程不入撤销栈（Ctrl+Z 毫无反应）。用焦点进出把这段会话包起来：
+    // GotFocus 拍快照、LostFocus 收尾登记一步，与拖动路径同一套语义（会话收尾一次登记）。
+    private void OnLayoutSliderGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (IsSliderSource(e.Source)) ViewModel.BeginInteractiveLayoutChange();
+    }
+
+    private void OnLayoutSliderLostFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (IsSliderSource(e.Source)) ViewModel.EndInteractiveLayoutChange();
+    }
+
     private static bool IsSliderSource(object? source)
     {
         var visual = source as Visual;
@@ -661,6 +676,9 @@ public partial class SeatGridWindow : Window
             }
 
             var seat = FindSeatUnder(this.InputHitTest(position) as Visual);
+            // 过道格不是可落座的位置：画橙色落点高亮等于骗人（松手会被 MoveSeatStudent
+            // 拒绝并报「这个位置是过道」）。悬停时直接不高亮。
+            if (seat is not null && !ViewModel.CurrentLayoutPublic.IsUsable(seat.Position)) seat = null;
             if (!ReferenceEquals(seat, _dropTarget))
             {
                 _dropTarget?.SetDropTarget(false);
@@ -755,6 +773,9 @@ public partial class SeatGridWindow : Window
         foreach (var button in this.GetVisualDescendants().OfType<Button>())
         {
             if (button.Tag is not SeatCellViewModel seat) continue;
+            // 过道格不参与「最近座位」计算：投影落点若落在过道附近，
+            // 应当吸到真正的座位上，而不是吸到一个松手就报错的位置。
+            if (!ViewModel.CurrentLayoutPublic.IsUsable(seat.Position)) continue;
             if (!button.IsVisible || button.Bounds.Width < 1 || button.Bounds.Height < 1) continue;
             if (button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), this) is not Point center) continue;
 
@@ -1054,6 +1075,13 @@ public partial class SeatGridWindow : Window
 
     private async void OnEditCanvas(object? sender, RoutedEventArgs e)
     {
+        // 按钮已置灰，这里再挡一道：快捷键 / 走查脚本也可能直接调进来。
+        if (!ViewModel.CanEditCanvas)
+        {
+            ViewModel.SetStatus("考场模式下不能编辑教室画布。", true);
+            return;
+        }
+
         var editor = new SeatCanvasEditorWindow(ViewModel.CurrentLayoutPublic, ViewModel.CurrentCanvas);
         await editor.ShowDialog(this);
 
@@ -1067,7 +1095,16 @@ public partial class SeatGridWindow : Window
         ViewModel.RecordWindowChange("教室画布", () => ViewModel.ApplyCanvas(canvas, "已更新教室画布。"));
     }
 
-    private void OnClearCanvas(object? sender, RoutedEventArgs e) => ViewModel.ClearCanvas();
+    private void OnClearCanvas(object? sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanEditCanvas)
+        {
+            ViewModel.SetStatus("考场模式下不能编辑教室画布。", true);
+            return;
+        }
+
+        ViewModel.ClearCanvas();
+    }
 
     private void OnClearSeatSearch(object? sender, RoutedEventArgs e)
     {
@@ -1587,16 +1624,29 @@ public partial class SeatGridWindow : Window
         ViewModel.ApplyCanvas(canvas, "已应用报告厅布局（后两排不坐人）。");
     }
 
-    /// <summary>预设会覆盖手工调的过道标记，所以要先说清楚。</summary>
+    /// <summary>
+    /// 预设会覆盖手工调的过道标记，所以要先说清楚。计数必须把**三类走廊与门窗**也算上：
+    /// 只数 <c>DisabledSeats</c> 时，一张只有走廊 / 门窗的画布会被判成「空的」而静默覆盖。
+    /// </summary>
     private async Task<bool> ConfirmPresetAsync(string title, SeatChartCanvas canvas)
     {
         var current = ViewModel.CurrentCanvas;
-        var existing = current.IsEmpty ? 0 : current.DisabledSeats.Count;
+        var aisles = current.DisabledSeats.Count;
+        var corridors = current.RowCorridors.Count(c => c > 0) +
+                        current.ColumnCorridors.Count(c => c > 0) +
+                        current.GroupCorridors.Count(c => c > 0);
+        var doors = current.Doors.Length;
+        var existing = aisles + corridors + doors;
         if (existing == 0) return true;
+
+        var parts = new List<string>();
+        if (aisles > 0) parts.Add($"{aisles} 处过道标记");
+        if (corridors > 0) parts.Add($"{corridors} 条走廊");
+        if (doors > 0) parts.Add($"{doors} 处门窗");
 
         return await ConfirmDialog.ShowAsync(
             this, title,
-            $"这会替换当前画布上的 {existing} 处过道标记。",
+            $"这会替换当前画布上的 {string.Join("、", parts)}。",
             title, "取消", danger: true);
     }
 
@@ -1799,7 +1849,10 @@ public partial class SeatGridWindow : Window
         {
             var config = await Task.Run(() => SeatGridConfigIO.Import(path));
             ViewModel.ApplyConfig(config);
-            _rosterPath = null;
+
+            // 导入的配置文件也是「已导入的来源」：导出不得覆盖它（与「导入名单」入口对齐，
+            // 四条 IsSamePath 守卫都读这个字段）。
+            _rosterPath = path;
         }
         catch (Exception ex)
         {
@@ -1871,6 +1924,19 @@ public partial class SeatGridWindow : Window
 
     private void Report(Exception ex, string prefix)
     {
-        ViewModel.SetStatus(ex is SeatGridException ? ex.Message : $"{prefix}：{ex.Message}", true);
+        // 业务异常由抛出方给出人话，原样透传；其余交给 ErrorText 网关，
+        // 不把 CLR / IO 原文（含路径与堆栈措辞）抛到界面上。
+        // 调用方的 prefix 已经带「失败」（如「导入名单失败」），而 ErrorText.Describe
+        // 自己会补「失败：」，先摘掉尾部再交过去，否则会出现「导入名单失败失败：…」。
+        if (ex is SeatGridException)
+        {
+            ViewModel.SetStatus(ex.Message, true);
+            return;
+        }
+
+        var action = prefix.EndsWith("失败", StringComparison.Ordinal)
+            ? prefix[..^2]
+            : prefix;
+        ViewModel.SetStatus(ErrorText.Describe(ex, action), true);
     }
 }

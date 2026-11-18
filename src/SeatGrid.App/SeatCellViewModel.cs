@@ -24,6 +24,14 @@ public partial class SeatCellViewModel : ObservableObject
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private bool _isPinned;
     [ObservableProperty] private bool _isAisle;
+
+    /// <summary>
+    /// 考场座号（「01 号」）。日常模式为空串、界面不画——与 PNG / Excel / PPTX
+    /// 同一语义：座号只属于考场快照。
+    /// </summary>
+    [ObservableProperty] private string _seatNumberLabel = string.Empty;
+
+    public bool HasSeatNumber => SeatNumberLabel.Length > 0;
     [ObservableProperty] private Thickness _margin;
     [ObservableProperty] private bool _showEmptyFrame;
     [ObservableProperty] private double _width = 80;
@@ -40,6 +48,8 @@ public partial class SeatCellViewModel : ObservableObject
     private bool _isDropTarget;
     private IBrush _strokeBeforeDrop = Brushes.Gray;
     private Thickness _borderBeforeDrop = new(1);
+
+    partial void OnSeatNumberLabelChanged(string value) => OnPropertyChanged(nameof(HasSeatNumber));
 
     private static readonly IBrush DropStrokeBrush = new SolidColorBrush(Color.Parse("#D97757"));
 

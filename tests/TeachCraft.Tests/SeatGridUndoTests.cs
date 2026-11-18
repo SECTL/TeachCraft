@@ -1,3 +1,4 @@
+using Avalonia.Media;
 using SeatGrid.App;
 using SeatGrid.Core.Exam;
 using SeatGrid.Core.Models;
@@ -231,6 +232,80 @@ public sealed class SeatGridUndoTests
         Assert.Equal(16, vm.AssignedCount);
     }
 
+    // ----------------------------- 撤销跨考场边界（调研 P1-3） -----------------------------
+
+    [Fact]
+    public void Vm_UndoInsideExamThenLeaveRestoresDailySeats()
+    {
+        // 缺陷路径：进考场 → 拖一个座位 → Ctrl+Z。撤销之后栈顶是**考场态快照**，
+        // 而日常座位只存在于 EnterExamMode 的 before 快照里，那份已经被撤掉了。
+        // 修好之前「返回日常座位」静默失效：_dailySnapshot 被 RestoreState 置空，
+        // 座位留在考场坐标上，按钮却什么也不做。
+        var vm = NewViewModel(16);
+        vm.AutoArrange();
+        var dailySeats = SeatMap(vm);
+        var dailyGroups = vm.GroupCount;
+
+        vm.EnterExamMode(new ExamLayoutOptions());
+        Assert.True(vm.IsExamMode);
+
+        // 考场里拖一个座位（制造一步考场内改动，让撤销落在考场态快照上）。
+        var occupied = vm.Seats.Where(s => !s.IsEmpty).Take(2).ToList();
+        vm.MoveSeatStudent(occupied[0], occupied[1]);
+        vm.Undo();
+
+        // 落点仍是考场态——这正是需要重建快照的路径。
+        Assert.True(vm.IsExamMode);
+        Assert.NotEqual(dailyGroups, vm.CurrentLayoutPublic.Groups);   // 考场布局：1 组
+
+        vm.LeaveExamMode();
+
+        Assert.False(vm.IsExamMode);
+        Assert.Equal(dailySeats, SeatMap(vm));
+        Assert.Equal(dailyGroups, vm.GroupCount);
+    }
+
+    [Fact]
+    public void Vm_ExamLayoutDoesNotPolluteDailySlidersAfterUndo()
+    {
+        // 考场布局是 1 组 × N 列；撤销后若把它写进滑块，界面会显示「1 组」，
+        // 返回日常时又跳回原值——看起来像撤销撤错了。
+        var vm = NewViewModel(16);
+        vm.AutoArrange();
+        var (groups, rows, columns) = (vm.GroupCount, vm.RowCount, vm.ColumnCount);
+
+        vm.EnterExamMode(new ExamLayoutOptions());
+        var occupied = vm.Seats.Where(s => !s.IsEmpty).Take(2).ToList();
+        vm.MoveSeatStudent(occupied[0], occupied[1]);
+
+        vm.Undo();
+
+        Assert.True(vm.IsExamMode);
+        Assert.Equal(groups, vm.GroupCount);
+        Assert.Equal(rows, vm.RowCount);
+        Assert.Equal(columns, vm.ColumnCount);
+    }
+
+    [Fact]
+    public void Vm_LeaveExamModeWithoutSnapshotDoesNotPushUndoStep()
+    {
+        // 无日常快照时早退必须在 RecordChange 之前，否则会多一个假步骤：
+        // 按了 Ctrl+Z 什么也没变，却少了一次撤销机会。
+        // （撤销「进入考场」之后 _dailySnapshot 随之清空，此时再点「返回日常」是空操作。）
+        var vm = NewViewModel(8);
+        vm.AutoArrange();
+        vm.EnterExamMode(new ExamLayoutOptions());
+        vm.Undo();          // 撤销「进入考场」：_dailySnapshot 随之清空
+        Assert.False(vm.IsExamMode);
+        var undoCountBefore = vm.UndoCount;
+        var statusBefore = vm.StatusText;
+
+        vm.LeaveExamMode();
+
+        Assert.Equal(undoCountBefore, vm.UndoCount);
+        Assert.Equal(statusBefore, vm.StatusText);
+    }
+
     [Fact]
     public void Vm_UndoAndRedoDoNotStackThemselves()
     {
@@ -459,6 +534,87 @@ public sealed class SeatGridUndoTests
         Assert.False(vm.CanClearCanvas);
     }
 
+    // ----------------------------- 样式纳入快照（调研 P2-12） -----------------------------
+
+    [Fact]
+    public void Vm_ResetStyleCanBeUndone()
+    {
+        // 「恢复默认样式」走 RecordChange，但样式字段原先不在快照里：
+        // 撤销后颜色仍是默认值，看起来像撤销没生效（修复前必红）。
+        var vm = NewViewModel(8);
+        vm.AutoArrange();
+
+        var customSeat = Color.Parse("#123456");
+        vm.SeatBackgroundColor = customSeat;
+        vm.NameFontSize = 22;
+        vm.BoldNames = true;
+
+        vm.ResetStyle();
+        Assert.NotEqual(customSeat, vm.SeatBackgroundColor);
+        Assert.Equal(14, vm.NameFontSize);
+        Assert.False(vm.BoldNames);
+
+        vm.Undo();
+
+        Assert.Equal(customSeat, vm.SeatBackgroundColor);
+        Assert.Equal(22, vm.NameFontSize);
+        Assert.True(vm.BoldNames);
+    }
+
+    [Fact]
+    public void Vm_StyleChangeAloneMakesSnapshotContentUnequal()
+    {
+        // ContentEquals 扩到样式维度：只改样式也必须被认作「内容变了」，
+        // 否则「恢复默认样式」会被去重守卫当成空操作丢掉。
+        var before = StyleSnapshot(seatBackground: "#FFFFFF");
+        var after = StyleSnapshot(seatBackground: "#123456");
+
+        Assert.False(before.ContentEquals(after));
+        Assert.False(after.ContentEquals(before));
+    }
+
+    [Fact]
+    public void Vm_KeyboardSliderSessionIsUndoableInOneStep()
+    {
+        // 键盘路径（Tab 聚焦滑块 + 方向键）此前直接 BuildGrid、全程不入撤销栈。
+        // 窗口层用 GotFocus / LostFocus 把这段包成一次交互会话——这里直接验证
+        // VM 侧同一套 Begin / End 语义：键盘改值也能一步撤回。
+        var vm = new SeatGridViewModel();
+        vm.LoadRoster(Roster(12));
+        var assignedBefore = vm.AssignedCount;
+        var groupsBefore = vm.GroupCount;
+
+        vm.BeginInteractiveLayoutChange();
+        vm.GroupCount = groupsBefore - 1;    // 方向键改值：绑定直接改属性
+        vm.EndInteractiveLayoutChange();
+
+        Assert.True(vm.CanUndo, "键盘改布局滑块应当能撤销");
+
+        vm.Undo();
+
+        Assert.Equal(groupsBefore, vm.GroupCount);
+        Assert.Equal(assignedBefore, vm.AssignedCount);
+    }
+
+    [Fact]
+    public void Vm_NestedBeginDoesNotResetSnapshot()
+    {
+        // 点滑块会同时触发指针按下与焦点进入；两次 Begin 不能重拍快照，
+        // 否则撤销退回拖动中途的半截状态。
+        var vm = new SeatGridViewModel();
+        vm.LoadRoster(Roster(12));
+        var groupsBefore = vm.GroupCount;
+
+        vm.BeginInteractiveLayoutChange();
+        vm.GroupCount = groupsBefore - 1;
+        vm.BeginInteractiveLayoutChange();   // 焦点进入：同一会话
+        vm.GroupCount = groupsBefore - 2;
+        vm.EndInteractiveLayoutChange();
+
+        vm.Undo();
+        Assert.Equal(groupsBefore, vm.GroupCount);
+    }
+
     // ----------------------------- 夹具 -----------------------------
 
     private static SeatGridViewModel NewViewModel(int count)
@@ -514,8 +670,66 @@ public sealed class SeatGridUndoTests
         Deskmates = Array.Empty<SeatPairState>(),
         AvoidDeskmates = Array.Empty<SeatPairState>(),
         Zones = new Dictionary<Guid, SeatZoneState>(),
+        Style = DefaultStyle(),
         IsExam = false,
         Exam = null,
         Label = label,
+    };
+
+    /// <summary>与界面默认值一致的样式快照，供栈本身的测试构造快照。</summary>
+    private static SeatStyleState DefaultStyle() => new()
+    {
+        SeatBackground = "#FFFFFF",
+        EmptySeatBackground = "#FAF9F5",
+        SeatText = "#141413",
+        SeatBorder = "#E7E3D8",
+        PodiumBackground = "#F4F2EC",
+        PodiumText = "#85806F",
+        GroupLabel = "#C6613F",
+        RowLabel = "#85806F",
+        FemaleMark = "#C6613F",
+        NameFontSize = 14,
+        BoldNames = false,
+        HideEmptySeats = false,
+        MarkFemales = true,
+        SpaceTwoCharNames = true,
+        ShowGroupRowHints = true,
+        PodiumGap = 16,
+    };
+
+    /// <summary>只改一个样式字段的快照，用来验证 ContentEquals 的样式维度。</summary>
+    private static SeatStateSnapshot StyleSnapshot(string seatBackground) => new()
+    {
+        Layout = new SeatChartLayout(4, 6, 2),
+        Canvas = SeatChartCanvas.Empty,
+        Students = Array.Empty<Student>(),
+        Assignments = new Dictionary<SeatPosition, Guid>(),
+        Pins = new Dictionary<Guid, SeatPosition>(),
+        Mutex = Array.Empty<SeatPairState>(),
+        Deskmates = Array.Empty<SeatPairState>(),
+        AvoidDeskmates = Array.Empty<SeatPairState>(),
+        Zones = new Dictionary<Guid, SeatZoneState>(),
+        Style = new SeatStyleState
+        {
+            SeatBackground = seatBackground,
+            EmptySeatBackground = "#FAF9F5",
+            SeatText = "#141413",
+            SeatBorder = "#E7E3D8",
+            PodiumBackground = "#F4F2EC",
+            PodiumText = "#85806F",
+            GroupLabel = "#C6613F",
+            RowLabel = "#85806F",
+            FemaleMark = "#C6613F",
+            NameFontSize = 14,
+            BoldNames = false,
+            HideEmptySeats = false,
+            MarkFemales = true,
+            SpaceTwoCharNames = true,
+            ShowGroupRowHints = true,
+            PodiumGap = 16,
+        },
+        IsExam = false,
+        Exam = null,
+        Label = "样式",
     };
 }

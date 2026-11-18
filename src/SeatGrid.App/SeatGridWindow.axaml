@@ -476,8 +476,9 @@
                                 <Button Grid.Column="1" Classes="ghost" Content="清空座位" Padding="8,5"
                                         FontSize="10.5" Click="OnClearSeat" IsEnabled="{Binding CanClearSeat}" />
                                 <Button Grid.Column="2" Classes="ghost" Content="锁定" Padding="8,5"
-                                        FontSize="10.5" Click="OnTogglePin" IsEnabled="{Binding CanClearSeat}"
-                                        ToolTip.Tip="锁定后重新排座时这位同学不动（快捷键 L）"
+                                        FontSize="10.5" Click="OnTogglePin"
+                                        IsEnabled="{Binding CanPinSeat}"
+                                        ToolTip.Tip="锁定后重新排座时这位同学不动（快捷键 L）。考场模式不使用锁定。"
                                         AutomationProperties.Name="锁定或解锁所选座位" />
                             </Grid>
                             <TextBlock Text="先点座位，再选左侧学生，最后点「放入」。"
@@ -635,6 +636,14 @@
                                                                                                Foreground="{Binding NameBrush}"
                                                                                                HorizontalAlignment="Center"
                                                                                                VerticalAlignment="Center" />
+                                                                                    <!-- 考场座号：左上角小号灰字，与 PNG / Excel 同一语义。 -->
+                                                                                    <TextBlock Text="{Binding SeatNumberLabel}"
+                                                                                               IsVisible="{Binding HasSeatNumber}"
+                                                                                               FontSize="9.5"
+                                                                                               Foreground="{StaticResource MutedBrush}"
+                                                                                               HorizontalAlignment="Left"
+                                                                                               VerticalAlignment="Top"
+                                                                                               Margin="4,2,0,0" />
                                                                                     <Ellipse Width="6" Height="6"
                                                                                              Fill="#C6613F"
                                                                                              HorizontalAlignment="Right"
@@ -778,11 +787,12 @@
                                 <TextBlock Text="{Binding CanvasSummary}" Classes="helper" />
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                     <Button Classes="ghost tool" Content="编辑画布…" Click="OnEditCanvas"
+                                            IsEnabled="{Binding CanEditCanvas}"
                                             AutomationProperties.Name="打开教室画布编辑器" />
                                     <!-- 快速形状会写进过道标记，但此前没有任何地方能把它们整体去掉：
                                          老师只能开编辑器一格一格刷回座位，或者靠撤销。 -->
                                     <Button Grid.Column="1" Classes="ghost tool" Content="清空画布" Click="OnClearCanvas"
-                                            IsEnabled="{Binding CanClearCanvas}"
+                                            IsEnabled="{Binding CanEditCanvas}"
                                             ToolTip.Tip="去掉全部过道标记、走廊与门窗，恢复成普通矩形座位"
                                             AutomationProperties.Name="清空教室画布" />
                                 </Grid>
@@ -847,7 +857,11 @@
                                     <TextBlock Classes="section-title" Text="教室设施" />
                                     <TextBlock Grid.Column="1" Classes="eyebrow" Text="ROOM" />
                                 </Grid>
-                                <CheckBox IsChecked="{Binding ShowDoors, Mode=TwoWay}" Content="显示门窗" />
+                                <!-- 门窗没有编辑器可放（画布编辑器只刷过道），这个开关此前是个死开关：
+                                     勾不勾都画不出门窗来。编辑器落地前置灰并写明，免得老师以为是自己没找到入口。 -->
+                                <CheckBox IsChecked="{Binding ShowDoors, Mode=TwoWay}" IsEnabled="False"
+                                          Content="显示门窗（编辑将在后续版本提供）"
+                                          ToolTip.Tip="当前版本还不能在界面上放置门窗，这里只影响已导入配置里的门窗是否画出" />
                                 <StackPanel Spacing="4">
                                     <TextBlock Classes="field-label" Text="讲台文字" />
                                     <TextBox Classes="field" Text="{Binding PodiumLabel, Mode=TwoWay}"
@@ -889,10 +903,11 @@
                                     <Button Grid.Column="1" Classes="link" Content="全部解锁"
                                             Click="OnUnpinAll" FontSize="10.5"
                                             Foreground="{StaticResource MutedBrush}"
+                                            IsEnabled="{Binding !IsExamMode}"
                                             AutomationProperties.Name="解除全部座位锁定" />
                                 </Grid>
 
-                                <StackPanel Spacing="4">
+                                <StackPanel Spacing="4" IsEnabled="{Binding !IsExamMode}">
                                     <TextBlock Classes="field-label" Text="规则" />
                                     <ItemsControl ItemsSource="{Binding Constraints.Rules}">
                                         <ItemsControl.ItemTemplate>
@@ -922,6 +937,7 @@
                                 </StackPanel>
 
                                 <Button Classes="ghost tool" Content="+ 添加规则" Click="OnAddConstraint"
+                                        IsEnabled="{Binding !IsExamMode}"
                                         AutomationProperties.Name="添加互斥或结对规则" />
 
                                 <StackPanel Spacing="5">

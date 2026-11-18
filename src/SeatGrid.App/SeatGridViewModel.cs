@@ -81,6 +81,10 @@ public partial class SeatGridViewModel : ObservableObject
     public bool CanUndo => _undo.CanUndo && !IsBusy;
     public bool CanRedo => _undo.CanRedo && !IsBusy;
 
+    /// <summary>撤销 / 重做栈深度，供测试与「无快照时不留假步骤」这类断言使用。</summary>
+    public int UndoCount => _undo.UndoCount;
+    public int RedoCount => _undo.RedoCount;
+
     /// <summary>状态栏 / 按钮悬浮提示用：下一步撤销会退回哪一步。</summary>
     public string UndoLabel => _undo.NextUndoLabel is { } label ? $"撤销：{label}" : "撤销";
     public string RedoLabel => _undo.NextRedoLabel is { } label ? $"重做：{label}" : "重做";
@@ -120,6 +124,7 @@ public partial class SeatGridViewModel : ObservableObject
         Zones = Constraints.Zones.ToDictionary(
             kv => kv.Key,
             kv => new SeatZoneState { Allowed = kv.Value.Allowed.ToList(), Denied = kv.Value.Denied.ToList() }),
+        Style = CaptureStyle(),
         IsExam = IsExamMode && _examPlan is not null,
         Exam = IsExamMode && _examPlan is { } exam
             ? new ExamPlanSnapshot
@@ -128,6 +133,18 @@ public partial class SeatGridViewModel : ObservableObject
                 Assignments = exam.Assignments.ToDictionary(kv => kv.Key, kv => kv.Value.Id),
                 SeatNumbers = new Dictionary<SeatPosition, int>(exam.SeatNumbers),
                 Notes = exam.Notes.ToList(),
+            }
+            : null,
+        // 考场态快照必须自带日常侧：进了考场再改一笔、撤销之后，栈顶就是考场态快照，
+        // 日常座位只存在于 EnterExamMode 的 before 快照里，而那份已经被撤掉了。
+        // 不带的话「返回日常座位」会静默失效。
+        DailySide = IsExamMode && _dailySnapshot is { } daily
+            ? new DailySideSnapshot
+            {
+                Layout = daily.Layout,
+                Assignments = daily.Assignments.ToDictionary(kv => kv.Key, kv => kv.Value.Id),
+                Settings = daily.Settings,
+                Title = daily.Title,
             }
             : null,
         Label = label,
@@ -169,11 +186,23 @@ public partial class SeatGridViewModel : ObservableObject
         try
         {
             _suppressRebuild = true;
-            GroupCount = snapshot.Layout.Groups;
-            RowCount = snapshot.Layout.Rows;
-            ColumnCount = snapshot.Layout.Columns;
+
+            // 考场快照的 Layout 是**考场布局**（单组 N 列），不是日常布局。
+            // 把它写进三个滑块会让界面显示 1 组 N 列——看起来像撤销撤错了。
+            // 考场态下保持滑块原值（进考场本来就不改它们），考场布局由 _examPlan.Layout 表达。
+            if (!snapshot.IsExam)
+            {
+                GroupCount = snapshot.Layout.Groups;
+                RowCount = snapshot.Layout.Rows;
+                ColumnCount = snapshot.Layout.Columns;
+            }
+
             Canvas = snapshot.Canvas;
             _suppressRebuild = false;
+
+            // 样式也要还原：「恢复默认样式」是一步可撤销的变更，样式字段不在快照里
+            // 就会出现「撤销了但颜色仍是默认值」。
+            RestoreStyle(snapshot.Style);
 
             // 名单：按 Id 找现有实例，缺的才新建，多的删掉。顺序按快照。
             var existing = _students.ToDictionary(s => s.Id);
@@ -206,6 +235,16 @@ public partial class SeatGridViewModel : ObservableObject
             {
                 _examPlan = examSnapshot.ToExamPlan(byId.ToDictionary(kv => kv.Key, kv => kv.Value.Model));
                 IsExamMode = true;
+
+                // 考场态快照要连带重建日常侧，否则撤销之后「返回日常座位」无从还原。
+                if (snapshot.DailySide is { } dailySide)
+                {
+                    var dailyAssignments = new Dictionary<SeatPosition, StudentViewModel>();
+                    foreach (var (position, id) in dailySide.Assignments)
+                        if (byId.TryGetValue(id, out var student)) dailyAssignments[position] = student;
+
+                    _dailySnapshot = (dailySide.Layout, dailyAssignments, dailySide.Settings, dailySide.Title);
+                }
             }
             else
             {
@@ -234,8 +273,60 @@ public partial class SeatGridViewModel : ObservableObject
         }
     }
 
-    private static void CopyInto(Student target, Student source)
+    /// <summary>
+    /// 拍样式字段。范围与 <see cref="ResetStyleCore"/> 触碰的集合一致——
+    /// 「恢复默认样式」可撤销的前提是这些字段在快照里。
+    /// </summary>
+    private SeatStyleState CaptureStyle() => new()
     {
+        SeatBackground = Hex(SeatBackgroundColor),
+        EmptySeatBackground = Hex(EmptySeatColor),
+        SeatText = Hex(SeatTextColor),
+        SeatBorder = Hex(SeatBorderColor),
+        PodiumBackground = Hex(PodiumBackgroundColor),
+        PodiumText = Hex(PodiumTextColor),
+        GroupLabel = Hex(GroupLabelColor),
+        RowLabel = Hex(RowLabelColor),
+        FemaleMark = Hex(FemaleMarkColor),
+        NameFontSize = FontSizeValue,
+        BoldNames = BoldNames,
+        HideEmptySeats = HideEmptySeats,
+        MarkFemales = MarkFemales,
+        SpaceTwoCharNames = SpaceTwoCharNames,
+        ShowGroupRowHints = ShowGroupRowHints,
+        PodiumGap = (int)Math.Round(PodiumGap),
+    };
+
+    /// <summary>把快照里的样式写回去。恢复期间不重建网格，由 RestoreState 末尾统一刷新。</summary>
+    private void RestoreStyle(SeatStyleState style)
+    {
+        _suppressRebuild = true;
+        try
+        {
+            SeatBackgroundColor = Color.Parse(style.SeatBackground);
+            EmptySeatColor = Color.Parse(style.EmptySeatBackground);
+            SeatTextColor = Color.Parse(style.SeatText);
+            SeatBorderColor = Color.Parse(style.SeatBorder);
+            PodiumBackgroundColor = Color.Parse(style.PodiumBackground);
+            PodiumTextColor = Color.Parse(style.PodiumText);
+            GroupLabelColor = Color.Parse(style.GroupLabel);
+            RowLabelColor = Color.Parse(style.RowLabel);
+            FemaleMarkColor = Color.Parse(style.FemaleMark);
+            NameFontSize = style.NameFontSize;
+            BoldNames = style.BoldNames;
+            HideEmptySeats = style.HideEmptySeats;
+            MarkFemales = style.MarkFemales;
+            SpaceTwoCharNames = style.SpaceTwoCharNames;
+            ShowGroupRowHints = style.ShowGroupRowHints;
+            PodiumGap = style.PodiumGap;
+        }
+        finally
+        {
+            _suppressRebuild = false;
+        }
+    }
+
+    private static void CopyInto(Student target, Student source)    {
         target.Name = source.Name;
         target.Gender = source.Gender;
         target.Number = source.Number;
@@ -538,6 +629,9 @@ public partial class SeatGridViewModel : ObservableObject
     public bool CanAssign => SelectedStudent is not null && SelectedSeat is not null;
     public bool CanClearSeat => SelectedSeat is not null;
 
+    /// <summary>「锁定」按钮：选中座位才可点；考场下锁定不生效，直接置灰。</summary>
+    public bool CanPinSeat => CanClearSeat && !IsExamMode;
+
     /// <summary>「清空全部座位」按钮：有人在座才可点。</summary>
     public bool CanClearSeats => IsIdle && AssignedCount > 0;
 
@@ -574,6 +668,10 @@ public partial class SeatGridViewModel : ObservableObject
     /// </summary>
     public void BeginInteractiveLayoutChange()
     {
+        // 指针按下与焦点进入都会调到这里（点滑块同时触发两者）。
+        // 已经在会话里就不重新拍照：重拍会把拖动中途的状态当成起点，撤销退回半步。
+        if (_interactiveLayoutEdit) return;
+
         _interactiveLayoutEdit = true;
         _structureDirty = false;
         _scaleDirty = false;
@@ -811,6 +909,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedSeatLabel));
         OnPropertyChanged(nameof(CanAssign));
         OnPropertyChanged(nameof(CanClearSeat));
+        OnPropertyChanged(nameof(CanPinSeat));
         OnPropertyChanged(nameof(CanClearSeats));
     }
 
@@ -823,6 +922,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
         OnPropertyChanged(nameof(CanClearCanvas));
+        OnPropertyChanged(nameof(CanEditCanvas));
         OnPropertyChanged(nameof(CanClearSeats));
     }
 
@@ -922,12 +1022,19 @@ public partial class SeatGridViewModel : ObservableObject
         var border = SeatBorderBrush;
         var layout = CurrentLayout;
         var offsets = SeatChartGeometry.Measure(layout, ToSettings(), CurrentView);
+        var seatNumbers = IsExamMode ? ExamSeatNumbers : null;
 
         foreach (var seat in _seats.Values)
         {
             _assignments.TryGetValue(seat.Position, out var student);
             var name = student is null ? string.Empty : SeatChartComposer.DisplayName(student.Model.Name, SpaceTwoCharNames);
             var aisle = layout.Surface.IsDisabled(seat.Position);
+
+            // 座号上屏：与 PNG 左上角的小号灰字同一语义（「01 号」、两位补零）。
+            seat.SeatNumberLabel = !aisle && seatNumbers is not null &&
+                                   seatNumbers.TryGetValue(seat.Position, out var number)
+                ? $"{number:00} 号"
+                : string.Empty;
 
             seat.Update(
                 name,
@@ -998,6 +1105,10 @@ public partial class SeatGridViewModel : ObservableObject
 
     public void LoadRoster(RosterImportResult result)
     {
+        // 导入名单是整体替换：考场安排指向的是旧名单，留着只会串名。
+        // 静默退出考场并入替换流程（不弹窗——导入入口原有的确认已覆盖这一步）。
+        var exitedExam = ExitExamModeForReplace();
+
         // 导入新名单是「重来」而不是「编辑」：撤销回上一份名单没有意义，
         // 而且快照里存的学生 Id 与当前约束全都对不上了。整段挂起登记、末尾清栈，
         // 比留一堆跨名单的步骤更安全——内部的 AutoArrange 也不该单独成为一步。
@@ -1033,6 +1144,25 @@ public partial class SeatGridViewModel : ObservableObject
 
         _suspendUndo = false;
         ClearUndo();
+
+        if (exitedExam) SetStatus($"{StatusText} · 已退出考场模式。");
+    }
+
+    /// <summary>
+    /// 导入名单 / 配置这类「整体替换」前清掉考场三态：模式标志、考场安排、日常快照。
+    /// 直接清而不走 <see cref="LeaveExamModeCore"/>：调用方随后会 ClearUndo，
+    /// 走 RecordChange 只会在清栈前留一个假步骤。
+    /// </summary>
+    private bool ExitExamModeForReplace()
+    {
+        if (!IsExamMode && _examPlan is null && _dailySnapshot is null) return false;
+
+        _suppressRebuild = true;
+        IsExamMode = false;
+        _suppressRebuild = false;
+        _examPlan = null;
+        _dailySnapshot = null;
+        return true;
     }
 
     private static string DeriveTitle(string fileName)
@@ -1088,7 +1218,11 @@ public partial class SeatGridViewModel : ObservableObject
         // 布局可能刚缩过：先把指向不存在座位的锁清掉，否则引擎会拿幽灵锁去排。
         Constraints.DropInvalidPins(layout, _students.Select(s => s.Id).ToHashSet());
 
-        var built = Constraints.Build(layout);
+        // 考场下锁定 / 互斥 / 结对 / 区域都不生效（AGENTS 第六节）：喂空约束，
+        // 否则日常锁会把考场里的自动排座按旧座位钉住，排出来与考场布局对不上。
+        var built = IsExamMode
+            ? new ArrangeConstraints()
+            : Constraints.Build(layout);
         var constraints = new ArrangeConstraints
         {
             Pins = built.Pins,
@@ -1096,7 +1230,7 @@ public partial class SeatGridViewModel : ObservableObject
             Deskmates = built.Deskmates,
             AvoidDeskmates = built.AvoidDeskmates,
             Zones = built.Zones,
-            MentorEnabled = MentorEnabled,
+            MentorEnabled = IsExamMode ? false : MentorEnabled,
             MentorSeat = MentorSeatIndex == 1 ? MentorSeat.FrontRow : MentorSeat.Center,
         };
         var result = SeatingEngine.Arrange(models, layout, mode, constraints);
@@ -1192,8 +1326,15 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanvasSummary));
     }
 
-    /// <summary>画布上还有东西（过道 / 走廊 / 门窗）才让「清空画布」可点。</summary>
-    public bool CanClearCanvas => IsIdle && !Canvas.IsEmpty;
+    /// <summary>画布上还有东西（过道 / 走廊 / 门窗）且不在考场里，才让「清空画布」可点。</summary>
+    public bool CanClearCanvas => IsIdle && !IsExamMode && !Canvas.IsEmpty;
+
+    /// <summary>
+    /// 考场下不允许改画布：考场是独立快照，它的布局由 ExamPlanner 决定，
+    /// 画布（过道 / 门窗）属于日常座位表，在考场里改会写到日常字段上、
+    /// 回日常时莫名其妙多出几条过道。
+    /// </summary>
+    public bool CanEditCanvas => IsIdle && !IsExamMode;
 
     public void ClearCanvas()
     {
@@ -1443,33 +1584,37 @@ public partial class SeatGridViewModel : ObservableObject
             .ToList();
     }
 
-    /// <summary>把某座位上的学生与按关键字找到的学生对调。找不到或锁定则拒绝。</summary>
-    public void QuickSwapByName(SeatCellViewModel source, string keyword)
+    /// <summary>
+    /// 把某座位上的学生与按关键字找到的学生对调。找不到或锁定则拒绝。
+    /// 返回 true 表示真的对调了；浮窗据此决定关不关——失败时留在原地、
+    /// 把原因显示在浮窗里，而不是关掉窗口只在背后状态栏留一句话。
+    /// </summary>
+    public bool QuickSwapByName(SeatCellViewModel source, string keyword)
     {
         if (!_assignments.TryGetValue(source.Position, out var current))
         {
             SetStatus("这个座位是空的，双击有人的座位可以快速换人。", true);
-            return;
+            return false;
         }
 
         var candidates = FindStudents(keyword);
         if (candidates.Count == 0)
         {
             SetStatus($"没有找到「{keyword}」。", true);
-            return;
+            return false;
         }
 
         if (candidates.Count > 1)
         {
             SetStatus($"找到 {candidates.Count} 人，请再输入几个字缩小范围。", true);
-            return;
+            return false;
         }
 
         var target = candidates[0];
         if (target.Id == current.Id)
         {
             SetStatus($"{current.Name} 已经坐在这里了。");
-            return;
+            return false;
         }
 
         var targetSeat = _seats.Values.FirstOrDefault(s =>
@@ -1478,21 +1623,30 @@ public partial class SeatGridViewModel : ObservableObject
         if (targetSeat is null)
         {
             SetStatus($"{target.Name} 还没有座位，可以先用「放入所选学生」。", true);
-            return;
+            return false;
         }
 
-        if (Constraints.IsPinned(current.Id) || Constraints.IsPinned(target.Id))
+        if (!IsExamMode && (Constraints.IsPinned(current.Id) || Constraints.IsPinned(target.Id)))
         {
             SetStatus("其中一位的座位已锁定，先解除锁定再换。", true);
-            return;
+            return false;
         }
 
         MoveSeatStudent(source, targetSeat);
+        return true;
     }
 
     /// <summary>切换当前选中座位的锁定状态。锁的是「学生-座位绑定」。</summary>
     public void ToggleSelectedSeatPin()
     {
+        // 考场下锁定不生效（AGENTS 第六节）。按 L 若照常写进日常锁，回日常会莫名其妙
+        // 多一把锁——干脆拒绝并说明，而不是静默顶掉日常状态。
+        if (IsExamMode)
+        {
+            SetStatus("考场模式不使用锁定。", true);
+            return;
+        }
+
         if (SelectedSeat is null)
         {
             SetStatus("先选中一个座位，再锁定。", true);
@@ -1520,6 +1674,10 @@ public partial class SeatGridViewModel : ObservableObject
     /// <summary>整班平移前检查：任一被移动的学生处于锁定状态就整体拒绝。</summary>
     private bool RefuseIfPinned(IEnumerable<StudentViewModel> students, string action)
     {
+        // 考场是独立快照，锁定 / 互斥 / 结对 / 区域在考场下本就不生效（AGENTS 第六节），
+        // 日常锁不该拦住考场里的移动。
+        if (IsExamMode) return false;
+
         var pinned = students.FirstOrDefault(s => Constraints.IsPinned(s.Id));
         if (pinned is null) return false;
 
@@ -1571,13 +1729,15 @@ public partial class SeatGridViewModel : ObservableObject
         }
 
         // 锁定的学生不能被「放入」覆盖，目标座上的人若锁定也不能被挤走。
-        if (Constraints.IsPinned(student.Id))
+        // 考场下锁定不生效（日常锁不该拦住考场里的调整），跳过这两道检查。
+        if (!IsExamMode && Constraints.IsPinned(student.Id))
         {
             SetStatus($"{student.Name} 的座位已锁定，先解除锁定再移动。", true);
             return;
         }
 
-        if (_assignments.TryGetValue(target.Position, out var occupant) && Constraints.IsPinned(occupant.Id))
+        if (!IsExamMode &&
+            _assignments.TryGetValue(target.Position, out var occupant) && Constraints.IsPinned(occupant.Id))
         {
             SetStatus($"{occupant.Name} 的座位已锁定，先解除锁定再移动。", true);
             return;
@@ -1734,11 +1894,28 @@ public partial class SeatGridViewModel : ObservableObject
     }
 
     /// <summary>返回日常座位：整体还原布局、座位与设置。</summary>
-    public void LeaveExamMode() => RecordChange("返回日常座位", LeaveExamModeCore);
+    public void LeaveExamMode()
+    {
+        // 无日常快照时早退必须发生在 RecordChange 之前：RecordChange 会先拍一张
+        // 「与当前完全相同」的快照再执行空操作，栈顶因此多一个假步骤（Ctrl+Z 按下去没反应）。
+        if (!IsExamMode) return;
+
+        if (_dailySnapshot is null)
+        {
+            SetStatus("考场快照已被撤销清空，请再按一次 Ctrl+Z 返回日常。", true);
+            return;
+        }
+
+        RecordChange("返回日常座位", LeaveExamModeCore);
+    }
 
     private void LeaveExamModeCore()
     {
-        if (_dailySnapshot is not { } snapshot) return;
+        if (_dailySnapshot is not { } snapshot)
+        {
+            SetStatus("考场快照已被撤销清空，请再按一次 Ctrl+Z 返回日常。", true);
+            return;
+        }
 
         // 关模式后 CurrentLayout 自动回到日常的组/排/列与画布。
         IsExamMode = false;
@@ -1764,6 +1941,9 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(CanEnterExam));
         OnPropertyChanged(nameof(CanLeaveExam));
         OnPropertyChanged(nameof(CanExportConfig));
+        OnPropertyChanged(nameof(CanPinSeat));
+        OnPropertyChanged(nameof(CanEditCanvas));
+        OnPropertyChanged(nameof(CanClearCanvas));
         OnPropertyChanged(nameof(ExamSummary));
     }
 
@@ -2174,6 +2354,9 @@ public partial class SeatGridViewModel : ObservableObject
     /// </summary>
     public void ApplyConfig(SeatGridConfig config, string? sourceName = null)
     {
+        // 同 LoadRoster：整份配置替换也意味着考场安排作废，先静默退出考场。
+        var exitedExam = ExitExamModeForReplace();
+
         // 同 LoadRoster：整体还原一份配置等于换了一份数据，撤销回去没有语义。
         _suspendUndo = true;
         _suppressRebuild = true;
@@ -2251,6 +2434,8 @@ public partial class SeatGridViewModel : ObservableObject
 
         _suspendUndo = false;
         ClearUndo();
+
+        if (exitedExam) SetStatus($"{StatusText} · 已退出考场模式。");
     }
 
     public void SetStatus(string text, bool error = false)
