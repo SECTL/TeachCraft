@@ -245,6 +245,270 @@ public sealed class ToolboxTests : IDisposable
         Assert.Throws<ToolboxException>(() => PdfPageRange.Parse("3-1", 5));
     }
 
+    // ---- 水印实时预览保真（调研 P2-21，T28） ----
+
+    [Fact]
+    public void WatermarkPreview_ScaleChangesThePreview()
+    {
+        // 修复前：240 宽预览下字号恒被 8px 地板卡住，0.4 与 1.0 渲染出**逐字节相同**的图，
+        // 老师拖「字号」滑块（0.4–1.0 整段）完全没反应。
+        var source = MakeImage("preview-scale.png", 640, 480);
+
+        var small = ImageToolbox.RenderWatermarkPreview(source, "仅供教学使用", "右下角", 0.8, 0.4, 240);
+        var large = ImageToolbox.RenderWatermarkPreview(source, "仅供教学使用", "右下角", 0.8, 1.0, 240);
+
+        Assert.NotNull(small);
+        Assert.NotNull(large);
+        Assert.False(small!.SequenceEqual(large!), "0.4 与 1.0 倍的预览应不同（字号必须随滑块变化）。");
+    }
+
+    [Fact]
+    public void WatermarkPreview_UsesInkColorOnLightImage()
+    {
+        // 正式 Watermark 在浅底图上自动换墨字（ImageToolbox.cs:127-131），预览曾硬编码白字，
+        // 浅底预览几乎看不见，与成品不是一回事。
+        var source = MakeImage("preview-light.png", 640, 480);
+
+        // 预览宽放大到 480：字号按 3.2% 比例算约 15px，笔画有实心核心，
+        // 取色判定才稳定（240 宽下约 7.7px，抗锯齿会把核心冲淡）。
+        var png = ImageToolbox.RenderWatermarkPreview(source, "仅供教学使用", "右下角", 0.8, 1.0, 480);
+        Assert.NotNull(png);
+
+        using var bitmap = SKBitmap.Decode(png!);
+        Assert.NotNull(bitmap);
+
+        // 文字落在右下角：取右下四分之一区域的最暗像素。墨字（20,20,19 @ 0.8）压浅底约 60；
+        // 旧实现的白字 + 黑影最暗也只到约 150，阈值 100 能把两者分开。
+        var darkest = 255;
+        for (var y = bitmap!.Height / 2; y < bitmap.Height; y++)
+        {
+            for (var x = bitmap.Width / 2; x < bitmap.Width; x++)
+            {
+                var color = bitmap.GetPixel(x, y);
+                var luminance = (color.Red * 299 + color.Green * 587 + color.Blue * 114) / 1000;
+                if (luminance < darkest) darkest = luminance;
+            }
+        }
+
+        Assert.True(darkest < 100, $"浅底图上的预览水印应是深色墨字，实测最暗亮度 {darkest}。");
+    }
+
+    [Fact]
+    public void WatermarkPreview_AppliesExifOrientation()
+    {
+        // 竖拍手机照片（EXIF Orientation=6，需顺时针转 90°）正式输出会摆正；
+        // 预览曾用 SKBitmap.Decode 直接读像素，竖图在预览里横躺。
+        var source = MakeJpegWithOrientation("preview-exif.jpg", 200, 100, orientation: 6);
+
+        var png = ImageToolbox.RenderWatermarkPreview(source, "仅供教学使用", "右下角", 0.8, 1.0, 240);
+        Assert.NotNull(png);
+
+        using var preview = SKBitmap.Decode(png!);
+        Assert.NotNull(preview);
+        // 摆正后源图是 100×200（竖），240 宽预览对应 480 高；不摆正会是 240×120。
+        Assert.Equal(240, preview!.Width);
+        Assert.Equal(480, preview.Height);
+    }
+
+    // ---- 取消语义与半成品清理（调研 P2-22，T29） ----
+
+    [Fact]
+    public void CancelCopy_SaysItTakesEffectAfterThisRun()
+    {
+        var panel = RepoRoot.Read(Path.Combine("src", "TeachCraft.App", "Views", "ToolPanelView.axaml"));
+        Assert.Contains("取消将在本轮处理完成后生效", panel);
+        Assert.DoesNotContain("正在取消…", panel);
+    }
+
+    [Fact]
+    public void DeleteCancelledOutput_RemovesFirstRunPartial()
+    {
+        var output = Path.Combine(_root, "cancel-first.png");
+        var before = TeachCraft.App.Views.MainWindow.CaptureOutputSnapshot(output);
+        Assert.False(before.Existed);
+
+        File.WriteAllBytes(output, new byte[] { 1, 2, 3 });
+
+        var deleted = TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.ImageConvert, output, before, DateTime.UtcNow.AddSeconds(-5));
+
+        Assert.True(deleted);
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public void DeleteCancelledOutput_KeepsPreviousRunProduct()
+    {
+        // 修复前必红：同路径重跑、取消发生在写盘之前时，盘上是**上一场完好的成品**，
+        // 旧判定（File.Exists && LastOutputPath == output）会把它删掉。
+        var output = Path.Combine(_root, "cancel-previous.png");
+        File.WriteAllBytes(output, new byte[] { 9, 9, 9 });
+        var oldTime = DateTime.UtcNow.AddMinutes(-10);
+        File.SetLastWriteTimeUtc(output, oldTime);
+
+        var before = TeachCraft.App.Views.MainWindow.CaptureOutputSnapshot(output);
+        Assert.True(before.Existed);
+
+        var deleted = TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.ImageConvert, output, before, DateTime.UtcNow);
+
+        Assert.False(deleted);
+        Assert.True(File.Exists(output), "上一场的成品不能被本轮取消误删。");
+    }
+
+    [Fact]
+    public void DeleteCancelledOutput_RemovesRewrittenFile()
+    {
+        // 同路径重跑且本轮已写盘：写入时间晚于开始时刻 → 是本轮半成品，要删。
+        var output = Path.Combine(_root, "cancel-rewritten.png");
+        File.WriteAllBytes(output, new byte[] { 9, 9, 9 });
+        File.SetLastWriteTimeUtc(output, DateTime.UtcNow.AddMinutes(-10));
+        var before = TeachCraft.App.Views.MainWindow.CaptureOutputSnapshot(output);
+
+        var started = DateTime.UtcNow;
+        File.WriteAllBytes(output, new byte[] { 1, 2, 3, 4 });
+        File.SetLastWriteTimeUtc(output, started.AddSeconds(1));
+
+        var deleted = TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.ImageConvert, output, before, started);
+
+        Assert.True(deleted);
+        Assert.False(File.Exists(output));
+    }
+
+    [Fact]
+    public void DeleteCancelledOutput_SkipsPdfToImagesFolder()
+    {
+        var folder = Path.Combine(_root, "cancel-pages");
+        Directory.CreateDirectory(folder);
+
+        var deleted = TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.PdfToImages, folder, new TeachCraft.App.Views.MainWindow.OutputSnapshot(false, null), DateTime.UtcNow);
+
+        Assert.False(deleted);
+        Assert.True(Directory.Exists(folder));
+    }
+
+    // ---- 参数预检前移与 DPI 对齐（调研 P2-24 / P2-27，T30） ----
+
+    [Fact]
+    public void ParameterCheck_RejectsSingleFileMerge()
+    {
+        var message = ToolParameterCheck.Validate(
+            ToolKind.PdfMerge, new[] { Path.Combine(_root, "only.pdf") }, null);
+
+        Assert.NotNull(message);
+        Assert.Contains("至少", message);
+    }
+
+    [Fact]
+    public void ParameterCheck_RejectsMalformedPageRange()
+    {
+        var message = ToolParameterCheck.Validate(
+            ToolKind.PdfSplit, new[] { Path.Combine(_root, "doc.pdf") }, "5-2");
+
+        Assert.NotNull(message);
+        Assert.Contains("5-2", message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("3")]
+    [InlineData("1-2,4")]
+    [InlineData("2-")]
+    [InlineData("-3")]
+    public void ParameterCheck_AcceptsWellFormedPageRange(string? pageRange)
+    {
+        // 超范围（共 5 页却填 9）要读文件才知道，留给执行期——这里只挡写法错误。
+        Assert.Null(ToolParameterCheck.ValidatePageRangeSyntax(pageRange));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("abc")]
+    [InlineData("3-1")]
+    [InlineData("-")]
+    [InlineData("a-2")]
+    public void ParameterCheck_RejectsBadPageRangeSyntax(string pageRange)
+    {
+        Assert.NotNull(ToolParameterCheck.ValidatePageRangeSyntax(pageRange));
+    }
+
+    [Fact]
+    public void PdfToWord_LayoutMode_Honors72Dpi()
+    {
+        // 修复前必红：渲染被静默钳到 96，选 72 与选 96 得到同一尺寸的页图。
+        var image = MakeImage("dpi-source.png", 600, 400);
+        var pdf = Path.Combine(_root, "dpi-source.pdf");
+        PdfToolbox.ImagesToPdf(new[] { image }, pdf);
+
+        var at72 = Path.Combine(_root, "dpi-72.docx");
+        var at96 = Path.Combine(_root, "dpi-96.docx");
+        PdfToolbox.PdfToWord(pdf, at72, keepLayout: true, dpi: 72);
+        PdfToolbox.PdfToWord(pdf, at96, keepLayout: true, dpi: 96);
+
+        var width72 = FirstEmbeddedImageWidth(at72);
+        var width96 = FirstEmbeddedImageWidth(at96);
+
+        Assert.True(width72 < width96,
+            $"72 DPI 的页图应比 96 DPI 窄：72→{width72}px，96→{width96}px（修复前两者相同，说明被钳到 96）。");
+        // 源图是横图，落在 A4 横版上：72 DPI 约 842px 宽，96 DPI 约 1123px 宽。
+        Assert.InRange(width72, 780, 900);
+        Assert.InRange(width96, 1050, 1200);
+    }
+
+    private static int FirstEmbeddedImageWidth(string docxPath)
+    {
+        using var word = WordprocessingDocument.Open(docxPath, false);
+        var part = word.MainDocumentPart!.ImageParts.First();
+        using var stream = part.GetStream();
+        using var codec = SKCodec.Create(stream);
+        Assert.NotNull(codec);
+        return codec!.Info.Width;
+    }
+
+    /// <summary>
+    /// 生成一张带 EXIF Orientation 的 JPEG：在 SOI 之后插入一个只含 Orientation 项的 APP1。
+    /// </summary>
+    private string MakeJpegWithOrientation(string name, int width, int height, ushort orientation)
+    {
+        var path = Path.Combine(_root, name);
+        using var bitmap = MakeBitmap(width, height);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 92);
+
+        using var tiff = new MemoryStream();
+        using (var writer = new BinaryWriter(tiff, System.Text.Encoding.ASCII, leaveOpen: true))
+        {
+            writer.Write(new byte[] { 0x49, 0x49, 0x2A, 0x00 });   // 小端 TIFF 头
+            writer.Write(8);                                         // IFD0 偏移
+            writer.Write((ushort)1);                                 // 1 个条目
+            writer.Write((ushort)0x0112);                            // Orientation
+            writer.Write((ushort)3);                                 // SHORT
+            writer.Write(1);                                         // count
+            writer.Write((ushort)orientation);                       // 值（小端，占前 2 字节）
+            writer.Write((ushort)0);                                 // 值字段补齐
+            writer.Write(0);                                         // 下一个 IFD
+        }
+
+        var tiffBytes = tiff.ToArray();
+        var payload = new byte[6 + tiffBytes.Length];
+        payload[0] = (byte)'E'; payload[1] = (byte)'x'; payload[2] = (byte)'i';
+        payload[3] = (byte)'f'; payload[4] = 0; payload[5] = 0;
+        tiffBytes.CopyTo(payload, 6);
+
+        var jpegBytes = data.ToArray();
+        using var output = File.Create(path);
+        output.Write(jpegBytes, 0, 2);                              // SOI
+        output.Write(new byte[] { 0xFF, 0xE1 });                    // APP1
+        var length = payload.Length + 2;
+        output.Write(new[] { (byte)(length >> 8), (byte)(length & 0xFF) });
+        output.Write(payload);
+        output.Write(jpegBytes, 2, jpegBytes.Length - 2);
+        return path;
+    }
+
     private string MakeImage(string name, int width, int height)
     {
         var path = Path.Combine(_root, name);

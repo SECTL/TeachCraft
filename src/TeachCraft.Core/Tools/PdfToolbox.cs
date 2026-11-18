@@ -186,7 +186,9 @@ public static class PdfToolbox
                         index,
                         leaveOpen: true,
                         password: null,
-                        options: new PDFtoImage.RenderOptions { Dpi = Math.Clamp(dpi, 96, 300) });
+                        // 与 PdfToImages 及界面 / 说明文案一致：72 起步。曾钳到 96，
+                        // 老师选 72 得到的实际是 96 的清晰度，与承诺不符（调研 P2-27）。
+                        options: new PDFtoImage.RenderOptions { Dpi = Math.Clamp(dpi, 72, 300) });
 
                     using var png = new MemoryStream();
                     using (var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 92))

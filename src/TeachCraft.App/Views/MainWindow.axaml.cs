@@ -672,6 +672,17 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 参数错误先于保存框报出：合并只选了一份、页码写错，不该让老师先挑完
+        // 输出位置再被打回来（调研 P2-24 / 上轮 P3-18）。
+        if (ToolParameterCheck.Validate(tool.Kind, tool.Files, tool.PageRange) is { } invalid)
+        {
+            tool.ResultText = invalid;
+            tool.HasResult = true;
+            tool.ResultIsError = true;
+            ViewModel.SetStatus(invalid, true);
+            return;
+        }
+
         // 输出对话框弹出期间按钮仍是启用态，快速双击会叠出两个保存框、同任务跑两遍。
         // 用一个独立的对话标志兜住入口，而不是等到 RunToolAsync 才置 IsBusy。
         _runDialogOpen = true;
@@ -703,6 +714,12 @@ public partial class MainWindow : Window
 
     private async Task RunToolAsync(ToolItemViewModel tool, string output)
     {
+        // 取消后是否清掉输出，要看盘上的文件是不是**本轮**写的：同路径重跑时，
+        // 上一场留下的完好成品与本轮的半成品都「存在」，只看 File.Exists 分不出来（调研 P2-22）。
+        // 所以在本轮开始前拍一份起点快照，连同开始时刻一起交给取消路径。
+        var outputBefore = CaptureOutputSnapshot(output);
+        var runStartedUtc = DateTime.UtcNow;
+
         tool.IsBusy = true;
         tool.Progress = 0;
         tool.HasProgress = false;
@@ -746,7 +763,7 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             // 取消后清理半成品：留下一个用户没要的残缺文件比什么都不留更糟。
-            TryDeletePartialOutput(tool, output);
+            TryDeletePartialOutput(tool, output, outputBefore, runStartedUtc);
             tool.ResultText = "已取消。";
             tool.HasResult = true;
             tool.ResultIsError = true;
@@ -777,18 +794,64 @@ public partial class MainWindow : Window
     }
 
     /// <summary>取消后删掉这个任务写出的半成品；PdfToImages 的输出是目录，交给它自己留着。</summary>
-    private static void TryDeletePartialOutput(ToolItemViewModel tool, string output)
+    private static void TryDeletePartialOutput(
+        ToolItemViewModel tool, string output, OutputSnapshot before, DateTime runStartedUtc)
     {
         try
         {
-            if (tool.Kind == ToolKind.PdfToImages) return;
-            if (File.Exists(output) && string.Equals(tool.LastOutputPath, output, StringComparison.OrdinalIgnoreCase))
-                File.Delete(output);
+            DeleteCancelledOutput(tool.Kind, output, before, runStartedUtc);
         }
         catch
         {
             // 删不掉不影响「已取消」这个结论。
         }
+    }
+
+    /// <summary>本轮开始前对输出路径拍的快照：是否存在、当时的最后写入时间（UTC）。</summary>
+    public readonly record struct OutputSnapshot(bool Existed, DateTime? LastWriteTimeUtc);
+
+    /// <summary>
+    /// 本轮开始前拍快照。拍不到（路径非法等）就按「不存在」处理——
+    /// 那种情况下取消多删一个本轮的残件，也比留下半成品好。
+    /// </summary>
+    public static OutputSnapshot CaptureOutputSnapshot(string output)
+    {
+        try
+        {
+            var info = new FileInfo(output);
+            return info.Exists
+                ? new OutputSnapshot(true, info.LastWriteTimeUtc)
+                : new OutputSnapshot(false, null);
+        }
+        catch
+        {
+            return new OutputSnapshot(false, null);
+        }
+    }
+
+    /// <summary>
+    /// 取消路径的清理判定（判定 + 一次删除，纯文件操作，便于回归）。
+    ///
+    /// 只删**本轮产出**的文件：本轮之前不存在，或本轮重写过（写入时间晚于开始时刻）。
+    /// 单纯 <c>File.Exists</c> 区分不了「本轮半成品」与「上一场成品」——同路径重跑时
+    /// 取消于写盘之前，盘上是上一场完好的成品，照删就把老师的成果删掉了（调研 P2-22）。
+    /// </summary>
+    /// <returns>真的删了文件时为 true。</returns>
+    public static bool DeleteCancelledOutput(
+        ToolKind kind, string output, OutputSnapshot before, DateTime runStartedUtc)
+    {
+        if (kind == ToolKind.PdfToImages) return false;
+        if (!File.Exists(output)) return false;
+
+        var writeTime = File.GetLastWriteTimeUtc(output);
+        // 时间戳与起点快照完全一致：本轮根本没动过这个文件。
+        if (before.Existed && before.LastWriteTimeUtc == writeTime) return false;
+
+        var writtenThisRun = !before.Existed || writeTime > runStartedUtc;
+        if (!writtenThisRun) return false;
+
+        File.Delete(output);
+        return true;
     }
 
     /// <summary>当前在跑的工具任务；面板上的「取消」按钮用它。</summary>

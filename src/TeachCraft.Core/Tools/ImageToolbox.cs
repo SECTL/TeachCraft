@@ -344,9 +344,12 @@ public static class ImageToolbox
     /// <summary>
     /// 把水印画到一张缩略图上并返回 PNG 字节，供工具箱面板做实时预览。
     ///
-    /// 用与 <see cref="Watermark"/> 同一套字号、位置、不透明度语义——预览与正式输出
-    /// 不一致的预览比没有预览更糟。缩略图按 <paramref name="previewWidth"/> 等比缩放，
-    /// 字号随之按比例缩小，所以观感与成品一致。
+    /// 与 <see cref="Watermark"/> 三个维度逐一对齐——预览与正式输出不一致的预览比没有预览更糟：
+    /// ①字号按**原图宽度**套正式公式（含 13px 地板）再乘预览缩放比，而不是直接拿预览宽算，
+    ///   否则 240px 预览下固定 8px 地板会把 scale≤1.04 的整段滑块行程吃掉；
+    /// ②字色 / 影色复用 <see cref="IsLightImage"/>，浅底自动换墨字，与正式同语义；
+    /// ③解码走 <see cref="Load"/> 的 EXIF 摆正路径（<see cref="ApplyOrientation"/>），
+    ///   竖拍手机照片的预览不再横躺。
     /// </summary>
     public static byte[]? RenderWatermarkPreview(
         string inputPath,
@@ -358,62 +361,82 @@ public static class ImageToolbox
     {
         if (!File.Exists(inputPath)) return null;
 
-        using var stream = File.OpenRead(inputPath);
-        using var source = SKBitmap.Decode(stream);
-        if (source is null) return null;
-
-        var width = Math.Max(1, previewWidth);
-        // 损坏或异常图片可能解出 0 宽：除零会抛 DivideByZeroException 而不是返回 null。
-        if (source.Width <= 0 || source.Height <= 0) return null;
-        var height = Math.Max(1, (int)Math.Round(source.Height * (width / (double)source.Width)));
-
-        using var resized = source.Resize(
-            new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul),
-            new SKSamplingOptions(SKCubicResampler.Mitchell));
-        if (resized is null) return null;
-
-        using var canvasBitmap = new SKBitmap(resized.Info);
-        using (var canvas = new SKCanvas(canvasBitmap))
+        SKBitmap source;
+        try
         {
-            canvas.Clear(SKColors.Transparent);
-            canvas.DrawBitmap(resized, 0, 0);
-
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                using var typeface = ResolveCjkTypeface(SKFontStyle.Bold);
-                var fontSize = Math.Max(8f, (float)(width * 0.032 * Math.Clamp(scale, 0.4, 4.0)));
-                using var font = new SKFont(typeface, fontSize);
-                var metrics = font.Metrics;
-                var padding = Math.Max(6f, width * 0.028f);
-
-                var (x, y, align) = positionLabel switch
-                {
-                    "左上角" => (padding, padding - metrics.Ascent, SKTextAlign.Left),
-                    "右上角" => (width - padding, padding - metrics.Ascent, SKTextAlign.Right),
-                    "居中" => (width / 2f, height / 2f + (metrics.Descent - metrics.Ascent) / 2f, SKTextAlign.Center),
-                    "左下角" => (padding, height - padding - metrics.Descent, SKTextAlign.Left),
-                    _ => (width - padding, height - padding - metrics.Descent, SKTextAlign.Right),
-                };
-
-                var alpha = (byte)Math.Clamp(opacity * 255, 8, 255);
-                using var shadow = new SKPaint
-                {
-                    Color = new SKColor(0, 0, 0, (byte)(alpha * 0.42)),
-                    IsAntialias = true,
-                };
-                canvas.DrawText(text, x + fontSize * 0.04f, y + fontSize * 0.04f, align, font, shadow);
-
-                using var paint = new SKPaint
-                {
-                    Color = new SKColor(255, 255, 255, alpha),
-                    IsAntialias = true,
-                };
-                canvas.DrawText(text, x, y, align, font, paint);
-            }
+            source = Load(inputPath);
+        }
+        catch (ToolboxException)
+        {
+            // 预览只是辅助：读不了的图保持「预览暂不可用」，不把异常抛给界面。
+            return null;
         }
 
-        using var image = SKImage.FromBitmap(canvasBitmap);
-        using var data = image.Encode(SKEncodedImageFormat.Png, 90);
-        return data?.ToArray();
+        using (source)
+        {
+            var width = Math.Max(1, previewWidth);
+            // 损坏或异常图片可能解出 0 宽：除零会抛 DivideByZeroException 而不是返回 null。
+            if (source.Width <= 0 || source.Height <= 0) return null;
+            var height = Math.Max(1, (int)Math.Round(source.Height * (width / (double)source.Width)));
+            var previewRatio = width / (double)source.Width;
+
+            using var resized = source.Resize(
+                new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul),
+                new SKSamplingOptions(SKCubicResampler.Mitchell));
+            if (resized is null) return null;
+
+            using var canvasBitmap = new SKBitmap(resized.Info);
+            using (var canvas = new SKCanvas(canvasBitmap))
+            {
+                canvas.Clear(SKColors.Transparent);
+                canvas.DrawBitmap(resized, 0, 0);
+
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    using var typeface = ResolveCjkTypeface(SKFontStyle.Bold);
+                    // 先按正式输出算字号（原图宽 × 3.2% × 缩放，13px 地板），再折算到预览宽；
+                    // 小地板随预览宽等比（0.8%），只防极窄预览下字号小到画不出字形。
+                    var fullFontSize = Math.Max(13f, (float)(source.Width * 0.032 * Math.Clamp(scale, 0.4, 4.0)));
+                    var fontSize = Math.Max(width * 0.008f, (float)(fullFontSize * previewRatio));
+                    using var font = new SKFont(typeface, fontSize);
+                    var metrics = font.Metrics;
+                    var padding = Math.Max(6f, width * 0.028f);
+
+                    var (x, y, align) = positionLabel switch
+                    {
+                        "左上角" => (padding, padding - metrics.Ascent, SKTextAlign.Left),
+                        "右上角" => (width - padding, padding - metrics.Ascent, SKTextAlign.Right),
+                        "居中" => (width / 2f, height / 2f + (metrics.Descent - metrics.Ascent) / 2f, SKTextAlign.Center),
+                        "左下角" => (padding, height - padding - metrics.Descent, SKTextAlign.Left),
+                        _ => (width - padding, height - padding - metrics.Descent, SKTextAlign.Right),
+                    };
+
+                    var alpha = (byte)Math.Clamp(opacity * 255, 8, 255);
+                    var lightImage = IsLightImage(source);
+                    var textColor = lightImage ? new SKColor(20, 20, 19, alpha) : new SKColor(255, 255, 255, alpha);
+                    var shadowColor = lightImage
+                        ? new SKColor(255, 255, 255, (byte)(alpha * 0.55))
+                        : new SKColor(0, 0, 0, (byte)(alpha * 0.42));
+
+                    using var shadow = new SKPaint
+                    {
+                        Color = shadowColor,
+                        IsAntialias = true,
+                    };
+                    canvas.DrawText(text, x + fontSize * 0.04f, y + fontSize * 0.04f, align, font, shadow);
+
+                    using var paint = new SKPaint
+                    {
+                        Color = textColor,
+                        IsAntialias = true,
+                    };
+                    canvas.DrawText(text, x, y, align, font, paint);
+                }
+            }
+
+            using var image = SKImage.FromBitmap(canvasBitmap);
+            using var data = image.Encode(SKEncodedImageFormat.Png, 90);
+            return data?.ToArray();
+        }
     }
 }

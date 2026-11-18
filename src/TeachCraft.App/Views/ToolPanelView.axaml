@@ -246,7 +246,7 @@
                     VerticalAlignment="Center"
                     Click="OnCancelTool"
                     AutomationProperties.Name="取消处理" />
-            <TextBlock Text="正在取消…" FontSize="10.5" Foreground="{StaticResource MutedBrush}"
+            <TextBlock Text="取消将在本轮处理完成后生效" FontSize="10.5" Foreground="{StaticResource MutedBrush}"
                        IsVisible="{Binding CancelRequested}" VerticalAlignment="Center" />
         </StackPanel>
 
