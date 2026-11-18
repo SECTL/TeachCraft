@@ -371,6 +371,12 @@ public partial class MainViewModel : ViewModelBase
     public bool IsSubjectDetailVisible => HasData && Section == 3 && SubjectDetail is not null;
     public bool IsOverviewNavActive => Section is 0 or 2 or 3;
     public bool CanExport => HasData && !IsBusy;
+
+    /// <summary>
+    /// 取反的忙碌态，专供 XAML 绑 IsEnabled：忙碌遮罩有 400ms 延迟才亮，
+    /// 这段时间里「考试管理」弹窗的操作按钮必须自己先置灰，否则点击会直接落进去（审计 P3-4）。
+    /// </summary>
+    public bool IsNotBusy => !IsBusy;
     public bool HasDataMeta => HasData;
     public string HeaderTitle => HasData ? ExamName : "分晓 · 成绩条生成器";
 
@@ -785,6 +791,7 @@ public partial class MainViewModel : ViewModelBase
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(IsNotBusy));
 
         if (!value)
         {
@@ -898,6 +905,19 @@ public partial class MainViewModel : ViewModelBase
             }
 
             var data = await Task.Run(() => GradeSheetImporter.Load(path));
+
+            // 与 CreateSession 同款查重：把第 N 场替换成另一场已在用的文件，
+            // 两场考试就指向同一份数据，互为基准时全班进退步恒为 0——
+            // 而且这个错误是静默的，只在打印出来的纸面上才看得出来（审计 P2-2）。
+            // 换成该场自己原来的文件不算冲突：那正是「就地更新这一场」。
+            var duplicate = FindSessionSourceConflict(_sessions, order, path);
+            if (duplicate is not null)
+            {
+                Status = $"替换失败：这份文件已是第 {duplicate.Order} 次考试的来源，请换一份表格。";
+                StatusBrush = Palette.Seal;
+                return;
+            }
+
             var session = new ExamSession
             {
                 Order = order,
@@ -1093,7 +1113,13 @@ public partial class MainViewModel : ViewModelBase
         // 标题与班级筛选只在「展示的考试真的变了」时才重置。
         // 切对比基准、上下移一场考试都不会换主考数据，却曾经把老师手改的标题
         // 和筛好的班级一起冲回默认——7 个入口都走这里（审计 P2-1）。
-        var examKey = $"{activeSession.Order}:{activeSession.SourcePath}";
+        // 重置键只用来源路径：Order 会在删除 / 重排时被重新编号，把同一场考试
+        // 认成「换了考试」，手改标题与筛选又被冲掉（审计 P2-3）。
+        // 就地重复导入同一份文件时路径不变，标题与筛选因此保留（既有语义）。
+        // 路径缺失（空串）时才退回序号——两场都缺路径时序号是唯一能区分它们的键。
+        var examKey = string.IsNullOrWhiteSpace(activeSession.SourcePath)
+            ? $"idx:{activeSession.Order}"
+            : activeSession.SourcePath;
         var examChanged = !string.Equals(_lastExamKey, examKey, StringComparison.Ordinal);
         if (examChanged)
         {
@@ -1122,6 +1148,11 @@ public partial class MainViewModel : ViewModelBase
         if (Section == 0) EnsureOverviewBuilt();
         else if (Section == 1) EnsureStripsBuilt();
 
+        // 二级页（学生画像 / 学科分析）必须跟着会话走：换到另一场考试后还挂着上一场
+        // 的数据，界面没有任何标记，老师会把旧成绩当成新成绩看（审计 P2-4）。
+        // 找得到就按新数据重建；找不到（这场没有这个学生 / 这门学科）就置空回概览，
+        // 并在状态栏说明原因——绝不把旧画像留在屏幕上。
+        string? detailNotice = null;
         if (Detail is not null)
         {
             var student = displayData.Students.FirstOrDefault(s => s.No == Detail.No);
@@ -1129,6 +1160,35 @@ public partial class MainViewModel : ViewModelBase
             {
                 Detail = BuildDetail(displayData, student, _gradeInfo, _sessions);
             }
+            else
+            {
+                Detail = null;
+                detailNotice = "已切换到另一场考试：原来看的学生在这场里没有成绩，已回到概览。";
+                if (Section == 2) Section = 0;
+            }
+        }
+
+        if (SubjectDetail is not null)
+        {
+            var subjectName = SubjectDetail.SubjectName;
+            if (displayData.Subjects.Contains(subjectName))
+            {
+                var subjectDetail = BuildSubjectDetail(displayData, subjectName, _gradeInfo);
+                ApplySubjectStudentVisibility(subjectDetail);
+                SubjectDetail = subjectDetail;
+            }
+            else
+            {
+                SubjectDetail = null;
+                detailNotice ??= "已切换到另一场考试：原来查看的学科在这场里不存在，已回到概览。";
+                if (Section == 3) Section = 0;
+            }
+        }
+
+        if (detailNotice is not null)
+        {
+            Status = detailNotice;
+            StatusBrush = Palette.Clay;
         }
     }
 
@@ -1136,11 +1196,13 @@ public partial class MainViewModel : ViewModelBase
     {
         if (_data is null || IsBusy) return;
 
-        // 导出路径不得覆盖任何一份导入的成绩总表：
-        // 保存对话框的覆盖提示只说「文件已存在」，看不出这是刚用来算成绩的原件。
-        if (WouldOverwriteImportedSource(path, _sessions.Select(s => s.SourcePath)))
+        // 导出路径不得覆盖任何一份导入的成绩总表，也不得覆盖导入的分析报表原件：
+        // 保存对话框的覆盖提示只说「文件已存在」，看不出这是刚用来算成绩 / 看报表的原件。
+        // 这是第一道防线（给出状态栏话术）；Core 层的 Export 里还有一道兜底。
+        var importedSources = CollectImportedSources().ToList();
+        if (WouldOverwriteImportedSource(path, importedSources))
         {
-            Status = "导出路径不能覆盖已导入的成绩总表，请换一个文件名。";
+            Status = "导出路径不能覆盖已导入的成绩总表或分析报表，请换一个文件名。";
             StatusBrush = Palette.Seal;
             return;
         }
@@ -1169,7 +1231,8 @@ public partial class MainViewModel : ViewModelBase
                     Title = string.IsNullOrWhiteSpace(TitleOverride) ? null : TitleOverride.Trim(),
                 };
 
-                var result = await Task.Run(() => ScoreStripExporter.Export(data, path, options));
+                var result = await Task.Run(() =>
+                    ScoreStripExporter.Export(data, path, options, importedSources));
 
                 Status = $"已导出 {result.StudentCount} 人 · {result.Sheets.Count} 张表 → {Path.GetFileName(path)}";
                 StatusBrush = Palette.Moss;
@@ -1180,6 +1243,53 @@ public partial class MainViewModel : ViewModelBase
                 StatusBrush = Palette.Seal;
             }
         });
+    }
+
+    /// <summary>
+    /// 「替换考试」的查重：新文件是否已是**其他**场次的来源。
+    ///
+    /// 返回命中的那一场（用于点名「第 N 场」）；没有冲突返回 null。
+    /// 排除 <paramref name="replacingOrder"/> 自身：换成该场原来的文件就是就地更新，必须放行。
+    /// 抽成公开静态方法是为了可测——<see cref="ReplaceSessionCoreAsync"/> 里要先解析
+    /// 工作簿再查重，而解析需要真实文件、整条链路又包在 RunBusyAsync 里（无 UI 线程会挂起）。
+    /// </summary>
+    public static ExamSession? FindSessionSourceConflict(
+        IEnumerable<ExamSession> sessions, int replacingOrder, string path)
+    {
+        foreach (var session in sessions)
+        {
+            if (session.Order == replacingOrder) continue;
+            if (IsSameFile(path, session.SourcePath)) return session;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 当前导入过的全部来源文件：每场考试的成绩总表 + 每一份分析报表的原件。
+    ///
+    /// 报表此前只记文件名（<c>SourceFile</c>），无法与导出目标路径比对，
+    /// 于是「导出成绩条」能直接把刚导入的报表原件覆盖掉（审计 P2-1）。
+    /// 独立报表（尚未建立成绩会话时导入的）同样算来源。
+    /// </summary>
+    public IEnumerable<string> CollectImportedSources()
+    {
+        foreach (var session in _sessions)
+        {
+            if (!string.IsNullOrWhiteSpace(session.SourcePath)) yield return session.SourcePath;
+
+            foreach (var report in session.Reports)
+            {
+                if (!string.IsNullOrWhiteSpace(report.SourceFullPath))
+                    yield return report.SourceFullPath!;
+            }
+        }
+
+        foreach (var report in _standaloneReports)
+        {
+            if (!string.IsNullOrWhiteSpace(report.SourceFullPath))
+                yield return report.SourceFullPath!;
+        }
     }
 
     /// <summary>

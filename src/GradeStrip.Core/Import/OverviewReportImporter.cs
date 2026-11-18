@@ -266,6 +266,7 @@ public static class OverviewReportImporter
                 KindLabel = KindLabel(g.Kind),
                 Title = title,
                 SourceFile = Path.GetFileName(path),
+                SourceFullPath = ToFullPath(path),
                 ExamName = ExtractExamName(title),
                 Note = g.Sheets.Count > 1 ? $"共 {g.Sheets.Count} 张工作表" : null,
                 Sheets = g.Sheets,
@@ -946,6 +947,19 @@ public static class OverviewReportImporter
 
     private static string Normalize(string path) =>
         path.Normalize(System.Text.NormalizationForm.FormC);
+
+    /// <summary>报表来源的完整路径；取不到时退回原样，绝不因为路径规范失败而丢掉导入。</summary>
+    private static string ToFullPath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch
+        {
+            return path;
+        }
+    }
 
     private static bool IsSupportedFile(string path)
     {

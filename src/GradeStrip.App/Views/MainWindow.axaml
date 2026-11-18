@@ -1707,6 +1707,8 @@
         </Grid>
 
         <!-- 考试批次管理弹窗 (Modal Overlay) -->
+        <!-- Esc 关闭回概览：键位在窗口层接（Tunnel，见 MainWindow.axaml.cs OnWindowKeyDown），
+             不在遮罩上接——焦点可能还留在背后的「考试管理」按钮上，事件不会经过遮罩（审计 P3-4）。 -->
         <Grid Grid.ColumnSpan="2" Background="#70141413"
               IsVisible="{Binding IsExamManagerOpen}">
             <Border Classes="card" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -1781,7 +1783,11 @@
                                                     </StackPanel>
 
                                                     <!-- 操作动作组 -->
-                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                    <!-- 忙碌期间整组置灰：遮罩有 400ms 延迟才亮，
+                                                         这半秒里点「替换 / 删除」会直接落进去（审计 P3-4）。
+                                                         子按钮的 CanMoveUp / CanMoveDown 绑定保留，Avalonia 会与父级有效启用态取与。 -->
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                                                IsEnabled="{Binding $parent[Window].DataContext.IsNotBusy}">
                                                         <Button Classes="ghost" Content="设为主考"
                                                                 Tag="{Binding Order}" Click="OnSetActiveSession"
                                                                 IsVisible="{Binding !IsActive}"

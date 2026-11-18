@@ -62,6 +62,7 @@ public static class OverviewReportFilter
             KindLabel = report.KindLabel,
             Title = report.Title,
             SourceFile = report.SourceFile,
+            SourceFullPath = report.SourceFullPath,
             ExamName = report.ExamName,
             Note = report.Note,
             Sheets = sheets,

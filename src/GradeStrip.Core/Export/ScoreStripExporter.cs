@@ -50,11 +50,30 @@ public sealed class ScoreStripExporter
     private const int SwatchRow = 3;
     private const int FirstStripRow = 5;
 
-    public static StripExportResult Export(ExamData data, string outputPath, StripExportOptions? options = null)
+    /// <summary>
+    /// 把 <paramref name="data"/> 导出为成绩条工作簿。
+    /// <para>
+    /// <paramref name="importedSources"/> 是本次导出不得覆盖的来源文件（成绩总表与分析报表原件）。
+    /// 默认 null 表示不设防——只有 App 层知道导入了哪些文件；测试与内部调用可省略。
+    /// 这是 AGENTS 第八.8「输出保护必须在 Core 层拒绝」的兜底：App 层守卫是第一道，
+    /// 任何新入口（脚本、将来的批量导出）绕过界面时仍会被这里拦住。
+    /// </para>
+    /// </summary>
+    public static StripExportResult Export(
+        ExamData data,
+        string outputPath,
+        StripExportOptions? options = null,
+        IReadOnlyCollection<string>? importedSources = null)
     {
         options ??= new StripExportOptions();
         if (data.Students.Count == 0)
             throw new InvalidOperationException("没有可导出的学生数据。");
+
+        // 抛 InvalidOperationException 而不是 ToolboxException：后者定义在 TeachCraft.Core，
+        // GradeStrip.Core 不引用它；竞名导出器同款用法，分晓的 FriendlyError 已把
+        // InvalidOperationException 当业务消息原样透传。
+        if (OverlapsImportedSource(outputPath, importedSources))
+            throw new InvalidOperationException("输出路径不能覆盖已导入的成绩总表或分析报表，请换一个文件名。");
 
         var subjectCount = data.Subjects.Count;
         if (subjectCount == 0)
@@ -104,6 +123,43 @@ public sealed class ScoreStripExporter
     {
         var name = $"{firstNo}-{lastNo}";
         return name.Length <= 31 ? name : name[..31];
+    }
+
+    /// <summary>
+    /// 导出目标是否与任一来源文件重合（大小写不敏感，相对路径先转绝对）。
+    /// 路径规范化失败时按「不重合」处理——宁可漏拦一次，也不能因为一个怪路径
+    /// 让正常导出直接失败。
+    /// </summary>
+    private static bool OverlapsImportedSource(
+        string outputPath, IReadOnlyCollection<string>? importedSources)
+    {
+        if (importedSources is null || importedSources.Count == 0) return false;
+
+        string target;
+        try
+        {
+            target = Path.GetFullPath(outputPath);
+        }
+        catch
+        {
+            return false;
+        }
+
+        foreach (var source in importedSources)
+        {
+            if (string.IsNullOrWhiteSpace(source)) continue;
+            try
+            {
+                if (string.Equals(target, Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch
+            {
+                // 单个来源路径取不到绝对路径就跳过它，不影响其余来源的比对。
+            }
+        }
+
+        return false;
     }
 
     /// <summary>渲染标题、图例、色块，返回第一张成绩条的起始行号。</summary>

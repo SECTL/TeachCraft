@@ -33,6 +33,13 @@ public sealed class OverviewReport
     public string KindLabel { get; init; } = "";
     public string Title { get; init; } = "";
     public string SourceFile { get; init; } = "";
+
+    /// <summary>
+    /// 报表原件的完整路径。导出守卫要靠它拒绝「成绩条导出到刚导入的报表文件上」——
+    /// 只记文件名（<see cref="SourceFile"/>）无法与目标路径比对（审计 P2-1）。
+    /// </summary>
+    public string? SourceFullPath { get; init; }
+
     public string? ExamName { get; init; }
     public string? Note { get; init; }
     public IReadOnlyList<OverviewSheet> Sheets { get; init; } = Array.Empty<OverviewSheet>();

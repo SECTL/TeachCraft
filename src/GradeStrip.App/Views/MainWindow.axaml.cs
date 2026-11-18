@@ -36,6 +36,9 @@ public partial class MainWindow : Window
 
         // 与其余窗口一致：打开后把窗口钳进屏幕工作区（此前是唯一引入 WindowFit 却从不调用的窗口）。
         Opened += (_, _) => WindowFit.Clamp(this);
+
+        // Esc 关闭考试管理遮罩：走隧道阶段（handledEventsToo），按钮吞掉 KeyDown 也照样能收到。
+        AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     /// <summary>
@@ -164,7 +167,10 @@ public partial class MainWindow : Window
     {
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "导出成绩条",
+            // 保存框自带的「覆盖？」提示是系统对话框，只有一句「文件已存在」，说不出
+            // 这个文件是刚导入的成绩总表 / 分析报表。把约束写进标题，让老师在选文件名时
+            // 就能看到（审计 P2-5 收尾）；命中后 ViewModel 里还有中文话术与 Core 兜底。
+            Title = "导出成绩条（不能覆盖已导入的成绩总表或分析报表）",
             SuggestedFileName = ViewModel.SuggestedFileName(),
             DefaultExtension = "xlsx",
             FileTypeChoices = new[]
@@ -269,6 +275,33 @@ public partial class MainWindow : Window
     private void OnCloseExamManager(object? sender, RoutedEventArgs e) =>
         ViewModel.CloseExamManager();
 
+    /// <summary>
+    /// 考试管理遮罩的 Esc 判定。抽成纯函数是为了可测：窗口事件本身要在真实窗口里才触发，
+    /// 而「遮罩开着 + 焦点不在输入控件里」这条规则必须能单独断言（审计 P3-4）。
+    /// 输入控件里的 Esc 放行——文本框 / 下拉框有自己的取消语义，不该被窗口抢走。
+    /// </summary>
+    public static bool ShouldCloseExamManagerOnEscape(bool isExamManagerOpen, bool sourceIsTextInput) =>
+        isExamManagerOpen && !sourceIsTextInput;
+
+    /// <summary>
+    /// 窗口级键盘：考试管理遮罩打开时 Esc 关闭回概览（审计 P3-4）。
+    ///
+    /// 接在窗口层而不是遮罩上：焦点可能还留在背后的「考试管理」按钮上，
+    /// 那条事件链根本不经过遮罩，挂在遮罩上的 KeyDown 收不到。
+    /// 用 Tunnel 是因为按钮会把 KeyDown 吞成 handled（空格 / 回车激活），
+    /// 隧道阶段先一步拿到，才能保证「任何位置按 Esc 都退得掉」。
+    /// 输入控件里的 Esc 不拦——那是文本框 / 下拉框自己的事。
+    /// </summary>
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        if (!ShouldCloseExamManagerOnEscape(
+                ViewModel.IsExamManagerOpen, e.Source is TextBox or ComboBox)) return;
+
+        ViewModel.CloseExamManager();
+        e.Handled = true;
+    }
+
     private void OnSelectSessionFromNav(object? sender, RoutedEventArgs e)
     {
         var order = (sender as Control)?.Tag as int? ?? ((sender as Control)?.DataContext as ExamSessionItem)?.Order;
@@ -330,7 +363,8 @@ public partial class MainWindow : Window
         {
             if (!await ConfirmDialog.ShowAsync(
                     this, "替换这场考试？",
-                    $"第 {order.Value} 场考试的成绩、分析与对比基准会被新文件整体覆盖，且无法撤销。",
+                    $"第 {order.Value} 场考试的成绩、分析与对比基准会被新文件整体覆盖，且无法撤销。"
+                    + "新文件不能与其他场次重复——两场指向同一份表格，互为基准时全班进退步会恒为 0。",
                     "替换", "取消", danger: true))
                 return;
 
