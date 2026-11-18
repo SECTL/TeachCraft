@@ -691,6 +691,16 @@ public partial class App : Application
                     await Task.Delay(900);
                     dialog.UpdateLayout();
                     dialog.CaptureTo(target);
+
+                    // 下拉弹层是独立 popup，截图抓不到：把每项的可选状态写进同名 .log，
+                    // 用来核对「全部班级 → 原表高亮置灰」真的生效（审计 P2-17）。
+                    var styleMetricsIndex = Array.IndexOf(args, "--meetroster-style-metrics");
+                    if (styleMetricsIndex >= 0 && styleMetricsIndex + 1 < args.Length)
+                    {
+                        await Task.Delay(200);
+                        dialog.DumpStyleAvailability(args[styleMetricsIndex + 1]);
+                    }
+
                     dialog.Close();
                     window.Close();
                     return;
@@ -1004,6 +1014,20 @@ public partial class App : Application
                     viewModel.BusyText = "正在解析成绩总表…";
                     viewModel.IsBusy = true;
                     await Task.Delay(500);
+                }
+
+                // 截图走查：--gradestrip-exam-manager 打开考试管理遮罩，检查五个操作按钮
+                // 与忙碌置灰的观感（审计 P3-4）。置忙后再截一张，验证按钮确实变灰。
+                if (args.Contains("--gradestrip-exam-manager"))
+                {
+                    viewModel.OpenExamManager();
+                    await Task.Delay(300);
+
+                    if (args.Contains("--gradestrip-busy-buttons"))
+                    {
+                        viewModel.IsBusy = true;
+                        await Task.Delay(300);
+                    }
                 }
 
                 window.CaptureTo(target);

@@ -112,7 +112,9 @@ public partial class MeetRosterWindow : Window
                     {
                         // 走既有的导出流程；用户取消保存框时留在编辑态不关窗。
                         await OnExportHandBookAsync();
-                        if (!File.Exists(_lastExportedPath))
+                        // 只认**本次**真的写出的文件：旧实现一直留着上一次的路径，
+                        // 在保存框里取消也会被判成「已留档」而直接关窗（审计 P2-16）。
+                        if (!_archiveExport.HasArchive)
                             return;
                     }
                 }
@@ -131,8 +133,11 @@ public partial class MeetRosterWindow : Window
         base.OnClosing(e);
     }
 
-    /// <summary>最近一次成功导出的路径；关窗留档用它判断是否真的导出成功。</summary>
-    private string? _lastExportedPath;
+    /// <summary>
+    /// 关窗留档用的「本次导出」记录：进入导出先清空、只有成功才记路径。
+    /// 旧实现用一个从不清理的字段，取消保存框后旧路径还在，File.Exists 误判「已留档」。
+    /// </summary>
+    private readonly ArchiveExportTracker _archiveExport = new();
 
     /// <summary>设计走查用：把窗口渲染成 PNG；scale 用于放大取证明细。</summary>
     public void CaptureTo(string path, double scale = 1)
@@ -310,6 +315,8 @@ public partial class MeetRosterWindow : Window
     /// <summary>导出参赛手册（设置 → 保存框 → 写出）。关窗留档也走这条路径。</summary>
     private async Task OnExportHandBookAsync()
     {
+        // 本次进入导出：上一次的留档路径立刻作废，只有这次真写出才重新记上。
+        _archiveExport.BeginExport();
         try
         {
             if (ViewModel.AllClasses.Count == 0)
@@ -343,8 +350,8 @@ public partial class MeetRosterWindow : Window
                 return;
             }
 
-            await ViewModel.ExportHandBookAsync(request, path);
-            _lastExportedPath = path;
+            var exported = await ViewModel.ExportHandBookAsync(request, path);
+            _archiveExport.CompleteExport(exported, path);
         }
         catch (Exception ex)
         {
@@ -365,19 +372,45 @@ public partial class MeetRosterWindow : Window
             var directory = folders.FirstOrDefault()?.TryGetLocalPath();
             if (string.IsNullOrWhiteSpace(directory)) return;
 
-            var targets = ViewModel.AllClasses
-                .Where(c => !string.IsNullOrWhiteSpace(c.Source.SourcePath))
-                .Select(c => Path.Combine(directory, c.Name + "运动会报名表.xlsx"))
-                .ToList();
-            var overwrite = targets.Count(File.Exists);
+            // 计数前先剔除「目标就是导入原件」的班：那份文件不该被写出，也不该
+            // 被算进「将覆盖 N 份」——那是在承诺一个不会发生、也不该发生的动作。
+            // 上轮 P2-7 声称修过这条、实际没落地（调研 P2-15），这里是正式回补。
+            var plan = RegistrationExportPlanner.Plan(
+                ViewModel.AllClasses
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Source.SourcePath))
+                    .Select(c => c.Name),
+                directory,
+                ViewModel.IsExportPathBlocked,
+                File.Exists);
 
-            if (overwrite > 0 && !await ConfirmDialog.ShowAsync(
-                    this, "覆盖同名报名表？",
-                    $"目标文件夹里已有 {overwrite} 份同名报名表，继续导出会直接覆盖它们。",
-                    "覆盖导出", "取消", danger: true))
+            if (plan.AllBlocked)
+            {
+                ViewModel.SetStatus("这个文件夹就是原件所在位置，请另选一个文件夹。", true);
+                return;
+            }
+
+            if (plan.BlockedNames.Count > 0)
+            {
+                // 分开计数：被拦的那几份既不在「将覆盖」里，也不该被写出去。
+                // 覆盖数为 0 时别写「将覆盖 0 份」——那不是一句话。
+                var overwritePart = plan.OverwriteCount > 0
+                    ? $"将覆盖 {plan.OverwriteCount} 份同名报名表；"
+                    : string.Empty;
+                if (!await ConfirmDialog.ShowAsync(
+                        this, "导出报名表？",
+                        overwritePart
+                        + $"另有 {plan.SkippedCount} 份的目标就是导入的原件"
+                        + $"（{string.Join("、", plan.BlockedNames)}），将跳过不导出。",
+                        "继续导出", "取消", danger: true))
+                    return;
+            }
+            else if (plan.OverwriteCount > 0 && !await ConfirmDialog.ShowAsync(
+                         this, "覆盖同名报名表？",
+                         $"目标文件夹里已有 {plan.OverwriteCount} 份同名报名表，继续导出会直接覆盖它们。",
+                         "覆盖导出", "取消", danger: true))
                 return;
 
-            await ViewModel.ExportRegistrationFilesAsync(directory);
+            await ViewModel.ExportRegistrationFilesAsync(directory, plan.BlockedNames);
         }
         catch (Exception ex)
         {
@@ -514,7 +547,14 @@ public partial class MeetRosterWindow : Window
         // 走查可以直接指定格式 / 版式 / 样式，省得截图脚本去点下拉。
         if (dialog.DataContext is MeetExportOptionsViewModel options)
         {
-            if (string.Equals(style, "original", StringComparison.OrdinalIgnoreCase))
+            // 走查「全部班级」下的原表高亮互斥（审计 P2-17）：默认导出对象是当前班，
+            // 不切过去就看不到置灰状态。
+            if (string.Equals(style, "original-all", StringComparison.OrdinalIgnoreCase))
+            {
+                options.SelectedTarget = options.Targets[0];
+                options.SelectedStyle = options.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight);
+            }
+            else if (string.Equals(style, "original", StringComparison.OrdinalIgnoreCase))
             {
                 options.SelectedStyle = options.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight);
             }

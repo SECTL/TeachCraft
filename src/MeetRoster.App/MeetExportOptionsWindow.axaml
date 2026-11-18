@@ -30,6 +30,11 @@
             <Setter Property="MinHeight" Value="34" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
         </Style>
+        <!-- 样式下拉里不可用的项（全部班级下的原表高亮）真正禁用：
+             只灰文字仍点得进去，选完又被驳回，等于白填一遍设置（审计 P2-17）。 -->
+        <Style Selector="ComboBox.styles ComboBoxItem" x:DataType="app:MeetExcelStyleOption">
+            <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+        </Style>
         <Style Selector="TextBox.field">
             <Setter Property="Background" Value="{StaticResource WashBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
@@ -106,12 +111,18 @@
 
                     <StackPanel Spacing="5" IsVisible="{Binding ShowStyleChoice}">
                         <TextBlock Classes="field-label" Text="Excel 样式" />
-                        <ComboBox Classes="field" ItemsSource="{Binding Styles}"
+                        <ComboBox Classes="field styles" x:Name="StyleBox"
+                                  ItemsSource="{Binding Styles}"
                                   SelectedItem="{Binding SelectedStyle, Mode=TwoWay}"
                                   AutomationProperties.Name="Excel 样式">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate x:DataType="app:MeetExcelStyleOption">
-                                    <StackPanel Spacing="1" Margin="0,4">
+                                    <!-- 不可用的样式（全部班级下的原表高亮）灰掉：
+                                         否则老师选得进去、点「导出」才被驳回（审计 P2-17）。
+                                         Opacity 一并给，弹层样式万一没接管也看得出是禁用项。 -->
+                                    <StackPanel Spacing="1" Margin="0,4"
+                                                IsEnabled="{Binding IsAvailable}"
+                                                Opacity="{Binding ItemOpacity}">
                                         <TextBlock Text="{Binding Label}" FontSize="12"
                                                    Foreground="{StaticResource InkBrush}" />
                                         <TextBlock Text="{Binding Hint}" FontSize="10"

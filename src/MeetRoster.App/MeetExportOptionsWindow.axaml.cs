@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using MeetRoster.Core.Models;
@@ -52,5 +55,33 @@ public partial class MeetExportOptionsWindow : Window
         bitmap.Render(this);
         using var stream = System.IO.File.Create(path);
         bitmap.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+    }
+
+    /// <summary>
+    /// 设计走查用：把样式下拉里每一项的可选状态写成文本。
+    /// 下拉弹层是独立 popup，截图抓不到；置灰是否真的生效只能这样取证（审计 P2-17）。
+    /// </summary>
+    public void DumpStyleAvailability(string path)
+    {
+        var lines = new List<string>();
+        StyleBox.IsDropDownOpen = true;
+        StyleBox.UpdateLayout();
+
+        // 容器是弹层里的 ComboBoxItem：取它的 IsEnabled，而不是模板里那个 StackPanel。
+        var items = StyleBox.GetRealizedContainers().OfType<ComboBoxItem>().ToList();
+        foreach (var item in items)
+        {
+            var option = item.DataContext as MeetExcelStyleOption;
+            lines.Add($"{option?.Label ?? "(null)"} " +
+                      $"containerIsEnabled={item.IsEnabled} " +
+                      $"optionIsAvailable={option?.IsAvailable} " +
+                      $"opacity={option?.ItemOpacity} " +
+                      $"hint={option?.Hint}");
+        }
+
+        if (items.Count == 0) lines.Add("(没有实现化的下拉项)");
+
+        StyleBox.IsDropDownOpen = false;
+        File.WriteAllText(path, string.Join(Environment.NewLine, lines));
     }
 }

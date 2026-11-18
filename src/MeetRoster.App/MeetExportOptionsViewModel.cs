@@ -19,7 +19,32 @@ public sealed record MeetExportFormatOption(MeetExportFormat Format, string Labe
 public sealed record MeetExportLayoutOption(MeetPdfLayout Layout, string Label, string Hint);
 
 /// <summary>Excel 样式选项。</summary>
-public sealed record MeetExcelStyleOption(MeetExcelStyle Style, string Label, string Hint);
+public sealed partial class MeetExcelStyleOption : ObservableObject
+{
+    public MeetExcelStyleOption(MeetExcelStyle style, string label, string hint)
+    {
+        Style = style;
+        Label = label;
+        Hint = hint;
+    }
+
+    public MeetExcelStyle Style { get; }
+    public string Label { get; }
+
+    /// <summary>说明文字。不可用时改写成原因——下拉里那一行本身就是「提示」。</summary>
+    [ObservableProperty] private string _hint;
+
+    /// <summary>
+    /// 当前设置下这个样式能不能选。原表高亮在「全部班级」下不可用：
+    /// 它按班涂底色，导出全部班级等于把整本表涂满，反而看不出是哪班（审计 P2-17）。
+    /// </summary>
+    [ObservableProperty] private bool _isAvailable = true;
+
+    /// <summary>下拉项的透明度：不可用时压到 0.45，一眼看得出点不动。</summary>
+    public double ItemOpacity => IsAvailable ? 1 : 0.45;
+
+    partial void OnIsAvailableChanged(bool value) => OnPropertyChanged(nameof(ItemOpacity));
+}
 
 /// <summary>导出设置弹窗返回的请求。</summary>
 public sealed record MeetExportRequest(
@@ -65,11 +90,9 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         _selectedFormat = Formats[0];
 
         Styles.Add(new MeetExcelStyleOption(
-            MeetExcelStyle.Workbook, "软件整理",
-            "重排成「班级报名 / 单项名单 / 赛程 / 班级汇总」四页，单班整行加底色"));
+            MeetExcelStyle.Workbook, "软件整理", StyleBaseHint(MeetExcelStyle.Workbook)));
         Styles.Add(new MeetExcelStyleOption(
-            MeetExcelStyle.OriginalHighlight, "原表高亮",
-            "直接复制导入的原工作簿，只在名单与分组表里给该班条目涂底色，版面原样保留"));
+            MeetExcelStyle.OriginalHighlight, "原表高亮", StyleBaseHint(MeetExcelStyle.OriginalHighlight)));
         _selectedStyle = Styles[0];
 
         Layouts.Add(new MeetExportLayoutOption(
@@ -79,6 +102,9 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
             MeetPdfLayout.Card, "赛程卡",
             "照软件内「仅显示该班选手」的观感：每时段一张卡，彩色分类徽标 + 选手标签"));
         _selectedLayout = Layouts[0];
+
+        // 构造时就要算一次：默认导出对象可能是「全部班级」，原表高亮必须一开始就置灰。
+        RefreshStyleAvailability();
 
         UpdateFileName();
     }
@@ -249,15 +275,36 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
     /// <summary>只有 Excel 才谈得上样式选择。</summary>
     public bool ShowStyleChoice => IsExcel;
 
-    /// <summary>原表高亮只复制原工作簿：没有原文件时不能选。</summary>
-    public bool CanUseOriginalStyle => !string.IsNullOrWhiteSpace(_project.SourcePath)
+    /// <summary>
+    /// 原表高亮只复制原工作簿、只给「一个班」涂底色：没有原文件不能选，
+    /// 导出对象是全部班级时也不能选——那会把整本表涂满，反而看不出是哪班（审计 P2-17）。
+    /// 导出器的 null 语义不改：这里只是不给用户组合出这个请求的机会。
+    /// </summary>
+    public bool CanUseOriginalStyle => HasOriginalWorkbook && IsSingleClass;
+
+    /// <summary>工程有没有可用的原工作簿（与导出对象无关）。</summary>
+    public bool HasOriginalWorkbook => !string.IsNullOrWhiteSpace(_project.SourcePath)
                                        && System.IO.File.Exists(_project.SourcePath);
 
-    public string StyleHint => SelectedStyle.Style == MeetExcelStyle.OriginalHighlight
-        ? CanUseOriginalStyle
+    /// <summary>原表高亮当前不可用的原因；可用时为空串。下拉项与提示区共用这段文案。</summary>
+    public string OriginalStyleBlockReason
+    {
+        get
+        {
+            if (HasOriginalWorkbook && IsSingleClass) return string.Empty;
+            return IsSingleClass
+                ? "当前工程没有导入时的原工作簿（或它已被移动），原表高亮不可用。"
+                  + "请重新导入秩序册，或改用「软件整理」。"
+                : "只给单个班用：全部班级导出会把整本表涂满，看不出是哪班。"
+                  + "把导出对象改成某个班后即可选用。";
+        }
+    }
+
+    public string StyleHint => SelectedStyle.Style != MeetExcelStyle.OriginalHighlight
+        ? "四页工作表结构与导出一致；预览是前几行的样式示意。"
+        : CanUseOriginalStyle
             ? "底色 #FBE4D7 = 该班条目；其余内容、列宽、合并单元格与原表一致，原文件不会被改动。"
-            : "当前工程没有导入时的原工作簿（或它已被移动），原表高亮不可用。请重新导入秩序册，或改用「软件整理」。"
-        : "四页工作表结构与导出一致；预览是前几行的样式示意。";
+            : OriginalStyleBlockReason;
 
     /// <summary>赛程卡版式只画赛程，名单类分页对它不生效，界面上要说明。</summary>
     public bool IsCardLayout => IsPdf && SelectedLayout.Layout == MeetPdfLayout.Card;
@@ -281,6 +328,7 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowLayoutChoice));
         OnPropertyChanged(nameof(ShowStyleChoice));
         OnPropertyChanged(nameof(CanUseOriginalStyle));
+        OnPropertyChanged(nameof(HasOriginalWorkbook));
         OnPropertyChanged(nameof(StyleHint));
         OnPropertyChanged(nameof(IsCardLayout));
         OnPropertyChanged(nameof(ContentChecksEnabled));
@@ -288,7 +336,36 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanHighlight));
         OnPropertyChanged(nameof(TargetHint));
         OnPropertyChanged(nameof(ExportSummary));
+
+        // 下拉项本身也要跟着禁用：只在 TryBuild 里拦会让老师选得进去、
+        // 点「导出」才被驳回，白填一遍设置（审计 P2-17）。
+        RefreshStyleAvailability();
     }
+
+    /// <summary>按「有没有原工作簿 + 导出对象是不是单个班」刷新两个样式项的可选状态。</summary>
+    private void RefreshStyleAvailability()
+    {
+        foreach (var style in Styles)
+        {
+            var available = style.Style != MeetExcelStyle.OriginalHighlight || CanUseOriginalStyle;
+            style.IsAvailable = available;
+            // 下拉里那一行自己就是提示：不可用时把说明换成原因，别让老师
+            // 看着「直接复制原工作簿」的卖点去猜为什么点不动（审计 P2-17）。
+            style.Hint = style.Style == MeetExcelStyle.OriginalHighlight && !available
+                ? OriginalStyleBlockReason
+                : StyleBaseHint(style.Style);
+        }
+
+        // 当前选着原表高亮、而它刚变成不可用（导出对象改成全部班级 / 原文件被移走）：
+        // 退回「软件整理」，否则下拉里显示一个选不了的样式，导出时还会被 TryBuild 驳回。
+        // 退出条件由 SelectedStyle 自身保证，不会来回弹。
+        if (!CanUseOriginalStyle && SelectedStyle.Style == MeetExcelStyle.OriginalHighlight)
+            SelectedStyle = Styles[0];
+    }
+
+    private static string StyleBaseHint(MeetExcelStyle style) => style == MeetExcelStyle.OriginalHighlight
+        ? "直接复制导入的原工作簿，只在名单与分组表里给该班条目涂底色，版面原样保留"
+        : "重排成「班级报名 / 单项名单 / 赛程 / 班级汇总」四页，单班整行加底色";
 
     public string TargetHint => SelectedTarget.IsAllClasses
         ? "导出整份秩序册：每个班的名单与赛程都会列出来，不加底色。"
@@ -360,7 +437,11 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         request = default!;
         error = string.Empty;
 
-        if (!IncludeRoster && !IncludeEvents && !IncludeSchedule && !IncludeClassSummary)
+        // 卡片版式只画赛程，四页开关对它不生效（界面上也已整体置灰）：
+        // 再要求「至少勾选一页」就是一个谁也满足不了的死锁——勾选框点不动，
+        // 导出按钮永远驳回（审计 P2-18）。卡片版式直接跳过这条校验。
+        if (!IsCardLayout
+            && !IncludeRoster && !IncludeEvents && !IncludeSchedule && !IncludeClassSummary)
         {
             error = "至少勾选一页内容。";
             return false;
@@ -374,8 +455,13 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
 
         if (IsExcel && SelectedStyle.Style == MeetExcelStyle.OriginalHighlight && !CanUseOriginalStyle)
         {
-            error = "「原表高亮」需要导入时的原工作簿，但它已不在原位置。"
-                    + "请重新导入秩序册，或把 Excel 样式改回「软件整理」。";
+            // 界面已把不可用的样式项置灰并自动退回，这里只是兜底；
+            // 两种不可用原因分开说，别让老师对着「原文件不在了」去核对导出对象。
+            error = IsSingleClass
+                ? "「原表高亮」需要导入时的原工作簿，但它已不在原位置。"
+                  + "请重新导入秩序册，或把 Excel 样式改回「软件整理」。"
+                : "「原表高亮」只给单个班用，导出对象是全部班级时不可选。"
+                  + "请把导出对象改成某个班，或把 Excel 样式改回「软件整理」。";
             return false;
         }
 

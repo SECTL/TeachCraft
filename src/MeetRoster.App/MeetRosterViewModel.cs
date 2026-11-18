@@ -727,13 +727,15 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
     /// <summary>
     /// 导出参赛手册（Excel 或 PDF）到指定路径。写入在后台线程完成，成功后把路径写进状态栏。
+    /// 返回是否真的写出去了：关窗「先导出留档」必须靠这个信号判断，
+    /// 只看状态栏文字或沿用上一次的路径会把「取消了保存框」误判成「已留档」（审计 P2-16）。
     /// </summary>
-    public async Task ExportHandBookAsync(MeetExportRequest request, string path)
+    public async Task<bool> ExportHandBookAsync(MeetExportRequest request, string path)
     {
         if (AllClasses.Count == 0)
         {
             SetStatus("还没有导入任何班级，无法导出。", true);
-            return;
+            return false;
         }
 
         BeginBusy(
@@ -755,6 +757,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
             EndBusy();
             SetStatus($"已导出 {Path.GetFileName(path)}", success: true, detail: path);
+            return true;
         }
         catch (Exception ex)
         {
@@ -762,6 +765,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
             SetStatus(ex is InvalidOperationException
                 ? ex.Message
                 : ErrorText.Describe(ex, "导出参赛手册"), true);
+            return false;
         }
     }
 
@@ -870,15 +874,29 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         SetStatus(message, success: true);
     }
 
-    public async Task ExportRegistrationFilesAsync(string outputDirectory)
+    /// <summary>
+    /// 按模板把每个班回写到指定文件夹。
+    /// <paramref name="skipClassNames"/> 是「目标就是导入原件」的班级：调用方已经
+    /// 在确认弹窗里把它们排除在覆盖计数之外并承诺跳过，这里必须真的不写——
+    /// 否则「另有 M 份将跳过」是一句空话（审计 P2-15）。
+    /// </summary>
+    public async Task ExportRegistrationFilesAsync(
+        string outputDirectory, IReadOnlyCollection<string>? skipClassNames = null)
     {
+        var skip = skipClassNames is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>(skipClassNames, StringComparer.Ordinal);
+
         var classes = AllClasses
             .Select(c => c.Source)
             .Where(c => !string.IsNullOrWhiteSpace(c.SourcePath))
+            .Where(c => !skip.Contains(c.Name))
             .ToList();
         if (classes.Count == 0)
         {
-            SetStatus("当前班级没有原始报名表，无法按模板回写。", true);
+            SetStatus(skip.Count > 0
+                ? "要导出的班级都在原件所在文件夹里，没有可写出的文件。请另选一个文件夹。"
+                : "当前班级没有原始报名表，无法按模板回写。", true);
             return;
         }
 
@@ -910,7 +928,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
 
         FinishWriteBack("已导出", exported, classes.Count, errors,
-            successTail: $"到 {outputDirectory}",
+            successTail: skip.Count > 0
+                ? $"到 {outputDirectory}（另有 {skip.Count} 份目标就是导入原件，已跳过）"
+                : $"到 {outputDirectory}",
             successTailDetail: string.Empty);
     }
 

@@ -562,7 +562,250 @@ public sealed class MeetRosterExportOptionsTests : IDisposable
         Assert.Contains("已导出", vm.StatusText, StringComparison.Ordinal);
     }
 
+    // ---------- T21：另存为计数如实剔除原件（上轮 P2-7 假修复的正式回补） ----------
+
+    [Fact]
+    public async Task ExportHandBook_ReportsSuccessOnlyWhenFileIsWritten()
+    {
+        // 关窗留档靠这个返回值判定「本次真的留了档」：写入失败必须回 false，
+        // 否则「取消 / 失败」会被当成已留档直接关窗（调研 P2-16）。
+        var vm = new MeetRosterViewModel();
+        await vm.ImportOrderBookAsync(CreateOrderBook());
+
+        var request = Build(new MeetExportOptionsViewModel(vm.Project, "七年级1班"));
+        var ok = Path.Combine(_root, "导出", request.FileName);
+
+        Assert.True(await vm.ExportHandBookAsync(request, ok));
+        Assert.True(File.Exists(ok));
+
+        // 写到原件上：Core 守卫拒绝，返回 false。
+        Assert.False(await vm.ExportHandBookAsync(request, vm.Project.SourcePath!));
+        Assert.Contains("不能覆盖", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegistrationExportPlan_AllTargetsAreSources_ReportsAllBlocked()
+    {
+        // 老师选了当初导入报名表的那个文件夹：每一份的目标都等于原件。
+        // 修复前：File.Exists 计数把它们算成「将覆盖 N 份」并弹确认，
+        // 然后导出器逐份抛「不能覆盖原始报名表」——承诺了一个不会发生的动作（P2-15）。
+        var plan = RegistrationExportPlanner.Plan(
+            ["七年级1班", "七年级2班"],
+            @"C:\导出",
+            target => true,
+            _ => true);
+
+        Assert.True(plan.AllBlocked);
+        Assert.Equal(0, plan.OverwriteCount);
+        Assert.Equal(2, plan.SkippedCount);
+        Assert.Empty(plan.ClassNames);
+    }
+
+    [Fact]
+    public void RegistrationExportPlan_PartialBlock_SeparatesCounts()
+    {
+        // 原件只和其中一份同名：弹窗要分开说「覆盖 N 份，另有 M 份将跳过」。
+        var plan = RegistrationExportPlanner.Plan(
+            ["七年级1班", "七年级2班", "七年级3班"],
+            @"C:\导出",
+            target => target.EndsWith("七年级2班运动会报名表.xlsx", StringComparison.Ordinal),
+            target => target.EndsWith("七年级1班运动会报名表.xlsx", StringComparison.Ordinal));
+
+        Assert.False(plan.AllBlocked);
+        Assert.Equal(1, plan.OverwriteCount);
+        Assert.Equal(1, plan.SkippedCount);
+        Assert.Equal(["七年级1班", "七年级3班"], plan.ClassNames);
+        Assert.Equal(["七年级2班"], plan.BlockedNames);
+    }
+
+    [Fact]
+    public async Task ExportRegistrationFiles_SkipsBlockedClassesForReal()
+    {
+        // 「另有 M 份将跳过」必须为真：被拦的班不得照写（Oracle 缺陷 4）。
+        // 两份原件放在两个文件夹，导出到其中一个：只有那份目标就是原件。
+        var originalDir = Path.Combine(_root, "甲");
+        var targetDir = Path.Combine(_root, "乙");
+        Directory.CreateDirectory(originalDir);
+        Directory.CreateDirectory(targetDir);
+
+        var sourceA = Path.Combine(originalDir, "七年级1班运动会报名表.xlsx");
+        var sourceB = Path.Combine(targetDir, "七年级2班运动会报名表.xlsx");
+        WriteRegistration(sourceA, "七年级1班");
+        WriteRegistration(sourceB, "七年级2班");
+        var hashBefore = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sourceB)));
+
+        var vm = new MeetRosterViewModel();
+        await vm.ImportRegistrationFilesAsync([sourceA, sourceB]);
+
+        var plan = RegistrationExportPlanner.Plan(
+            vm.AllClasses.Select(c => c.Name), targetDir, vm.IsExportPathBlocked, File.Exists);
+
+        Assert.False(plan.AllBlocked);
+        Assert.Equal(["七年级2班"], plan.BlockedNames);
+        Assert.Contains("七年级1班", plan.ClassNames);
+
+        await vm.ExportRegistrationFilesAsync(targetDir, plan.BlockedNames);
+
+        // A 写出到目标文件夹；B 就是原件，一个字节都没动。
+        Assert.True(File.Exists(Path.Combine(targetDir, "七年级1班运动会报名表.xlsx")));
+        var hashAfter = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(sourceB)));
+        Assert.Equal(hashBefore, hashAfter);
+        Assert.Contains("已导出 1 份报名表", vm.StatusText, StringComparison.Ordinal);
+        Assert.Contains("跳过", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExportRegistrationFiles_AllBlocked_SaysPickAnotherFolder()
+    {
+        var dir = Path.Combine(_root, "全部原件");
+        Directory.CreateDirectory(dir);
+        var source = Path.Combine(dir, "七年级1班运动会报名表.xlsx");
+        WriteRegistration(source, "七年级1班");
+
+        var vm = new MeetRosterViewModel();
+        await vm.ImportRegistrationFilesAsync([source]);
+
+        var plan = RegistrationExportPlanner.Plan(
+            vm.AllClasses.Select(c => c.Name), dir, vm.IsExportPathBlocked, File.Exists);
+        Assert.True(plan.AllBlocked);
+
+        await vm.ExportRegistrationFilesAsync(dir, plan.BlockedNames);
+
+        Assert.Contains("原件所在", vm.StatusText, StringComparison.Ordinal);
+        Assert.Same(MeetRoster.App.MeetRosterPalette.Error, vm.StatusBrush);
+    }
+
+    [Fact]
+    public void ArchiveExportTracker_OnlyCountsThisExport()
+    {
+        // P2-16 的病灶：上一次的路径一直留着，本次在保存框里取消后
+        // File.Exists 仍为真 → 误判「已留档」→ 直接关窗，改动全丢。
+        var file = Path.Combine(_root, "上一次导出.pdf");
+        File.WriteAllText(file, "old");
+
+        var tracker = new ArchiveExportTracker();
+        tracker.BeginExport();
+        tracker.CompleteExport(true, file);
+        Assert.True(tracker.HasArchive);
+
+        // 这一次进入导出后取消（没有任何文件写出）。
+        tracker.BeginExport();
+        Assert.False(tracker.HasArchive);
+
+        // 导出失败也不能算留档。
+        tracker.CompleteExport(false, file);
+        Assert.False(tracker.HasArchive);
+
+        // 只有本次成功才重新记上。
+        tracker.CompleteExport(true, file);
+        Assert.True(tracker.HasArchive);
+        Assert.Equal(file, tracker.LastExportedPath);
+    }
+
+    // ---------- T22：原表高亮互斥 + 卡片勾选死锁 ----------
+
+    [Fact]
+    public void ExportOptions_AllClassesDisablesOriginalStyleWithReason()
+    {
+        // 修复前必红：全部班级 + 原表高亮能一路选到导出，
+        // 结果整本表被涂满、预览却说「不着色」（调研 P2-17）。
+        var project = BuildProject();          // 秩序册导入，带 SourcePath
+        var vm = new MeetExportOptionsViewModel(project, null);
+
+        Assert.True(vm.SelectedTarget.IsAllClasses);
+        Assert.False(vm.CanUseOriginalStyle);
+
+        var original = vm.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight);
+        Assert.False(original.IsAvailable);
+        Assert.True(vm.Styles.Single(s => s.Style == MeetExcelStyle.Workbook).IsAvailable);
+        Assert.Contains("单个班", original.Hint, StringComparison.Ordinal);
+        Assert.Contains("单个班", vm.OriginalStyleBlockReason, StringComparison.Ordinal);
+
+        // 硬塞也塞不进去：选上就退回「软件整理」，界面显示什么、导出就用什么。
+        vm.SelectedStyle = original;
+        Assert.Equal(MeetExcelStyle.Workbook, vm.SelectedStyle.Style);
+
+        Assert.True(vm.TryBuild(out var request, out var error), error);
+        Assert.Equal(MeetExcelStyle.Workbook, request.Options.ExcelStyle);
+    }
+
+    [Fact]
+    public void ExportOptions_SwitchingToAllClasses_FallsBackFromOriginalStyle()
+    {
+        var project = BuildProject();
+        var vm = new MeetExportOptionsViewModel(project, "七年级1班");
+        vm.SelectedStyle = vm.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight);
+        Assert.Equal(MeetExcelStyle.OriginalHighlight, vm.SelectedStyle.Style);
+
+        vm.SelectedTarget = vm.Targets[0];   // 全部班级
+
+        // 不留在不可用的选项上：界面显示什么，导出就用什么。
+        Assert.Equal(MeetExcelStyle.Workbook, vm.SelectedStyle.Style);
+        Assert.True(vm.TryBuild(out var request, out var error), error);
+        Assert.Equal(MeetExcelStyle.Workbook, request.Options.ExcelStyle);
+    }
+
+    [Fact]
+    public void ExportOptions_SingleClassOriginalStyleStillWorks()
+    {
+        // 单班行为零变化。
+        var vm = new MeetExportOptionsViewModel(BuildProject(), "七年级1班");
+
+        Assert.True(vm.CanUseOriginalStyle);
+        Assert.True(vm.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight).IsAvailable);
+
+        vm.SelectedStyle = vm.Styles.Single(s => s.Style == MeetExcelStyle.OriginalHighlight);
+        Assert.Contains("底色", vm.StyleHint, StringComparison.Ordinal);
+        Assert.True(vm.TryBuild(out var request, out var error), error);
+        Assert.Equal(MeetExcelStyle.OriginalHighlight, request.Options.ExcelStyle);
+    }
+
+    [Fact]
+    public void ExportOptions_CardLayoutSkipsPageSelection()
+    {
+        // 修复前必红：卡片版式把四个勾选框整体置灰，却仍要求「至少勾选一页」——
+        // 勾不动也导不出，是个死锁（调研 P2-18）。
+        var vm = new MeetExportOptionsViewModel(BuildProject(), "七年级1班")
+        {
+            IncludeRoster = false,
+            IncludeEvents = false,
+            IncludeSchedule = false,
+            IncludeClassSummary = false,
+        };
+
+        // 表格版式仍然要求至少勾一页。
+        Assert.False(vm.TryBuild(out _, out var handbookError));
+        Assert.Contains("至少勾选", handbookError, StringComparison.Ordinal);
+
+        vm.SelectedFormat = vm.Formats.Single(f => f.Format == MeetExportFormat.Pdf);
+        vm.SelectedLayout = vm.Layouts.Single(l => l.Layout == MeetPdfLayout.Card);
+
+        Assert.True(vm.IsCardLayout);
+        Assert.True(vm.TryBuild(out var request, out var error), error);
+        Assert.Equal(MeetPdfLayout.Card, request.Options.Layout);
+    }
+
     // ---------- fixtures ----------
+
+    private static void WriteRegistration(string path, string className)
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        var sheet = workbook.AddWorksheet("导入模板");
+        sheet.Cell(1, 1).Value = "示例中学田径运动会";
+        sheet.Cell(2, 1).Value = "参赛单位";
+        sheet.Cell(2, 2).Value = className;
+        sheet.Cell(7, 1).Value = "姓名";
+        sheet.Cell(7, 2).Value = "性别";
+        sheet.Cell(7, 3).Value = "团体项目1";
+        sheet.Cell(7, 4).Value = "团体项目2";
+        sheet.Cell(7, 5).Value = "团体项目3";
+        sheet.Cell(7, 6).Value = "比赛项目1";
+        sheet.Cell(7, 7).Value = "比赛项目2";
+        sheet.Cell(8, 1).Value = className + "甲";
+        sheet.Cell(8, 2).Value = "男子";
+        sheet.Cell(8, 6).Value = "100米";
+        workbook.SaveAs(path);
+    }
 
     private static MeetExportRequest Build(MeetExportOptionsViewModel vm)
     {
