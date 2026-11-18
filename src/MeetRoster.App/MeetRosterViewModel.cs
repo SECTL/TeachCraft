@@ -1005,6 +1005,11 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         var missing = ClassesWithoutSource();
         if (missing.Count == 0)
             return "当前没有可保存的原始报名表";
+        // 秩序册工程的「另存为」是灰的（没有逐班原文件可写），不能把用不了的路指给老师；
+        // 它的留档出路是「导出参赛手册」，关窗守卫会提（审计 P3-21 / 上轮 T23）。
+        if (IsFromOrderBook)
+            return $"以下班级没有原始报名表，无法直接保存：{string.Join("、", missing)}。"
+                   + "可在 Excel 中按模板为它们新建报名表后重新导入。";
         return $"以下班级没有原始报名表，无法直接保存：{string.Join("、", missing)}。"
                + "可在 Excel 中按模板为它们新建报名表后重新导入；「另存为」也只会导出有原始报名表的班级。";
     }
@@ -1190,6 +1195,10 @@ public sealed partial class MeetRosterViewModel : ObservableObject
     ///
     /// 「多选导入」必然带来选错的可能，而错了以前只能关窗全部重导（审计 P2-22）。
     /// 走 LoadProject 之外的最小刷新：只动这个班与列表，不重建赛程视图。
+    /// 收尾（审计 P3-18）：置 IsDirty——关窗守卫必须看见这次变更；把赛程里
+    /// 该班的参赛记录一并清掉并报数——界面与导出内容才不会出现「班没了、
+    /// 赛程里还有它的选手」的不一致；否则改动既不可撤销（关窗守卫失明）、
+    /// 导出的秩序册又会带着已删除班级的条目。
     /// </summary>
     public void RemoveClass(string className)
     {
@@ -1197,9 +1206,25 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         if (target is null) return;
 
         _project.Classes.Remove(target.Source);
-        LoadProject(_project, _isDemo, _scheduleImported);
 
-        SetStatus($"已移除「{className}」及其全部报名。");
+        // 赛程（项目分组表）按班列条目：班删了，它的参赛记录必须跟着删。
+        var removedEntries = 0;
+        foreach (var slot in _project.Days.SelectMany(d => d.Slots))
+        {
+            var before = slot.Entries.Count;
+            var kept = slot.Entries.Where(e => e.ClassName != className).ToList();
+            if (kept.Count == before) continue;
+            removedEntries += before - kept.Count;
+            slot.Entries.Clear();
+            foreach (var entry in kept) slot.Entries.Add(entry);
+        }
+
+        LoadProject(_project, _isDemo, _scheduleImported);
+        IsDirty = true;
+
+        var message = $"已移除「{className}」及其全部报名";
+        if (removedEntries > 0) message += $"，并从赛程里清掉它的 {removedEntries} 条参赛记录";
+        SetStatus(message + "。");
     }
 
     private void LoadProject(MeetProject project, bool isDemo, bool scheduleImported,

@@ -234,7 +234,8 @@ public partial class MeetRosterWindow : Window
             // 打不开与认不出去分两种话术：前者是文件损坏 / 加密，后者是表型不符。
             if (session is null)
             {
-                ViewModel.SetStatus($"这份文件打不开：{openError}（请确认文件未损坏、未被密码保护）", true);
+                // openError 已含「损坏 / 被密码保护」的完整建议（WorkbookIO），不再重复一遍。
+                ViewModel.SetStatus($"这份文件打不开：{openError}", true);
                 return;
             }
 

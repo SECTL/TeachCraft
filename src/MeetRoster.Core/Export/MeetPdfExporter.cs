@@ -44,6 +44,11 @@ public static class MeetPdfExporter
         if (project.Classes.Count == 0)
             throw new InvalidOperationException("还没有导入任何班级，无法导出。");
 
+        // 纵深防御：PDF 这条路此前是三导出器里唯一没有 Core 层防线的（审计 P3-17），
+        // UI 层的 IsExportPathBlocked 一旦被新入口绕过，秩序册原件就会被 PDF 覆盖。
+        MeetExportSourceGuard.EnsureNotOverwritingSources(
+            path, project, "导入的原工作簿", "原始报名表");
+
         var summaries = MeetExportBuilder.Build(project, options);
 
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
@@ -104,16 +109,57 @@ public static class MeetPdfExporter
     /// <summary>卡片版式的 A4 画布高：与表格版式同一常量，铺进 A4 的缩放比才一致。</summary>
     private const float CardPageHeight = PageHeight;
 
+    /// <summary>
+    /// 卡片版页脚线的 y 坐标（与 <see cref="MeetCardRenderer"/> 的页脚同式）。
+    /// 卡片装箱的下界：末卡不得越过它（P3-19）。
+    /// </summary>
+    public static float CardFooterTop => CardPageHeight - FooterHeight - Pad;
+
+    /// <summary>装箱下界之上的安全余量（页脚线到装箱可用高之间留 4px）。</summary>
+    public const float FooterMargin = 4f;
+
+    /// <summary>续页「（续）」小标题的实测高度：装箱账目与渲染必须一致（P3-19）。</summary>
+    public const float ContinuationTitleHeight = 28f;
+
     private static List<byte[]> BuildCardPages(
         MeetProject project, IReadOnlyList<ClassExportSummary> summaries, MeetExportOptions options)
     {
         var document = MeetCardBuilder.Build(project, summaries, options);
         var footerLeft = $"{project.Title} · {document.Scope} · 本机生成，文件未上传";
-        var usable = CardPageHeight - Pad - FooterHeight - 40f;
+
+        var pages = BuildCardPageSections(project, summaries, options);
+
+        return pages
+            .Select((sections, index) => MeetCardRenderer.Render(
+                document,
+                sections,
+                includeHeader: index == 0,
+                footerLeft,
+                $"共 {pages.Count} 页 · 第 {index + 1} 页",
+                CardPageHeight))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 卡片版式分页：把整份卡片文档按「时段」装箱（卡片本身不被劈开），返回每一页该画的分段。
+    /// 公开给导出预览复用：预览第 1 页与导出第 1 页必须同一套分页。
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<MeetCardSection>> BuildCardPageSections(
+        MeetProject project, IReadOnlyList<ClassExportSummary> summaries, MeetExportOptions options)
+    {
+        var document = MeetCardBuilder.Build(project, summaries, options);
 
         // 按「时段」装箱而不是整天：一天塞不下时把下午挪到下一页，卡片本身仍不被切断。
         // 日期标题只在当天第一次落位时占一次高度，不能按时段重复计算（否则每页会空掉大半）。
         const float dayHeaderHeight = 34f;
+        // 装箱账目必须与渲染器实际画出来的高度一致（P3-19）：
+        // 首页从大标题下沿开始（HeaderHeight 118 就是实际起点）；续页要画「（续）」小标题
+        // <see cref="ContinuationTitleHeight"/>px，每个分段收尾还有 4px（DrawSection 一定会画）。
+        // 首版三处都没扣：续页预算给满 1240 而实际只有 1194，续页末卡直接压过页脚线。
+        var continuationTitleHeight = ContinuationTitleHeight;
+
+        // 可用高 = 页脚线 - 顶边距 - 安全余量；页脚线 y 与 MeetCardRenderer.DrawFooter 同式。
+        var usable = CardPageHeight - FooterHeight - Pad * 2 - FooterMargin;
 
         var pages = new List<List<MeetCardSection>>();
         var current = new List<MeetCardSection>();
@@ -138,9 +184,13 @@ public static class MeetPdfExporter
         {
             FlushSection();
             if (current.Count == 0) return;
+            // 本页最后一个分段的收尾 4px：渲染器对每个落在页上的分段都画这条尾巴，
+            // 账目漏掉它，末卡就会比账面低 4px。
+            used += 4f;
             pages.Add(current);
             current = [];
-            used = 0f;
+            // 续页不是空白页：上头有「（续）」小标题，起点必须从它之下算起。
+            used = continuationTitleHeight;
         }
 
         foreach (var section in document.Sections)
@@ -172,15 +222,7 @@ public static class MeetPdfExporter
         FlushPage();
         if (pages.Count == 0) pages.Add([]);
 
-        return pages
-            .Select((sections, index) => MeetCardRenderer.Render(
-                document,
-                sections,
-                includeHeader: index == 0,
-                footerLeft,
-                $"共 {pages.Count} 页 · 第 {index + 1} 页",
-                CardPageHeight))
-            .ToList();
+        return pages;
     }
 
     // ----------------------------- 分页 -----------------------------

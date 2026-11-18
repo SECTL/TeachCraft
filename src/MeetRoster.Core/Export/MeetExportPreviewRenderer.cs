@@ -194,19 +194,9 @@ public static class MeetExportPreviewRenderer
             var document = MeetCardBuilder.Build(project, summaries, options);
             var scope = document.Scope;
 
-            // 首页只放能放下的部分：按比赛日装箱，与真实导出的分页规则一致。
-            var usable = MeetCardRenderer.PageWidth > 0
-                ? MeetPdfExporter.PageHeight - 54f - 46f - 40f
-                : 1240f;
-            var page = new List<MeetCardSection>();
-            var used = MeetCardRenderer.HeaderHeight(document);
-            foreach (var section in document.Sections)
-            {
-                var height = MeetCardRenderer.SectionHeight(section);
-                if (page.Count > 0 && used + height > usable) break;
-                page.Add(section);
-                used += height;
-            }
+            // 预览第 1 页直接取导出分页器的第 1 页：两套装箱逻辑曾各写一份，
+            // 预算差 28px 时「预览放得下」承诺不了「导出放得下」（P3-19）。
+            var page = MeetPdfExporter.BuildCardPageSections(project, summaries, options)[0];
 
             var png = MeetCardRenderer.Render(
                 document, page, includeHeader: true,

@@ -32,6 +32,10 @@ public static class MeetOriginalWorkbookHighlighter
         if (string.Equals(target, Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("原表高亮导出不能覆盖导入的原文件，请换一个文件名。");
 
+        // 工程里逐班报名表（如果有）同样不许被覆盖；秩序册工程这一列全空，守卫直接放过。
+        MeetExportSourceGuard.EnsureNotOverwritingSources(
+            target, project, "导入的原文件", "原始报名表");
+
         var className = options.IsAllClasses ? null : options.ClassName;
 
         using var stream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

@@ -144,11 +144,19 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
     /// <summary>防抖窗口：连续改设置时只画最后一次。</summary>
     private static readonly TimeSpan PreviewDebounce = TimeSpan.FromMilliseconds(200);
 
+    /// <summary>渲染落定后如果又有改动进来，这个标志保证补发一次（P3-22）。</summary>
+    private bool _previewDirty;
+
     /// <summary>由窗口在打开时调用一次，并在设置变化时调用。</summary>
     public void RequestPreview()
     {
         if (_isClosed) return;
-        if (_previewQueued) return;
+        if (_previewQueued)
+        {
+            // 渲染在途（60–135ms）又改了设置：不能静默丢——等这次渲染落定后要再补一张。
+            _previewDirty = true;
+            return;
+        }
         _previewQueued = true;
 
         var cts = new CancellationTokenSource();
@@ -209,6 +217,14 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
             {
                 IsPreviewBusy = false;
                 _previewQueued = false;
+
+                // 渲染期间改过设置的话，这里补发一次（P3-22）：
+                // 老的丢弃语义会让最后改的那个设置永远不上预览。
+                if (_previewDirty && !_isClosed)
+                {
+                    _previewDirty = false;
+                    RequestPreview();
+                }
             }
         }
     }
