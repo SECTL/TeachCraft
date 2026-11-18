@@ -262,10 +262,12 @@ public partial class MainViewModel : ViewModelBase
 
         await RunBusyAsync("正在识别拖入的文件…", async () =>
         {
-            var (gradeSheets, reports, zipCount) = await Task.Run(() => ClassifyDroppedFiles(paths));
+            var (gradeSheets, reports, zipCount, ignored) =
+                await Task.Run(() => ClassifyDroppedFiles(paths));
 
             var beforeCount = _sessions.Count;
             var failed = 0;
+            var failures = new List<string>();
             for (var i = 0; i < gradeSheets.Count; i++)
             {
                 if (gradeSheets.Count > 1)
@@ -274,7 +276,13 @@ public partial class MainViewModel : ViewModelBase
                 var countBefore = _sessions.Count;
                 await AddSessionCoreAsync(gradeSheets[i], isReportHint: false);
                 // AddSessionCoreAsync 内部吞异常，只能从状态色判断这一份是否失败
-                if (_sessions.Count == countBefore && StatusBrush != Palette.Moss) failed++;
+                if (_sessions.Count == countBefore && StatusBrush != Palette.Moss)
+                {
+                    failed++;
+                    // 失败原因此刻正写在状态栏里，先抄下来：多份拖入时后一份会把它盖掉。
+                    // 汇总句若只说「详见状态栏提示」，指的其实是它自己刚覆盖掉的那句（审计 P3-2）。
+                    failures.Add($"{Path.GetFileName(gradeSheets[i])}：{Status}");
+                }
             }
 
             if (reports.Count > 0)
@@ -282,33 +290,70 @@ public partial class MainViewModel : ViewModelBase
                 if (gradeSheets.Count > 0) BusyText = "正在解析分析报表…";
                 // 有会话直接挂载；无会话时 ImportReports 会先尝试从混合工作簿提取成绩数据建立会话
                 await ImportReportsCoreAsync(reports);
+                // 同一批里被忽略的 .csv / 文件夹 / 压缩包也要报，否则老师以为全导进去了（审计 P3-3）。
+                var tail = new List<string>();
+                if (zipCount > 0) tail.Add($"{zipCount} 个压缩包未解压");
+                if (ignored > 0) tail.Add(BuildIgnoredSuffix(ignored));
+                if (tail.Count > 0) Status += "；" + string.Join("；", tail);
             }
             else if (zipCount > 0 && gradeSheets.Count == 0)
             {
                 ImportNotice = "压缩包不能直接导入。请先解压后选择其中的 .xlsx / .xls 表格导入；若解压后文件名出现乱码，推荐使用 Windows 自带解压或 Bandizip。";
-                Status = ImportNotice;
+                Status = ignored > 0 ? ImportNotice + $" 另有 {ignored} 个不支持的文件已忽略。" : ImportNotice;
                 StatusBrush = Palette.Clay;
             }
             else if (gradeSheets.Count > 0)
             {
                 // 多份拖入时逐条结果会互相覆盖，最后只剩最后一份的消息。
-                // 汇总一句，让老师知道整批到底成了几场（审计 P2-34）。
+                // 汇总一句，让老师知道整批到底成了几场（审计 P2-34）；
+                // 逐份失败原因放进横幅，状态栏不再自指（审计 P3-2）。
                 var imported = _sessions.Count - beforeCount;
-                var summary = $"已导入 {imported} 场考试";
-                if (failed > 0) summary += $"，{failed} 份失败";
-                Status = failed > 0 ? summary + "（详见状态栏提示）" : summary;
+                if (failed > 0) ImportNotice = BuildFailureNotice(failures);
+                Status = BuildDropSummary(imported, failed, ignored);
                 StatusBrush = failed > 0 ? Palette.Clay : Palette.Moss;
+            }
+            else if (ignored > 0)
+            {
+                // .csv / 文件夹之类的拖入此前是零反馈（审计 P3-3）。
+                ImportNotice = "分晓只认 .xlsx / .xls / .xlsm 表格与 .zip 压缩包；文件夹请先打开，把里面的成绩表拖进来。";
+                Status = BuildIgnoredSuffix(ignored);
+                StatusBrush = Palette.Clay;
             }
         });
     }
 
-    /// <summary>拖入文件的分类在后台完成，避免入口分流时卡住界面。</summary>
-    private static (List<string> GradeSheets, List<string> Reports, int ZipCount) ClassifyDroppedFiles(
-        IReadOnlyList<string> paths)
+    /// <summary>拖入批次的收尾话术：导入了几场、失败几份、忽略几个不支持的文件。</summary>
+    public static string BuildDropSummary(int imported, int failed, int ignored)
     {
+        var summary = $"已导入 {imported} 场考试";
+        if (failed > 0) summary += $"，{failed} 份失败（原因见上方提示）";
+        if (ignored > 0) summary += $"，{BuildIgnoredSuffix(ignored)}";
+        return summary;
+    }
+
+    /// <summary>「已忽略 N 个不支持的文件」——CSV / 文件夹拖入此前没有任何反馈（审计 P3-3）。</summary>
+    public static string BuildIgnoredSuffix(int ignored) => $"已忽略 {ignored} 个不支持的文件";
+
+    /// <summary>逐份失败明细，放进可关闭的提示横幅；空列表返回空串。</summary>
+    public static string BuildFailureNotice(IReadOnlyList<string> failures) =>
+        failures.Count == 0
+            ? string.Empty
+            : $"{failures.Count} 份成绩表未能导入：" + string.Join("；", failures);
+
+    /// <summary>
+    /// 拖入文件的分类在后台完成，避免入口分流时卡住界面。
+    ///
+    /// <paramref name="isReportFile"/> 可注入：测试要断言「.csv / 文件夹被计为忽略」，
+    /// 不该为此准备真工作簿（报表探测要打开文件）。
+    /// </summary>
+    public static (List<string> GradeSheets, List<string> Reports, int ZipCount, int Ignored) ClassifyDroppedFiles(
+        IReadOnlyList<string> paths, Func<string, bool>? isReportFile = null)
+    {
+        isReportFile ??= OverviewReportImporter.IsReportFile;
         var gradeSheets = new List<string>();
         var reports = new List<string>();
         var zipCount = 0;
+        var ignored = 0;
 
         foreach (var path in paths)
         {
@@ -322,26 +367,32 @@ public partial class MainViewModel : ViewModelBase
                 !path.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) &&
                 !path.EndsWith(".xlsm", StringComparison.OrdinalIgnoreCase))
             {
+                ignored++;
                 continue;
             }
 
-            if (OverviewReportImporter.IsReportFile(path))
+            if (isReportFile(path))
                 reports.Add(path);
             else
                 gradeSheets.Add(path);
         }
 
-        return (gradeSheets, reports, zipCount);
+        return (gradeSheets, reports, zipCount, ignored);
     }
 
     /// <summary>当前显示会话挂载的报表集合；没有成绩会话时用独立报表。</summary>
-    private IReadOnlyList<OverviewReport> CurrentReports =>
+    private List<OverviewReport> MutableReports =>
         _sessions.Count > 0 && ActiveExamIndex >= 0 && ActiveExamIndex < _sessions.Count
             ? _sessions[ActiveExamIndex].Reports
             : _standaloneReports;
 
+    private IReadOnlyList<OverviewReport> CurrentReports => MutableReports;
+
     public bool HasReports => CurrentReports.Count > 0;
     public bool HasNoReports => !HasReports;
+
+    /// <summary>当前挂载的报表份数（关窗话术要用真实数字，不能读可能过期的 chip 集合）。</summary>
+    public int ReportCount => CurrentReports.Count;
     public bool HasReportRows => ReportRows.Count > 0;
     public bool HasNoReportRows => !HasReportRows;
     public double ReportTableWidth => ReportColumns.Sum(c => c.Width);
@@ -373,6 +424,12 @@ public partial class MainViewModel : ViewModelBase
     public bool CanExport => HasData && !IsBusy;
 
     /// <summary>
+    /// 关窗前有没有会丢的东西：成绩数据，或只导入过分析报表（审计 P3-5）。
+    /// 两者都只存在内存里，只看 <see cref="HasData"/> 会让「只导了报表」的关窗静默丢数据。
+    /// </summary>
+    public bool HasUnsavedContent => HasData || CurrentReports.Count > 0;
+
+    /// <summary>
     /// 取反的忙碌态，专供 XAML 绑 IsEnabled：忙碌遮罩有 400ms 延迟才亮，
     /// 这段时间里「考试管理」弹窗的操作按钮必须自己先置灰，否则点击会直接落进去（审计 P3-4）。
     /// </summary>
@@ -396,6 +453,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsDetailVisible));
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(HasDataMeta));
+        OnPropertyChanged(nameof(HasUnsavedContent));
         OnPropertyChanged(nameof(HeaderTitle));
     }
 
@@ -1595,6 +1653,7 @@ public partial class MainViewModel : ViewModelBase
                 Report = report,
                 IsActive = i == _activeReportIndex,
                 Activate = new RelayCommand(() => ActivateReport(index)),
+                Remove = new RelayCommand(() => RemoveReport(report)),
             });
         }
 
@@ -1781,6 +1840,34 @@ public partial class MainViewModel : ViewModelBase
         BuildReports();
     }
 
+    /// <summary>
+    /// 移除一份分析报表（审计 P2-23）。
+    ///
+    /// 此前报表挂上就摘不下来：导错考试之后只能连同那场考试一起删掉。
+    /// 这里只摘掉「查看用的挂载」，原件仍在磁盘上——状态栏据此提示回概览重新导入。
+    /// 独立报表（还没建成绩会话时导入的）同样可移除，落点在 <see cref="_standaloneReports"/>。
+    /// </summary>
+    public void RemoveReport(OverviewReport? report)
+    {
+        if (report is null) return;
+
+        var reports = CurrentReports;
+        var index = reports.ToList().FindIndex(r => ReferenceEquals(r, report));
+        if (index < 0) return;
+
+        MutableReports.RemoveAt(index);
+
+        // 摘掉的是当前查看的那份：回到它前面一份；列表空了 BuildReports 会归零。
+        _activeReportIndex = Math.Max(0, index - 1);
+        _activeReportSheetIndex = 0;
+
+        // 一律重建：HasReports 还要驱动空态与概览可见性，不能只标脏。
+        BuildReports();
+
+        Status = "已移除报表，可从概览重新挂载";
+        StatusBrush = Palette.Muted;
+    }
+
     /// <summary>切换当前报表内的工作表。</summary>
     public void ActivateReportSheet(int index)
     {
@@ -1801,6 +1888,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasMultipleReportSheets));
         OnPropertyChanged(nameof(HasReportRows));
         OnPropertyChanged(nameof(HasNoReportRows));
+        OnPropertyChanged(nameof(ReportCount));
+        OnPropertyChanged(nameof(HasUnsavedContent));
 
         // 只有报表、没有成绩数据时也要能把概览页（报表区块）显示出来
         OnPropertyChanged(nameof(IsEmptyVisible));

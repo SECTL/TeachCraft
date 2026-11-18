@@ -143,6 +143,7 @@ public partial class App : Application
                 !CaptureClassBlockIfRequested(desktop) && !CaptureGradeWeaveIfRequested(desktop) &&
                 !CaptureGradeWeaveTimetableIfRequested(desktop) &&
                 !CaptureGradeWeaveAssignmentIfRequested(desktop) &&
+                !CaptureGradeWeaveNewProjectIfRequested(desktop) &&
                 !CaptureGradeWeaveConflictIfRequested(desktop) &&
                 !CaptureGradeWeaveExportIfRequested(desktop) &&
                 !CaptureMeetRosterIfRequested(desktop) &&
@@ -253,6 +254,13 @@ public partial class App : Application
                     }
                 }
 
+                // 走查忙碌遮罩标题：按导出入口的真实顺序置忙，确认遮罩写的是这一次的动作。
+                if (string.Equals(lockText, "busy", StringComparison.OrdinalIgnoreCase))
+                {
+                    window.SetStepForCapture(5);
+                    await window.ShowBusyOverlayForCaptureAsync("正在导出 Excel 课表…");
+                }
+
                 await Task.Delay(900);
                 window.UpdateLayout();
 
@@ -264,6 +272,8 @@ public partial class App : Application
 
                 using var stream = File.Create(target);
                 bitmap.Save(stream, new PngBitmapEncoderOptions());
+                // 遮罩状态下窗口拒绝关闭（正在处理中），先收遮罩再关，否则走查会挂在关窗守卫上。
+                window.HideBusyOverlayForCapture();
                 window.Close();
             }
             catch (Exception ex)
@@ -382,6 +392,63 @@ public partial class App : Application
                 await Task.Delay(300);
                 if (int.TryParse(viewText, out var viewMode))
                     window.SetViewForCapture(viewMode, teacherName);
+
+                await Task.Delay(900);
+                window.UpdateLayout();
+
+                var pixelSize = new PixelSize(
+                    (int)Math.Max(1, window.Bounds.Width),
+                    (int)Math.Max(1, window.Bounds.Height));
+                using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96, 96));
+                bitmap.Render(window);
+
+                using var stream = File.Create(target);
+                bitmap.Save(stream, new PngBitmapEncoderOptions());
+                window.Close();
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(target + ".error.txt", ex.ToString());
+            }
+            finally
+            {
+                desktop.Shutdown();
+            }
+        });
+
+        return true;
+    }
+
+    /// <summary>
+    /// 设计走查：打开织序「全新制作」窗口并截图。
+    /// 用法：--gradeweave-new-shot &lt;png&gt; [课时合计]
+    /// 课时合计用来取两种提示：超过 35 是超额红字，恰好 35 是满额中性灰（审计 P3-8）。
+    /// </summary>
+    private static bool CaptureGradeWeaveNewProjectIfRequested(
+        IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var args = desktop.Args ?? Array.Empty<string>();
+        var index = Array.IndexOf(args, "--gradeweave-new-shot");
+        if (index < 0 || index + 1 >= args.Length) return false;
+
+        var target = args[index + 1];
+        var hoursText = index + 2 < args.Length ? args[index + 2] : null;
+
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                await Task.Delay(500);
+                var window = new GradeWeave.App.NewProjectWindow
+                {
+                    Width = 520,
+                    Height = 720,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                };
+                window.Show();
+                await Task.Delay(300);
+                if (int.TryParse(hoursText, out var hours))
+                    window.SetHoursForCapture(hours);
 
                 await Task.Delay(900);
                 window.UpdateLayout();
@@ -1028,6 +1095,15 @@ public partial class App : Application
                         viewModel.IsBusy = true;
                         await Task.Delay(300);
                     }
+                }
+
+                // 截图走查：--gradestrip-remove-report 摘掉第一份报表（审计 P2-23）。
+                // 摘完应看到空态 + 状态栏「已移除报表，可从概览重新挂载」。
+                if (args.Contains("--gradestrip-remove-report") && viewModel.ReportCount > 0)
+                {
+                    viewModel.RemoveReport(viewModel.ReportCards[0].Report);
+                    window.UpdateLayout();
+                    await Task.Delay(300);
                 }
 
                 window.CaptureTo(target);

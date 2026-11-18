@@ -52,6 +52,17 @@
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
             <Setter Property="MinHeight" Value="24" />
         </Style>
+        <Style Selector="TextBlock.hours-hint">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="LineHeight" Value="16" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <!-- 超额是错误、恰好满额只是提醒：两种严重度不能长成同一句灰字（审计 P3-8）。
+             用样式类而不是本地值，否则本地 Foreground 会压过样式、红字永远不出现。 -->
+        <Style Selector="TextBlock.hours-hint.overflow">
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
@@ -110,10 +121,11 @@
                             AutomationProperties.Name="添加学科" />
                 </Grid>
 
-                <!-- 超额必然排不下、满额加走班后没有空节次：这两句以前都没有（审计 P3-13）。 -->
-                <TextBlock Text="{Binding HoursHint}" IsVisible="{Binding HasHoursHint}"
-                           FontSize="10" LineHeight="16" TextWrapping="Wrap" Margin="0,2,0,0"
-                           Foreground="{StaticResource MutedBrush}" />
+                <!-- 超额必然排不下、满额加走班后没有空节次：这两句以前都没有（审计 P3-13）。
+                     超额改错误色、满额保持中性灰，两种严重度一眼可分（审计 P3-8）。 -->
+                <TextBlock Classes="hours-hint" Classes.overflow="{Binding IsHoursOverflow}"
+                           Text="{Binding HoursHint}" IsVisible="{Binding HasHoursHint}"
+                           Margin="0,2,0,0" />
 
                 <Border Background="#FCFBF7" BorderBrush="{StaticResource LineBrush}"
                         BorderThickness="1" CornerRadius="7" Padding="8">

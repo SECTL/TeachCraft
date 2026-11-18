@@ -26,10 +26,26 @@ public partial class TimetableTemplateEditorWindow : Window
     {
         InitializeComponent();
         DataContext = new TimetableTemplateEditorViewModel(source, startAsCopy);
+        ViewModel.ConfirmRemoveRow = ConfirmRemoveRowAsync;
         Opened += (_, _) => WindowFit.Clamp(this);
     }
 
     private TimetableTemplateEditorViewModel ViewModel => (TimetableTemplateEditorViewModel)DataContext!;
+
+    /// <summary>
+    /// 删行确认（审计 P3-32）：删行没有撤销栈，按钮又紧挨上移 / 下移。
+    /// 与「删除模板」同构——danger、默认焦点在取消侧，文案点出是哪一行。
+    /// </summary>
+    private Task<bool> ConfirmRemoveRowAsync(string description) =>
+        ConfirmDialog.ShowAsync(
+            this, "删除这一行？",
+            $"{description}将从当前模板移除；删行没有撤销，只能重新添加并填写。",
+            "删除这一行", "取消", danger: true);
+
+    private async void OnRemoveRow(object? sender, RoutedEventArgs e)
+    {
+        await ViewModel.RemoveRowConfirmedAsync();
+    }
 
     private void OnSave(object? sender, RoutedEventArgs e)
     {

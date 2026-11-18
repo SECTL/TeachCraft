@@ -140,7 +140,7 @@
                 <Button Classes="ghost" Content="添加一行" Command="{Binding AddRowCommand}" />
                 <Button Classes="ghost" Content="上移" Command="{Binding MoveUpCommand}" />
                 <Button Classes="ghost" Content="下移" Command="{Binding MoveDownCommand}" />
-                <Button Classes="ghost" Content="删除行" Command="{Binding RemoveRowCommand}" />
+                <Button Classes="ghost" Content="删除行" Click="OnRemoveRow" />
                 <Border Width="1" Height="22" Background="{StaticResource LineBrush}" Margin="4,0" />
                 <Button Classes="primary" Content="复制为自定义" Command="{Binding CopyAsCustomCommand}"
                         IsVisible="{Binding IsBuiltin}" />

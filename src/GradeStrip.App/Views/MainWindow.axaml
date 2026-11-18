@@ -10,8 +10,8 @@
         x:DataType="vm:MainViewModel"
         Icon="avares://GradeStrip.App/Assets/gradestrip.ico"
         Title="分晓 · GradeStrip"
-        Width="1080" Height="700"
-        MinWidth="1040" MinHeight="640"
+        Width="1120" Height="680"
+        MinWidth="1120" MinHeight="680"
         WindowStartupLocation="CenterScreen"
         DragDrop.AllowDrop="True"
         DragDrop.DragOver="OnDragOver"
@@ -214,8 +214,15 @@
                         <TextBlock Text="自动识别「班级全学科成绩汇总」，一步生成可打印的个人成绩条"
                                    TextAlignment="Center" TextWrapping="Wrap" FontSize="12.5"
                                    Foreground="{StaticResource MutedBrush}" />
-                        <Button Classes="primary" Content="选择成绩表" HorizontalAlignment="Center"
-                                Padding="24,9" Click="OnPickFile" IsEnabled="{Binding !IsBusy}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                            <Button Classes="primary" Content="选择成绩表"
+                                    Padding="24,9" Click="OnPickFile" IsEnabled="{Binding !IsBusy}" />
+                            <!-- 报表摘光之后概览区（含「导入分析报表」）会整个让位给空状态；
+                                 没有这个入口，「已移除报表，可从概览重新挂载」就是一句做不到的话（审计 P2-23）。 -->
+                            <Button Classes="ghost" Content="导入分析报表…"
+                                    Padding="16,9" Click="OnImportReports" IsEnabled="{Binding !IsBusy}"
+                                    ToolTip.Tip="只查看智学网报表、暂不生成成绩条也可以" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
                 <TextBlock Text="支持 .xlsx / .xls / .xlsm · 成绩表与分析报表都可直接拖入"
@@ -520,18 +527,28 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:ReportCardItem">
-                                            <Button Classes="report-chip" Classes.active="{Binding IsActive}"
-                                                    Command="{Binding Activate}" Margin="0,0,6,6"
-                                                    MaxWidth="260" ToolTip.Tip="{Binding Title}">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="{Binding KindLabel}" Classes="mono-label"
-                                                               FontSize="9.5"
-                                                               Foreground="{Binding $parent[Button].Foreground}" />
-                                                    <TextBlock Text="{Binding Title}" FontSize="11.5"
-                                                               MaxWidth="150" TextTrimming="CharacterEllipsis"
-                                                               Foreground="{Binding $parent[Button].Foreground}" />
-                                                </StackPanel>
-                                            </Button>
+                                            <!-- chip 本体是切换按钮，右侧另挂一个移除按钮：
+                                                 报表挂错考试时不用再连考试一起删（审计 P2-23）。
+                                                 移除钮左缘压 1px 盖住 chip 的右描边，看起来是一颗连体控件。 -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,6,6">
+                                                <Button Classes="report-chip" Classes.active="{Binding IsActive}"
+                                                        Command="{Binding Activate}"
+                                                        MaxWidth="260" ToolTip.Tip="{Binding Title}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock Text="{Binding KindLabel}" Classes="mono-label"
+                                                                   FontSize="9.5"
+                                                                   Foreground="{Binding $parent[Button].Foreground}" />
+                                                        <TextBlock Text="{Binding Title}" FontSize="11.5"
+                                                                   MaxWidth="150" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{Binding $parent[Button].Foreground}" />
+                                                    </StackPanel>
+                                                </Button>
+                                                <Button Classes="report-chip-remove"
+                                                        Command="{Binding Remove}"
+                                                        Content="✕" FontSize="9.5"
+                                                        ToolTip.Tip="移除这份报表的挂载（原件不受影响）"
+                                                        AutomationProperties.Name="移除报表" />
+                                            </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

@@ -195,7 +195,40 @@ public partial class TimetableTemplateEditorViewModel : ObservableObject
         SelectedRow = row;
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// 「删除行」前的确认钩子：入参是这一行的描述（如「第 3 行「大课间」」），返回 true 才删。
+    /// 窗口层注入 ConfirmDialog 实现；测试注入假 Func 断言门控，不构造窗口
+    /// （与织序 <c>TimetableEditorViewModel.ConfirmOverwritePreset</c> 同构）。
+    /// </summary>
+    public Func<string, Task<bool>>? ConfirmRemoveRow { get; set; }
+
+    /// <summary>
+    /// 「删除行」的唯一公开入口：删行没有撤销栈，按钮又紧挨上移 / 下移，
+    /// 误点一下整行内容就没了（审计 P3-32）。有选中行时先征得同意；
+    /// 没有确认钩子时宁可不动——绝不静默删掉老师填的行。
+    /// </summary>
+    public async Task<bool> RemoveRowConfirmedAsync()
+    {
+        if (SelectedRow is not { } row) return false;
+
+        var description = DescribeRow(row);
+        if (ConfirmRemoveRow is null) return false;
+        if (!await ConfirmRemoveRow(description)) return false;
+
+        RemoveRow();
+        return true;
+    }
+
+    /// <summary>确认文案里指代的那一行：行号 + 标签 / 静态内容 / 绑定槽位。</summary>
+    private string DescribeRow(TemplateRowEditViewModel row)
+    {
+        var index = Rows.IndexOf(row) + 1;
+        var name = row.Label.Trim();
+        if (name.Length == 0) name = row.StaticText.Trim();
+        if (name.Length == 0) name = row.Slot.Display;
+        return $"第 {index} 行「{name}」";
+    }
+
     private void RemoveRow()
     {
         if (SelectedRow is null) return;

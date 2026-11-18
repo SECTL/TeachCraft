@@ -27,6 +27,12 @@ public sealed class ReportCardItem
     public string SourceFile => Report.SourceFile;
     public bool IsActive { get; init; }
     public ICommand? Activate { get; init; }
+
+    /// <summary>
+    /// 摘掉这份报表的挂载（审计 P2-23）。报表挂错考试时，此前只能连考试一起删。
+    /// 只摘挂载、不删原件——横幅提示可从概览重新导入。
+    /// </summary>
+    public ICommand? Remove { get; init; }
 }
 
 /// <summary>表名切换 chip：同一份报表内的工作表。</summary>

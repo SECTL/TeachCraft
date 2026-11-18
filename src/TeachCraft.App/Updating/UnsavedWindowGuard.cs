@@ -48,7 +48,9 @@ public static class UnsavedWindowGuard
     {
         SeatGrid.App.SeatGridViewModel seat => seat.StudentCount > 0,
         MeetRoster.App.MeetRosterViewModel meet => meet.IsDirty,
-        GradeStrip.App.ViewModels.MainViewModel strip => strip.HasData,
+        // 只导入过分析报表（没有成绩会话）同样只存在内存里（审计 P3-5），
+        // 所以判 HasUnsavedContent 而不是 HasData。
+        GradeStrip.App.ViewModels.MainViewModel strip => strip.HasUnsavedContent,
         // 时序导出的课表只存在于内存里，关掉就没了——有总表就值得问一句（审计 P2-26）。
         ClassBlock.App.ClassBlockViewModel block => block.HasMaster,
         _ => false,

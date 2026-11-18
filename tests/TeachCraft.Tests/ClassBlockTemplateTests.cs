@@ -283,6 +283,102 @@ public sealed class ClassBlockTemplateTests : IDisposable
     }
 
     // ------------------------------------------------------------------
+    // 删除行确认（P3-32）：删行无撤销，必须先征得同意。
+
+    [Fact]
+    public async Task RemoveRow_Cancelled_KeepsRowAndSelection()
+    {
+        // 修复前必红：按钮直接绑 RemoveRowCommand，点一下行就没了，没有任何确认。
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: false);
+        var before = editor.Rows.Count;
+        var selected = editor.SelectedRow;
+        var asked = 0;
+        editor.ConfirmRemoveRow = description =>
+        {
+            asked++;
+            Assert.Contains("第 1 行", description);
+            return Task.FromResult(false);
+        };
+
+        var removed = await editor.RemoveRowConfirmedAsync();
+
+        Assert.False(removed);
+        Assert.Equal(1, asked);
+        Assert.Equal(before, editor.Rows.Count);
+        Assert.Same(selected, editor.SelectedRow);
+        Assert.False(editor.IsDirty);
+    }
+
+    [Fact]
+    public async Task RemoveRow_Confirmed_DeletesOnlySelectedRow()
+    {
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: false);
+        var before = editor.Rows.ToList();
+        var selected = editor.SelectedRow!;
+        var asked = new List<string>();
+        editor.ConfirmRemoveRow = description =>
+        {
+            asked.Add(description);
+            return Task.FromResult(true);
+        };
+
+        var removed = await editor.RemoveRowConfirmedAsync();
+
+        Assert.True(removed);
+        Assert.Single(asked);
+        // 确认文案指到具体那一行：早读行带标签，必须出现在描述里。
+        Assert.Contains("早读", asked[0], StringComparison.Ordinal);
+        Assert.Equal(before.Count - 1, editor.Rows.Count);
+        Assert.DoesNotContain(editor.Rows, r => ReferenceEquals(r, selected));
+        Assert.True(editor.IsDirty);
+    }
+
+    [Fact]
+    public async Task RemoveRow_WithoutHook_LeavesRowsAlone()
+    {
+        // 没有确认钩子时宁可不动：窗口层没注入也绝不能在老师不知情时删行。
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: false);
+        var before = editor.Rows.Count;
+
+        var removed = await editor.RemoveRowConfirmedAsync();
+
+        Assert.False(removed);
+        Assert.Equal(before, editor.Rows.Count);
+    }
+
+    [Fact]
+    public async Task RemoveRow_NoSelection_DoesNotAsk()
+    {
+        var editor = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: false);
+        editor.SelectedRow = null;
+        var asked = 0;
+        editor.ConfirmRemoveRow = _ =>
+        {
+            asked++;
+            return Task.FromResult(true);
+        };
+
+        var removed = await editor.RemoveRowConfirmedAsync();
+
+        Assert.False(removed);
+        Assert.Equal(0, asked);
+    }
+
+    [Fact]
+    public void RemoveRowButton_IsWiredThroughConfirmation()
+    {
+        // 结构守卫：XAML 的「删除行」不能再直接绑 RemoveRowCommand（绕过确认），
+        // 且窗口层必须把 ConfirmDialog 注入 VM。
+        var axaml = RepoRoot.Read(Path.Combine("src", "ClassBlock.App", "TimetableTemplateEditorWindow.axaml"));
+        Assert.Contains("Content=\"删除行\" Click=\"OnRemoveRow\"", axaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("RemoveRowCommand", axaml, StringComparison.Ordinal);
+
+        var code = RepoRoot.Read(Path.Combine("src", "ClassBlock.App", "TimetableTemplateEditorWindow.axaml.cs"));
+        Assert.Contains("ViewModel.ConfirmRemoveRow = ConfirmRemoveRowAsync", code, StringComparison.Ordinal);
+        Assert.Contains("danger: true", code, StringComparison.Ordinal);
+    }
+
+    // ------------------------------------------------------------------
     // 删除模板备份（P2-36）。
 
     [Fact]

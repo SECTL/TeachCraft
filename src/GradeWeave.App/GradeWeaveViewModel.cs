@@ -218,6 +218,30 @@ public partial class GradeWeaveViewModel : ObservableObject
     /// <summary>工程还没有任课关系时，05 步提示老师先去配置教师分工。</summary>
     public bool NeedsAssignmentSetup => HasProject && Project.Subjects.Count > 0 && Project.Assignments.Count == 0;
 
+    /// <summary>
+    /// 周课时为 0 的学科不会排进课表——冲突台也不会报（应排 0 = 实排 0），
+    /// 生成出来整片空白却没有任何提示，老师只能逐格比对原件（审计 P3-10）。
+    /// 只走分层走班的学科课时记在走班组上，周课时 0 不等于排不出来，不能列进来。
+    /// </summary>
+    public string ZeroHourSubjectsHint
+    {
+        get
+        {
+            var names = Project.Subjects
+                .Where(subject => subject.WeeklyHours <= 0)
+                .Where(subject => !Project.LayeredGroups.Any(group => group.SubjectId == subject.Id))
+                .Select(subject => subject.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            return names.Count == 0
+                ? string.Empty
+                : $"以下学科周课时为 0，不会排入课表：{string.Join("、", names)}。";
+        }
+    }
+
+    public bool HasZeroHourSubjects => ZeroHourSubjectsHint.Length > 0;
+
     public int ResearchSlotDay { get; private set; }
     public int ResearchSlotPeriod { get; private set; }
 
@@ -287,6 +311,8 @@ public partial class GradeWeaveViewModel : ObservableObject
         UpdateProjectTexts();
         RefreshTimetableState();
         NotifyConflictState();
+        // 换了一份工程，教研总览的 ToolTip 也要重新取值，否则还停在上一份的教研分布。
+        OnPropertyChanged(nameof(ResearchOverview));
         SetStatus(IsTimetableConfirmed
             ? $"已载入 {Project.Classes.Count} 个班 · {Project.Teachers.Count} 位教师 · 作息时间表已确认。"
             : $"已载入 {Project.Classes.Count} 个班 · {Project.Teachers.Count} 位教师 · 请先确认作息时间表。");
@@ -318,6 +344,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         foreach (var warning in result.Warnings)
             ImportWarnings.Add(warning);
         OnPropertyChanged(nameof(HasImportWarnings));
+        // 折叠头文字由条数拼成：只通知 HasImportWarnings 的话，第二次导入后
+        // 展开区的标题还停在上一份工作簿的「N 条」（审计 P3-7）。
+        OnPropertyChanged(nameof(ImportWarningSummary));
 
         var meetingHint = result.SuggestedMeetingBlocks.Count == 0
             ? string.Empty
@@ -488,6 +517,10 @@ public partial class GradeWeaveViewModel : ObservableObject
         FactMeetings = $"{Project.MeetingBlocks.Count} 场会议";
         FactActivities = $"{Project.Activities.Count} 个";
         FactConflicts = Conflicts.Count == 0 ? "✓ 暂无冲突" : $"⚠ {Conflicts.Count} 处冲突";
+
+        // 零课时提示是计算属性：导入、确认作息、保存分工都会走到这里，统一在这里刷新。
+        OnPropertyChanged(nameof(ZeroHourSubjectsHint));
+        OnPropertyChanged(nameof(HasZeroHourSubjects));
     }
 
     public void SetStatus(string message, bool isError = false)
@@ -722,6 +755,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         ResearchSlotPeriod = period;
         UpdateResearchHeader();
         UpdateCounts();
+        // 总览是计算属性，只靠网格失效通知不会让 ToolTip 重新取值，
+        // 悬浮提示会一直停在窗口打开时那一份（审计 P3-7）。
+        OnPropertyChanged(nameof(ResearchOverview));
 
         var locked = CountLockedTeachers(dayIndex, period);
         SetStatus(removing
@@ -2196,6 +2232,12 @@ public partial class GradeWeaveViewModel : ObservableObject
     /// <summary>遮罩上的具体动作名；没有时退回通用文案。</summary>
     public string BusyOverlayTitle =>
         string.IsNullOrWhiteSpace(StatusText) ? "正在处理…" : StatusText;
+
+    /// <summary>
+    /// 遮罩标题读的是 StatusText：绑定只在启动时取过一次值，
+    /// 之后置忙前写的「正在导出…」不会反映到遮罩上，标题一直停在窗口打开时那句（审计 P3-6）。
+    /// </summary>
+    partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(BusyOverlayTitle));
 
     partial void OnIsBusyChanged(bool value)
     {

@@ -910,32 +910,33 @@
                                                Foreground="{StaticResource MossBrush}" />
                                 </StackPanel>
                             </Border>
-                            <Border IsVisible="{Binding HasImportNotices}"
-                                    Background="{StaticResource PaperBrush}"
-                                    BorderBrush="{StaticResource LineBrush}"
-                                    BorderThickness="1" CornerRadius="5" Padding="8,7">
-                                <StackPanel Spacing="4">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Text="{Binding ImportNoticeSummary}" FontSize="10"
-                                                   Foreground="{StaticResource MutedBrush}"
-                                                   VerticalAlignment="Center" />
-                                        <Button Grid.Column="1" Classes="link" Content="知道了"
-                                                Click="OnDismissImportNotices" FontSize="10"
-                                                AutomationProperties.Name="收起导入提示" />
-                                    </Grid>
-                                    <ItemsControl ItemsSource="{Binding ImportNotices}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="app:ValidationIssueItem">
-                                                <TextBlock Text="{Binding Message}" FontSize="10"
-                                                           LineHeight="15" TextWrapping="Wrap"
-                                                           Foreground="{Binding Brush}" Margin="0,0,0,2" />
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
                             <TextBlock Text="单项每班男女各限 2 人；每人限报 2 个单项。"
                                        Classes="helper" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 导入提示独立成卡：全部导入失败时既没有选中班级、也没有报名数据，
+                         「报名体检」整卡不显示——提示若仍嵌在它里面，逐份失败原因就看不见了
+                         （审计 P3-16 的补做点）。 -->
+                    <Border Classes="panel-card" IsVisible="{Binding HasImportNotices}">
+                        <StackPanel Spacing="4">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="{Binding ImportNoticeSummary}" FontSize="10"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Classes="link" Content="知道了"
+                                        Click="OnDismissImportNotices" FontSize="10"
+                                        AutomationProperties.Name="收起导入提示" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding ImportNotices}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="app:ValidationIssueItem">
+                                        <TextBlock Text="{Binding Message}" FontSize="10"
+                                                   LineHeight="15" TextWrapping="Wrap"
+                                                   Foreground="{Binding Brush}" Margin="0,0,0,2" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
 

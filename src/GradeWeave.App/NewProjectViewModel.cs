@@ -39,6 +39,10 @@ public partial class NewProjectViewModel : ObservableObject
             OnPropertyChanged(nameof(TotalHoursText));
             OnPropertyChanged(nameof(ZeroHourHint));
             OnPropertyChanged(nameof(HasZeroHour));
+            // 增删学科同样会改变合计：不补这三条，课时提示与超额红字会停在上一份学科表的结论。
+            OnPropertyChanged(nameof(HoursHint));
+            OnPropertyChanged(nameof(HasHoursHint));
+            OnPropertyChanged(nameof(IsHoursOverflow));
         };
         _initialSnapshot = Snapshot();
     }

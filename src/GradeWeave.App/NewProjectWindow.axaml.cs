@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -29,6 +30,22 @@ public partial class NewProjectWindow : Window
 
         _closeReady = true;
         Close(config);
+    }
+
+    /// <summary>
+    /// 设计走查：把课时合计推到指定档位（超过 35 = 超额红字，恰好 35 = 满额中性灰）。
+    /// 平均分摊而不是逐个填满——填满会把后面的学科留成 0，画面里多出一条零课时提示。
+    /// 只改内存里的草稿，不落盘、不影响任何真实配置。
+    /// </summary>
+    public void SetHoursForCapture(int total)
+    {
+        var count = _viewModel.Subjects.Count;
+        if (count == 0) return;
+
+        var each = Math.Max(0, total) / count;
+        var remainder = Math.Max(0, total) % count;
+        for (var i = 0; i < count; i++)
+            _viewModel.Subjects[i].WeeklyHours = each + (i < remainder ? 1 : 0);
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e)

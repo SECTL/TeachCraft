@@ -180,6 +180,20 @@ public partial class GradeWeaveWindow : Window
     /// <summary>设计走查：在演示工程上直接生成课表。</summary>
     public Task GenerateForCaptureAsync() => ViewModel.GenerateAsync();
 
+    /// <summary>
+    /// 设计走查：按导出入口的真实顺序置忙——先写状态、再置忙，
+    /// 等遮罩亮起（400ms 延迟）后截图，确认标题显示的是这一次的动作而不是上一句（审计 P3-6）。
+    /// </summary>
+    public async Task ShowBusyOverlayForCaptureAsync(string status)
+    {
+        ViewModel.SetStatus(status);
+        ViewModel.IsBusy = true;
+        await Task.Delay(700);
+    }
+
+    /// <summary>设计走查：收起遮罩。</summary>
+    public void HideBusyOverlayForCapture() => ViewModel.IsBusy = false;
+
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         if (!_closeReady && ViewModel.IsBusy)
@@ -2360,6 +2374,8 @@ public partial class GradeWeaveWindow : Window
             return;
         }
 
+        // 遮罩标题取的是 StatusText：置忙前不写这一句，导出时标题会显示上一次操作的旧文案（P3-6）。
+        ViewModel.SetStatus("正在导出 Excel 课表…");
         ViewModel.IsBusy = true;
         try
         {
@@ -2398,6 +2414,7 @@ public partial class GradeWeaveWindow : Window
             return;
         }
 
+        ViewModel.SetStatus("正在导出希沃全校课表…");
         ViewModel.IsBusy = true;
         try
         {
@@ -2438,6 +2455,7 @@ public partial class GradeWeaveWindow : Window
             return;
         }
 
+        ViewModel.SetStatus("正在导出课表图片…");
         ViewModel.IsBusy = true;
         try
         {
@@ -2478,6 +2496,7 @@ public partial class GradeWeaveWindow : Window
             return;
         }
 
+        ViewModel.SetStatus("正在生成打印 PDF…");
         ViewModel.IsBusy = true;
         try
         {

@@ -298,6 +298,24 @@
             <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
         </Style>
 
+        <!-- 分晓报表 chip 右侧的移除钮（审计 P2-23）。分晓在本进程内运行，样式取自这里——
+             只加在 GradeStrip.App/App.axaml 里不会生效，两处必须同款。 -->
+        <Style Selector="Button.report-chip-remove">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="7,5" />
+            <Setter Property="Margin" Value="-1,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.report-chip-remove:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FBE4D7" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+
         <!-- 分晓分析报表的班级选择：与纸面卡片同色，细边 -->
         <Style Selector="ComboBox.report-class">
             <Setter Property="Background" Value="{StaticResource CardBrush}" />

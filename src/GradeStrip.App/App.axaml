@@ -188,6 +188,17 @@
             <Setter Property="Background" Value="#F1EEE5" />
             <Setter Property="BorderBrush" Value="#BDB6A4" />
         </Style>
+        <!-- 按压 / 禁用两态与壳层 App.axaml 同款（审计 P3-34）：
+             此前只有 base + pointerover，十余处 ghost 按下无反馈、禁用看似可点。 -->
+        <Style Selector="Button.ghost:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#E9E4D7" />
+            <Setter Property="BorderBrush" Value="#B0A896" />
+        </Style>
+        <Style Selector="Button.ghost:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#E7E3D8" />
+            <Setter Property="Foreground" Value="#B3AD9E" />
+        </Style>
 
         <!-- 导航：文字式，选中用左侧陶土色细条 -->
         <Style Selector="Button.nav">
@@ -254,6 +265,24 @@
         </Style>
         <Style Selector="Button.report-chip.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#F8EDE4" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+
+        <!-- 报表 chip 右侧的移除钮：与 chip 同高、细边、无底色（审计 P2-23）。
+             用独立的按钮而不是把 chip 改成复合控件——chip 的 active 配色与切换语义都不动。 -->
+        <Style Selector="Button.report-chip-remove">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="7,5" />
+            <Setter Property="Margin" Value="-1,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.report-chip-remove:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FBE4D7" />
             <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
             <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
         </Style>

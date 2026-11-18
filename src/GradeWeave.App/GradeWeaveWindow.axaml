@@ -923,11 +923,6 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Spacing="4">
                                         <TextBlock Classes="field-label" Text="开始节次" />
-                                        <!-- 作息未确认时下拉里只有正课：说明为什么没有课服 / 晚修（审计 P3-14）。 -->
-                                        <TextBlock Text="先到 01 步确认作息，才有课服 / 晚修时段可选。"
-                                                   IsVisible="{Binding IsTimetableUnconfirmed}"
-                                                   FontSize="9" LineHeight="14" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource AccentDeepBrush}" />
                                         <ComboBox Classes="field" ItemsSource="{Binding MeetingPeriodOptions}"
                                                   SelectedItem="{Binding MeetingStartPeriod, Mode=TwoWay}">
                                             <ComboBox.ItemTemplate>
@@ -949,6 +944,13 @@
                                         </ComboBox>
                                     </StackPanel>
                                 </Grid>
+                                <!-- 作息未确认时下拉里只有正课，旧工程留下的第 8–10 节兜底选项还在：
+                                     要说明「为什么有它们」而不是只说「先确认作息」（审计 P3-14）。
+                                     放整行而不是塞进 96px 的节次列——那句话在窄列里会挤成四行并把下拉推歪。 -->
+                                <TextBlock Text="第 8–10 节是旧工程兜底位；确认作息后这里会换成真实的课服 / 晚修时段。"
+                                           IsVisible="{Binding IsTimetableUnconfirmed}"
+                                           FontSize="9" LineHeight="14" TextWrapping="Wrap"
+                                           Foreground="{StaticResource AccentDeepBrush}" />
                                 <TextBlock Text="课后服务 / 晚修等扩展时段可安排会议，但不占正课编排。"
                                            FontSize="9" Foreground="{StaticResource MutedBrush}" />
 
@@ -1041,6 +1043,11 @@
                                            Foreground="{StaticResource MutedBrush}" />
                                 <TextBlock Text="还没有任课教师，点右上「教师分工」填写各班学科教师。"
                                            IsVisible="{Binding NeedsAssignmentSetup}" FontSize="9"
+                                           Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
+                                <!-- 周课时为 0 的学科不会排进课表，冲突台也不报（应排 0 = 实排 0）：
+                                     不在这里说清，生成出来是一片空白却没有任何解释（审计 P3-10）。 -->
+                                <TextBlock Text="{Binding ZeroHourSubjectsHint}"
+                                           IsVisible="{Binding HasZeroHourSubjects}" FontSize="9"
                                            Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
                                 <Border IsVisible="{Binding IsTimetableUnconfirmed}" Background="#FDF6F2"
                                         BorderBrush="#E9C4B6" BorderThickness="1" CornerRadius="6"

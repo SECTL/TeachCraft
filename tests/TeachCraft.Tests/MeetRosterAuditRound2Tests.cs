@@ -309,6 +309,59 @@ public sealed class MeetRosterAuditRound2Tests : IDisposable
                 project, MeetExportBuilder.Build(project, options), options)[0].Count);
     }
 
+    // ---------- T36：全部导入失败也进提示面板（P3-16） ----------
+
+    [Fact]
+    public async Task ImportRegistration_AllFilesFail_ReasonsLandInNoticePanel()
+    {
+        // 修复前必红：results.Count==0 的早退在「逐份失败进面板」补丁之前，
+        // 30 份全选错时逐份原因只闪在状态栏，面板一条都没有。
+        var broken = Enumerable.Range(0, 30)
+            .Select(i => WriteBrokenFile($"坏表{i + 1:00}.xlsx"))
+            .ToList();
+        var vm = new MeetRosterViewModel();
+
+        await vm.ImportRegistrationFilesAsync(broken);
+
+        Assert.True(vm.HasImportNotices, "全部失败时提示面板必须有内容。");
+        Assert.Equal(30, vm.ImportNotices.Count);
+        foreach (var path in broken)
+        {
+            Assert.Contains(vm.ImportNotices,
+                n => n.Message.Contains(Path.GetFileName(path), StringComparison.Ordinal));
+        }
+        Assert.All(vm.ImportNotices, n => Assert.True(n.IsError));
+        Assert.Contains("报名表导入失败", vm.StatusText, StringComparison.Ordinal);
+        Assert.Empty(vm.AllClasses);
+    }
+
+    [Fact]
+    public async Task ImportRegistration_AllFilesFail_KeepsFailureReasonsAfterDismiss()
+    {
+        // 面板的「知道了」是收起历史提示，不是掩盖失败：重新导入再失败要能再看到。
+        var vm = new MeetRosterViewModel();
+        await vm.ImportRegistrationFilesAsync([WriteBrokenFile("坏表.xlsx")]);
+        Assert.True(vm.HasImportNotices);
+
+        vm.DismissImportNotices();
+        Assert.False(vm.HasImportNotices);
+
+        await vm.ImportRegistrationFilesAsync([WriteBrokenFile("坏表2.xlsx")]);
+        Assert.Contains(vm.ImportNotices,
+            n => n.Message.Contains("坏表2.xlsx", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ImportRegistration_NoPaths_LeavesPanelUntouched()
+    {
+        // 空选择是「没发生导入」，不能往面板里塞一条凭空的失败。
+        var vm = new MeetRosterViewModel();
+
+        await vm.ImportRegistrationFilesAsync([]);
+
+        Assert.False(vm.HasImportNotices);
+    }
+
     // ---------- T24②：预览竞态补发（P3-22） ----------
 
     [Fact]
@@ -432,6 +485,14 @@ public sealed class MeetRosterAuditRound2Tests : IDisposable
         }
 
         return project;
+    }
+
+    /// <summary>不是一个 xlsx 的坏文件：导入必然抛 InvalidDataException（P3-16 的「全失败」路径）。</summary>
+    private string WriteBrokenFile(string fileName)
+    {
+        var path = Path.Combine(_root, fileName);
+        File.WriteAllText(path, "这不是一个 xlsx 文件");
+        return path;
     }
 
     private string CreateRegistration()

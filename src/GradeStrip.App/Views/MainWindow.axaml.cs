@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Avalonia;
@@ -17,9 +18,35 @@ public partial class MainWindow : Window
 {
     private bool _closeConfirmed;
 
-    public MainWindow()
+    /// <summary>
+    /// 关窗确认框是否已经弹出。连按两次 X 时 OnClosing 会再进来一次，
+    /// 没有这道闸就会叠出两个一模一样的确认框（审计 P3-1）。
+    /// </summary>
+    private bool _confirmingClose;
+
+    /// <summary>
+    /// 是否走查通道，启动时判定一次。
+    ///
+    /// 曾经每次 OnClosing 都去读 <see cref="Environment.GetCommandLineArgs"/>——分晓由工具箱
+    /// 同进程打开，取到的是**宿主进程**的命令行：宿主只要带任意一个 <c>--</c> 参数
+    /// （比如一次 <c>--seatgrid-shot</c> 走查），分晓的关窗确认就被永久跳过（审计 P3-1）。
+    /// 现在只认 <c>--gradestrip-shot</c> 这个分晓自己的走查参数。
+    /// </summary>
+    private readonly bool _isWalkthrough;
+
+    public MainWindow() : this(Environment.GetCommandLineArgs())
+    {
+    }
+
+    /// <summary>
+    /// 显式传入命令行的重载：测试与宿主可以给一份确定的参数，
+    /// 不依赖进程级命令行（同进程内嵌时分晓不该读宿主参数）。
+    /// </summary>
+    public MainWindow(IEnumerable<string> commandLineArgs)
     {
         InitializeComponent();
+
+        _isWalkthrough = IsWalkthroughCommandLine(commandLineArgs);
 
         // 系统开了「减弱动效」：入场缩放与忙碌旋转不再挂载（样式挂在 Window.allow-motion 下），
         // 旋转弧换成不确定进度条。探测失败按正常动效处理。
@@ -52,29 +79,53 @@ public partial class MainWindow : Window
     public static bool ShouldConfirmOnClose(bool hasData, bool closeConfirmed, bool isWalkthrough) =>
         hasData && !closeConfirmed && !isWalkthrough;
 
+    /// <summary>
+    /// 这条命令行是不是分晓自己的走查通道。
+    ///
+    /// 只认 <c>--gradestrip-shot</c>，不能像从前那样「任意以 -- 开头就算」：
+    /// 分晓由工具箱同进程打开，取的是宿主进程的命令行——宿主跑一次
+    /// <c>--seatgrid-shot</c> 走查，分晓的关窗确认就被永久跳过（审计 P3-1）。
+    /// 不跳过第 0 项：进程可执行文件路径永远不可能等于这个开关，跳过反而会让
+    /// 只传开关本身的调用方（测试 / 宿主直接给参数）判不出来。
+    /// </summary>
+    public static bool IsWalkthroughCommandLine(IEnumerable<string>? args) =>
+        args is not null && args.Any(a => string.Equals(a, "--gradestrip-shot", StringComparison.Ordinal));
+
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        var args = Environment.GetCommandLineArgs();
-        var isWalkthrough = args.Skip(1).Any(a => a.StartsWith("--", StringComparison.Ordinal));
-
-        if (!ShouldConfirmOnClose(ViewModel.HasData, _closeConfirmed, isWalkthrough))
+        // 走查通道在构造时判定一次，不在这里读进程命令行。
+        if (!ShouldConfirmOnClose(ViewModel.HasUnsavedContent, _closeConfirmed, _isWalkthrough))
         {
             base.OnClosing(e);
             return;
         }
 
+        // 确认框没答完之前，每一次 X 都必须继续拦下——否则连按的第二次会直接关窗，
+        // 把刚弹出来的确认框连同数据一起带走。
         e.Cancel = true;
+
+        // 已经在问了：第二次 X 什么都不做，不能再叠一个一模一样的框（审计 P3-1）。
+        if (_confirmingClose) return;
+
+        _confirmingClose = true;
         Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
+            // 只有报表、没有成绩会话时也要说清楚丢的是什么（审计 P3-5）：
+            // 空谈「0 名学生的成绩」会让人以为没什么可丢。
+            var content = ViewModel.HasData
+                ? $"当前 {ViewModel.StudentCount} 名学生的成绩与报表只保存在内存中，关闭后不会保留。"
+                : $"当前 {ViewModel.ReportCount} 份分析报表只保存在内存中，关闭后不会保留。";
+
             var discard = await ConfirmDialog.ShowAsync(
                 this,
                 "关闭分晓？",
-                $"当前 {ViewModel.StudentCount} 名学生的成绩与报表只保存在内存中，关闭后不会保留。"
-                + "可先「导出成绩条」留档。",
+                content + "可先「导出成绩条」留档。",
                 "放弃并关闭",
                 "继续编辑",
                 danger: true);
 
+            // 选择继续编辑：闸门要放开，否则再点一次 X 就关不掉了。
+            _confirmingClose = false;
             if (!discard) return;
 
             _closeConfirmed = true;

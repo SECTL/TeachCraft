@@ -459,7 +459,15 @@ public sealed partial class MeetRosterViewModel : ObservableObject
 
             if (results.Count == 0)
             {
-                SetStatus("报名表导入失败：" + (errors.FirstOrDefault() ?? "没有可读取的文件"), true);
+                // 全部失败是最痛的一种：老师选的 30 份一份都没读进来，逐份原因必须留在
+                // 看得见的地方，而不是只闪在 560px 宽的状态栏里（审计 P3-16）。
+                // 与下方「部分成功」分支共用同一个面板槽位与重建入口。
+                var failureReason = errors.FirstOrDefault() ?? "没有可读取的文件";
+                _importIssues[RosterIssueKey] = errors.Count > 0
+                    ? errors.Select(e => new RegistrationIssue(e, true)).ToList()
+                    : [new RegistrationIssue("没有可读取的文件。", true)];
+                RebuildImportNotices();
+                SetStatus("报名表导入失败：" + failureReason, true);
                 return;
             }
 
