@@ -246,10 +246,17 @@
                             <TextBlock Text="{Binding ClassEmptyText}" FontFamily="{StaticResource SerifFont}"
                                        FontSize="15" Foreground="{StaticResource MutedBrush}"
                                        HorizontalAlignment="Center" />
-                            <TextBlock Text="导入总表后，这里会出现各班。" FontSize="10"
+                            <!-- 第二行跟着两种空态走：搜不到时说「导入总表后会出现各班」会让人以为总表丢了。 -->
+                            <TextBlock Text="{Binding ClassEmptyHint}" FontSize="10"
                                        Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                            <Button Classes="link" Content="清除搜索" FontSize="10.5"
+                                    Foreground="{StaticResource AccentDeepBrush}"
+                                    HorizontalAlignment="Center"
+                                    IsVisible="{Binding HasSearchText}"
+                                    Click="OnClearClassSearch" />
                             <Button Classes="primary" Content="导入总表" Click="OnImportMaster"
-                                    HorizontalAlignment="Center" />
+                                    HorizontalAlignment="Center"
+                                    IsVisible="{Binding !HasMaster}" />
                         </StackPanel>
                     </Grid>
 

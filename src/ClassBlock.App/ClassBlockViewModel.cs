@@ -82,6 +82,14 @@ public partial class ClassBlockViewModel : ObservableObject
     public bool IsIdle => !IsBusy;
     public bool IsClassListEmpty => FilteredClasses.Count == 0;
     public string ClassEmptyText => _classes.Count == 0 ? "还没有总表" : "没有匹配的班级";
+
+    /// <summary>与 <see cref="ClassEmptyText"/> 配套的第二行：两种空态说两句话。</summary>
+    public string ClassEmptyHint => _classes.Count == 0
+        ? "导入总表后，这里会出现各班。"
+        : "换个关键词试试，或清除搜索。";
+
+    public bool HasSearchText => !string.IsNullOrWhiteSpace(SearchText);
+
     public string ClassCountLabel => $"{_classes.Count} 个班级";
 
     // ---- 忙碌遮罩 ----
@@ -406,6 +414,8 @@ public partial class ClassBlockViewModel : ObservableObject
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsClassListEmpty));
         OnPropertyChanged(nameof(ClassEmptyText));
+        OnPropertyChanged(nameof(ClassEmptyHint));
+        OnPropertyChanged(nameof(HasSearchText));
         OnPropertyChanged(nameof(ClassCountLabel));
     }
 

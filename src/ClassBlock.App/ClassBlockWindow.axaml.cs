@@ -96,6 +96,12 @@ public partial class ClassBlockWindow : Window
 
     // ----------------------------- 导入 -----------------------------
 
+    private void OnClearClassSearch(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.SearchText = string.Empty;
+        ViewModel.SetStatus("已清除搜索");
+    }
+
     private async void OnImportMaster(object? sender, RoutedEventArgs e)
     {
         var path = await PickOpenAsync("导入课程总表", new FilePickerFileType("Excel 总表")
@@ -114,7 +120,7 @@ public partial class ClassBlockWindow : Window
                 "替换", "取消", danger: true))
             return;
 
-        ViewModel.BeginBusy("正在读取总表…", "识别年级 / 班级 / 七天课表与课服、午学、晚修；文件只在本机处理。");
+        ViewModel.BeginBusy("正在读取总表…", "识别年级 / 班级 / 五天课表与课服、午学、晚修；文件只在本机处理。");
         try
         {
             var master = await Task.Run(() => MasterScheduleImporter.Import(path));
@@ -144,8 +150,20 @@ public partial class ClassBlockWindow : Window
             var path = Path.Combine(directory, SafeFileName("-课程表.pdf"));
 
             await Task.Run(() => TimetableRenderer.RenderPdf(document, path));
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-            ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
+
+            // 渲染成功与「唤起阅读器失败」必须分开报（照归位同款，审计 P3-23）：
+            // 没装 PDF 阅读器的新系统上，PDF 其实已经生成在临时目录里，
+            // 旧实现说「生成打印文件失败」，老师重试永远失败，也永远拿不到那个文件。
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
+            }
+            catch (Exception openEx)
+            {
+                ViewModel.SetStatus(
+                    $"课程表 PDF 已生成，但没有找到能打开它的程序：{path}（{openEx.Message}）", true);
+            }
         }
         catch (Exception ex)
         {
@@ -221,10 +239,27 @@ public partial class ClassBlockWindow : Window
     private string SafeFileName(string suffix)
     {
         var title = string.IsNullOrWhiteSpace(ViewModel.Title) ? "课程表" : ViewModel.Title.Trim();
-        foreach (var invalid in Path.GetInvalidFileNameChars())
-            title = title.Replace(invalid, '-');
+        return BuildSuggestedFileName(title, suffix);
+    }
 
-        return title + suffix;
+    /// <summary>
+    /// 建议文件名。标题本身常以「课程表」结尾（默认就是「九（1）班课程表」），
+    /// 再拼「-课程表.pdf」会得到「九（1）班课程表-课程表.pdf」（审计 P3-29）。
+    /// 静态且不依赖窗口实例，便于单测。
+    /// </summary>
+    public static string BuildSuggestedFileName(string title, string suffix)
+    {
+        var name = string.IsNullOrWhiteSpace(title) ? "课程表" : title.Trim();
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+            name = name.Replace(invalid, '-');
+
+        if (suffix.StartsWith("-课程表", StringComparison.Ordinal) &&
+            name.EndsWith("课程表", StringComparison.Ordinal))
+        {
+            suffix = suffix["-课程表".Length..];
+        }
+
+        return name + suffix;
     }
 
     private static bool IsSamePath(string path, string? other)
@@ -246,6 +281,18 @@ public partial class ClassBlockWindow : Window
 
     private void Report(Exception ex, string prefix)
     {
-        ViewModel.SetStatus(ex is ClassBlockException ? ex.Message : $"{prefix}：{ex.Message}", true);
+        if (ex is ClassBlockException)
+        {
+            ViewModel.SetStatus(ex.Message, true);
+            return;
+        }
+
+        // 非业务异常走 ErrorText 网关（审计 P2-13）：不把 CLR / IO 原文抛给老师。
+        // 调用方前缀已带「失败」（如「导入总表失败」），Describe 会自己补「失败：…」，
+        // 这里去掉尾巴只传动词短语，拼出来的话术与旧格式一致。
+        var action = prefix.EndsWith("失败", StringComparison.Ordinal)
+            ? prefix[..^"失败".Length]
+            : prefix;
+        ViewModel.SetStatus(ErrorText.Describe(ex, action), true);
     }
 }

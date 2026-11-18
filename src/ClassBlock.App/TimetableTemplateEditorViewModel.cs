@@ -43,16 +43,26 @@ public partial class TemplateRowEditViewModel : ObservableObject
     [ObservableProperty] private bool _mergeDays;
 
     /// <summary>
-    /// 绑定行（第 N 节 / 早读 / 午学 / 课服 / 晚修）的「五天合并」由内容是否一致自动决定，
-    /// 勾选框对它们无效——不置灰会让老师反复勾选却看不到变化（审计 P3-10）。
+    /// 只有「静态内容 + 普通行」的「五天合并」才真的起作用：
+    /// 绑定行（第 N 节 / 早读 / 午学 / 课服 / 晚修）的合并由五天内容是否一致自动决定，
+    /// 而大课间 / 新闻联播 / 午餐 / 晚餐走整行路径、根本不读 MergeDays。
+    /// 三种情况都置灰，否则老师反复勾选却看不到变化（审计 P3-10 / P3-26）。
     /// </summary>
-    public bool CanMergeDays => Slot.Slot == TemplateSlot.None;
+    public bool CanMergeDays => Slot.Slot == TemplateSlot.None && Kind.Kind == TimetableRowKind.Normal;
 
     public string MergeDaysHint => CanMergeDays
         ? string.Empty
-        : "绑定行的合并由五天内容是否一致自动决定。";
+        : Slot.Slot != TemplateSlot.None
+            ? "绑定行的合并由五天内容是否一致自动决定。"
+            : "这类行天生整行合并，不需要再勾。";
 
     partial void OnSlotChanged(SlotOption value)
+    {
+        OnPropertyChanged(nameof(CanMergeDays));
+        OnPropertyChanged(nameof(MergeDaysHint));
+    }
+
+    partial void OnKindChanged(KindOption value)
     {
         OnPropertyChanged(nameof(CanMergeDays));
         OnPropertyChanged(nameof(MergeDaysHint));

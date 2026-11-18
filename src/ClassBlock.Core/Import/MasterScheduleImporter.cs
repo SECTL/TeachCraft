@@ -45,7 +45,8 @@ public static class MasterScheduleImporter
             var term = ParseTerm(title, Path.GetFileName(path));
             var month = ParseMonth(title, Path.GetFileName(path));
 
-            var classes = ReadClasses(candidate, gradeChar);
+            var schedule = ReadClasses(candidate, gradeChar);
+            var classes = schedule.Classes;
             if (classes.Count == 0)
                 throw new ClassBlockException(
                     "没有识别到班级行。目前仅支持七 / 八 / 九年级的班级行（如「九（6）班」），小学年级暂不支持。");
@@ -62,14 +63,40 @@ public static class MasterScheduleImporter
             var warnings = new List<string>();
             if (headTeachers.Count == 0) warnings.Add("没有找到班主任分工表。");
             if (lunchStudy.Count == 0) warnings.Add("没有找到午学安排，午学行将留空。");
-            if (afterSchool.Count == 0) warnings.Add("没有找到课后服务/晚修安排，相关行将使用课程表内的信息。");
+
+            // 这张辅助表只补「课服行的教师姓名」；课服 / 晚修的内容取自课程表本身。
+            // 旧文案写成「相关行将使用课程表内的信息」，听起来像这张表可有可无、
+            // 又没说明缺的到底是什么（P2-19 顺带修正）。
+            if (afterSchool.Count == 0)
+                warnings.Add("没有找到课后服务分工表，课服行的教师姓名将无法补全（内容仍取自课程表）。");
+
+            // 课程表本身的列缺了才真的会留空：8 列日块只有 7 节 + 课服1，课服2 与晚修都没有。
+            var missingColumns = new List<string>();
+            if (!schedule.ServiceColumnsFound) missingColumns.Add("课后服务");
+            if (!schedule.EveningColumnFound) missingColumns.Add("晚修");
+            if (missingColumns.Count > 0)
+                warnings.Add($"课程表里没有找到{string.Join("/", missingColumns)}列，相关行已留空。");
+
+            // 周六 / 周日列不读（课程表固定五天），但静默丢弃会让老师以为软件漏了数据（P3-28）。
+            var scheduleLastColumn = candidate.Sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+            if (HasWeekendColumns(candidate.Sheet, candidate.HeaderRow, scheduleLastColumn))
+                warnings.Add("课程表里有周六 / 周日列，本应用只出五天课表，这些列已忽略。");
+
             if (earlyReading.Cells.All(string.IsNullOrWhiteSpace))
             {
                 // 区分两种结局：真没找到说明 / 找到了但写法不认识。
-                // 旧实现一律报「没有找到」，让老师对着原文怀疑自己文件有问题（P3-7）。
-                warnings.Add(earlyReading.Rule.Length > 0
-                    ? earlyReading.Rule
+                // 诊断串只进警告，绝不写进 EarlyReadingRule——它会被拼进预览与打印脚注（P2-20）。
+                warnings.Add(earlyReading.Diagnostic.Length > 0
+                    ? earlyReading.Diagnostic
                     : "没有找到早读说明，早读行将留空。");
+            }
+            else
+            {
+                // 部分命中：例如只写了「二、四语文」，另外三天静默空着。
+                // 不告警的话老师只会看到早读行缺了三天，不知道该改文件还是软件没认出来（P3-25）。
+                var recognizedDays = earlyReading.Cells.Count(c => !string.IsNullOrWhiteSpace(c));
+                if (recognizedDays < 5)
+                    warnings.Add($"早读说明只认出 {recognizedDays} 天，其余写法未识别。");
             }
 
             var info = new MasterInfo
@@ -166,6 +193,20 @@ public static class MasterScheduleImporter
         return found.OrderBy(x => x.Day).ToList();
     }
 
+    /// <summary>表头里有没有周六 / 周日列（有也不读，只用来如实告警）。</summary>
+    private static bool HasWeekendColumns(IXLWorksheet sheet, int headerRow, int lastColumn)
+    {
+        for (var column = 1; column <= lastColumn; column++)
+        {
+            var text = sheet.Cell(headerRow, column).GetString();
+            if (text.Contains("星期六") || text.Contains("周六") ||
+                text.Contains("星期日") || text.Contains("星期天") || text.Contains("周日"))
+                return true;
+        }
+
+        return false;
+    }
+
     private static int FindPeriodRow(
         IXLWorksheet sheet,
         int headerRow,
@@ -241,11 +282,58 @@ public static class MasterScheduleImporter
 
     // ----------------------------- 班级与课程 -----------------------------
 
-    private static List<ClassSchedule> ReadClasses(ScheduleCandidate candidate, string gradeChar)
+    /// <summary>课程表读取结果：班级数据 + 课服 / 晚修列是否真的找到（用于如实告警）。</summary>
+    private sealed class ScheduleReadResult
+    {
+        public required List<ClassSchedule> Classes { get; init; }
+        public bool ServiceColumnsFound { get; init; }
+        public bool EveningColumnFound { get; init; }
+    }
+
+    /// <summary>一个日块的列位：右界、七节列、课服列与晚修列。只跟表头有关，与班级行无关。</summary>
+    private sealed class DayColumns
+    {
+        public required int DayStart { get; init; }
+        public required int GroupEnd { get; init; }
+        public required int[] PeriodColumns { get; init; }
+        public required int ServiceStart { get; init; }
+        public required int EveningColumn { get; init; }
+
+        public bool HasServiceHeader => ServiceStart >= 0;
+
+        /// <summary>课服2 必须在日块内：8 列日块只有一列「课后服务」，再往右就是下一天的第一节课。</summary>
+        public bool HasService2 => HasServiceHeader && ServiceStart + 1 <= GroupEnd;
+    }
+
+    private static ScheduleReadResult ReadClasses(ScheduleCandidate candidate, string gradeChar)
     {
         var sheet = candidate.Sheet;
         var lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
         var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+
+        // 日块列位先算一次：每一行（班级）都用同一份表头，反复 Find 只是白扫。
+        var blocks = new List<DayColumns>(5);
+        for (var dayIndex = 0; dayIndex < candidate.DayStarts.Count && dayIndex < 5; dayIndex++)
+        {
+            var dayStart = candidate.DayStarts[dayIndex].Column;
+            var groupEnd = DayBlockEnd(sheet, candidate, dayIndex, lastColumn);
+
+            var periodColumns = new int[7];
+            for (var period = 1; period <= 7; period++)
+            {
+                periodColumns[period - 1] = FindPeriodColumn(sheet, candidate.PeriodRow, dayStart, groupEnd, period);
+            }
+
+            blocks.Add(new DayColumns
+            {
+                DayStart = dayStart,
+                GroupEnd = groupEnd,
+                PeriodColumns = periodColumns,
+                ServiceStart = FindServiceStart(sheet, candidate.PeriodRow, dayStart, groupEnd),
+                EveningColumn = FindEveningColumn(sheet, candidate.PeriodRow, dayStart, groupEnd),
+            });
+        }
+
         var classes = new List<ClassSchedule>();
         var keys = new HashSet<string>();
         var gap = 0;
@@ -265,37 +353,32 @@ public static class MasterScheduleImporter
             if (!keys.Add(key)) continue;
 
             var days = new List<DaySchedule>();
-            for (var dayIndex = 0; dayIndex < candidate.DayStarts.Count && dayIndex < 5; dayIndex++)
+            for (var dayIndex = 0; dayIndex < blocks.Count; dayIndex++)
             {
-                var dayStart = candidate.DayStarts[dayIndex].Column;
-                var groupEnd = Math.Min(dayStart + 9, lastColumn);
-
-                var periodColumns = new int[7];
-                for (var period = 1; period <= 7; period++)
-                {
-                    periodColumns[period - 1] = FindPeriodColumn(sheet, candidate.PeriodRow, dayStart, groupEnd, period);
-                }
-
-                var serviceStart = FindServiceStart(sheet, candidate.PeriodRow, dayStart, groupEnd);
-                // 找不到「课后服务」表头就不要再盲回退到 dayStart+7 去读相邻列：
-                // 非 10 列的总表（7 节 + 晚修，或表头写「延时服务」）会静默读到别天的内容，
-                // 而且看起来完全「正常」，发现时可能已贴到教室墙上（审计 P2-41）。
-                var hasServiceHeader = serviceStart >= 0;
-                var eveningColumn = FindEveningColumn(sheet, candidate.PeriodRow, dayStart, groupEnd);
+                var block = blocks[dayIndex];
 
                 var periods = new List<CourseCell>(7);
                 for (var period = 0; period < 7; period++)
                 {
-                    periods.Add(CourseParser.Parse(GetMergedText(sheet, row, periodColumns[period])));
+                    periods.Add(CourseParser.Parse(GetMergedText(sheet, row, block.PeriodColumns[period])));
                 }
 
+                // 找不到「课后服务」表头就不要再盲回退到 dayStart+7 去读相邻列：
+                // 非 10 列的总表（7 节 + 晚修，或表头写「延时服务」）会静默读到别天的内容，
+                // 而且看起来完全「正常」，发现时可能已贴到教室墙上（审计 P2-41 / P2-19）。
                 days.Add(new DaySchedule
                 {
                     DayName = DayNames[dayIndex],
                     Periods = periods,
-                    AfterSchool1 = hasServiceHeader ? CourseParser.Parse(GetMergedText(sheet, row, serviceStart)) : CourseCell.Empty,
-                    AfterSchool2 = hasServiceHeader ? CourseParser.Parse(GetMergedText(sheet, row, serviceStart + 1)) : CourseCell.Empty,
-                    EveningStudy = eveningColumn >= 0 ? GetMergedText(sheet, row, eveningColumn) : string.Empty,
+                    AfterSchool1 = block.HasServiceHeader
+                        ? CourseParser.Parse(GetMergedText(sheet, row, block.ServiceStart))
+                        : CourseCell.Empty,
+                    AfterSchool2 = block.HasService2
+                        ? CourseParser.Parse(GetMergedText(sheet, row, block.ServiceStart + 1))
+                        : CourseCell.Empty,
+                    EveningStudy = block.EveningColumn >= 0
+                        ? GetMergedText(sheet, row, block.EveningColumn)
+                        : string.Empty,
                 });
             }
 
@@ -310,7 +393,37 @@ public static class MasterScheduleImporter
             });
         }
 
-        return classes;
+        return new ScheduleReadResult
+        {
+            Classes = classes,
+            ServiceColumnsFound = blocks.Any(b => b.HasServiceHeader),
+            EveningColumnFound = blocks.Any(b => b.EveningColumn >= 0),
+        };
+    }
+
+    /// <summary>
+    /// 日块右界：优先取本块星期表头的合并末列，再用「下一天的表头列 - 1」封顶。
+    /// 旧实现用整表末列，8 列日块的「课后服务2」与晚修回退列都会读到下一天的第一、二节（审计 P2-19）。
+    /// 表头没合并时没有块宽信息，只能退到「下一天之前」；最后一天退到整表末列。
+    /// </summary>
+    private static int DayBlockEnd(IXLWorksheet sheet, ScheduleCandidate candidate, int dayIndex, int lastColumn)
+    {
+        var dayStarts = candidate.DayStarts;
+        var dayStart = dayStarts[dayIndex].Column;
+
+        var cap = dayIndex + 1 < dayStarts.Count
+            ? dayStarts[dayIndex + 1].Column - 1
+            : lastColumn;
+
+        var headerCell = sheet.Cell(candidate.HeaderRow, dayStart);
+        if (headerCell.IsMerged())
+        {
+            var range = headerCell.MergedRange();
+            if (range is not null)
+                cap = Math.Min(cap, range.LastColumn().ColumnNumber());
+        }
+
+        return Math.Max(dayStart, Math.Min(cap, lastColumn));
     }
 
     private static int FindPeriodColumn(
@@ -524,7 +637,19 @@ public static class MasterScheduleImporter
         return string.Empty;
     }
 
-    private static (IReadOnlyList<string> Cells, string Rule) ReadEarlyReading(IXLWorksheet sheet, string gradeChar)
+    /// <summary>
+    /// 早读说明的识别结果。
+    /// <see cref="Rule"/> 只放给老师看的规则（会进预览与打印脚注），
+    /// <see cref="Diagnostic"/> 只进导入警告——两者混用会让 120+ 字的诊断串印在课表页脚上（P2-20）。
+    /// </summary>
+    private sealed class EarlyReadingRead
+    {
+        public required IReadOnlyList<string> Cells { get; init; }
+        public required string Rule { get; init; }
+        public required string Diagnostic { get; init; }
+    }
+
+    private static EarlyReadingRead ReadEarlyReading(IXLWorksheet sheet, string gradeChar)
     {
         var cells = new string[5];
 
@@ -549,7 +674,7 @@ public static class MasterScheduleImporter
         }
 
         if (string.IsNullOrWhiteSpace(note))
-            return (cells, string.Empty);
+            return new EarlyReadingRead { Cells = cells, Rule = string.Empty, Diagnostic = string.Empty };
 
         if (note.Contains("二、四语文"))
         {
@@ -580,10 +705,23 @@ public static class MasterScheduleImporter
 
         // 说明找到了、但没解析出任何规则：必须如实说「读到了但没读懂」，
         // 而不是让上层报「没有找到早读说明」——那会把老师引向错误的自查方向（P3-7）。
+        // 这句只进警告（Diagnostic），Rule 留空，脚注就不会被它占满。
         if (ruleParts.Count == 0)
-            return (cells, $"早读说明已读到，但仅支持「二、四语文 / 三、五英语」等写法，本表内容未解析：{TruncateNote(note)}");
+        {
+            return new EarlyReadingRead
+            {
+                Cells = cells,
+                Rule = string.Empty,
+                Diagnostic = $"早读说明已读到，但仅支持「二、四语文 / 三、五英语」等写法，本表内容未解析：{TruncateNote(note)}",
+            };
+        }
 
-        return (cells, string.Join(" · ", ruleParts));
+        return new EarlyReadingRead
+        {
+            Cells = cells,
+            Rule = string.Join(" · ", ruleParts),
+            Diagnostic = string.Empty,
+        };
     }
 
     /// <summary>把说明原文压到一句里，避免整段贴进警告条。</summary>

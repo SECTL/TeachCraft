@@ -318,4 +318,140 @@ public sealed class ClassBlockTemplateTests : IDisposable
         Assert.False(File.Exists(Path.Combine(dir, "custom-nobak.json")));
         Assert.False(File.Exists(Path.Combine(dir, "custom-nobak.json.bak")));
     }
+
+    // ------------------------------------------------------------------
+    // 「五天合并」勾选收紧（P3-26）：结构行（大课间 / 新闻联播 / 午餐 / 晚餐）同样置灰。
+
+    [Fact]
+    public void CanMergeDays_OnlyForStaticNormalRows()
+    {
+        var kinds = new ClassBlock.App.TimetableTemplateEditorViewModel(
+            SampleTemplate(), startAsCopy: false).KindOptions;
+        var slots = new ClassBlock.App.TimetableTemplateEditorViewModel(
+            SampleTemplate(), startAsCopy: false).SlotOptions;
+
+        static ClassBlock.App.TemplateRowEditViewModel Row(
+            IReadOnlyList<ClassBlock.App.KindOption> k, IReadOnlyList<ClassBlock.App.SlotOption> s,
+            TimetableRowKind kind, TemplateSlot slot) =>
+            new(k.First(x => x.Kind == kind), s.First(x => x.Slot == slot));
+
+        // 静态 + 普通行：可勾。
+        Assert.True(Row(kinds, slots, TimetableRowKind.Normal, TemplateSlot.None).CanMergeDays);
+
+        // 结构行：渲染走整行路径，勾了也永远无效，必须置灰并给不同提示。
+        foreach (var kind in new[]
+                 {
+                     TimetableRowKind.Break, TimetableRowKind.News,
+                     TimetableRowKind.Lunch, TimetableRowKind.Dinner,
+                 })
+        {
+            var row = Row(kinds, slots, kind, TemplateSlot.None);
+            Assert.False(row.CanMergeDays);
+            Assert.Contains("天生整行合并", row.MergeDaysHint);
+        }
+
+        // 绑定行：合并由五天内容决定，提示与结构行区分开。
+        var bound = Row(kinds, slots, TimetableRowKind.Normal, TemplateSlot.Period1);
+        Assert.False(bound.CanMergeDays);
+        Assert.Contains("自动决定", bound.MergeDaysHint);
+    }
+
+    [Fact]
+    public void CanMergeDays_UpdatesWhenKindChanges()
+    {
+        var vm = new ClassBlock.App.TimetableTemplateEditorViewModel(SampleTemplate(), startAsCopy: false);
+        var row = vm.Rows[0];
+        row.Kind = vm.KindOptions.First(k => k.Kind == TimetableRowKind.Normal);
+        row.Slot = vm.SlotOptions.First(s => s.Slot == TemplateSlot.None);
+        Assert.True(row.CanMergeDays);
+
+        row.Kind = vm.KindOptions.First(k => k.Kind == TimetableRowKind.News);
+        Assert.False(row.CanMergeDays);
+    }
+
+    // ------------------------------------------------------------------
+    // 偏好原子写（P3-31）：写入异常不得留下半个 JSON。
+
+    [Fact]
+    public void Prefs_SaveIsAtomic_LeavesNoTempFileOnSuccess()
+    {
+        var dir = Path.Combine(_root, "atomic-ok");
+        var prefs = new ClassBlockPrefs();
+        prefs.LastTemplateByGrade["九年级"] = "builtin-grade-9";
+
+        ClassBlockPrefsStore.Save(prefs, dir);
+
+        var files = Directory.GetFiles(dir);
+        Assert.Single(files);
+        Assert.EndsWith("settings.json", files[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(files, f => f.Contains(".tmp-"));
+    }
+
+    [Fact]
+    public void Prefs_SaveWritesTempThenMoves()
+    {
+        // 结构守卫：Save 必须是「写同目录 .tmp- → File.Move(overwrite)」，
+        // 直接 WriteAllText 会在中途崩溃时留下半个 JSON（审计 P3-31）。
+        var source = RepoRoot.Read(Path.Combine(
+            "src", "ClassBlock.Core", "Timetable", "TimetableTemplateIO.cs"));
+
+        Assert.Contains("\".tmp-\"", source, StringComparison.Ordinal);
+        Assert.Contains("File.Move(tempPath, fullPath, overwrite: true)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("File.WriteAllText(path, JsonSerializer.Serialize(prefs))", source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Prefs_SaveFailure_KeepsPreviousContentAndNoTempLeftover()
+    {
+        var dir = Path.Combine(_root, "atomic-fail");
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "settings.json");
+
+        var good = new ClassBlockPrefs();
+        good.LastTemplateByGrade["七年级"] = "keep-me";
+        ClassBlockPrefsStore.Save(good, dir);
+        var original = File.ReadAllText(path);
+
+        // 目标被独占锁住 → File.Move 失败；旧文件必须原样保留，临时文件必须被清掉。
+        using (var _ = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var bad = new ClassBlockPrefs();
+            bad.LastTemplateByGrade["八年级"] = "new";
+            // File.Move 覆盖被锁定的目标时抛 UnauthorizedAccessException（Windows）或 IOException，
+            // 两者都是「写不进去」；这里只要求「抛了」，重点在后面的不变量。
+            Assert.ThrowsAny<Exception>(() => ClassBlockPrefsStore.Save(bad, dir));
+        }
+
+        Assert.Equal(original, File.ReadAllText(path));
+        Assert.DoesNotContain(Directory.GetFiles(dir), f => f.Contains(".tmp-"));
+        Assert.Equal("keep-me", ClassBlockPrefsStore.Load(dir).LastTemplateByGrade["七年级"]);
+    }
+
+    // ------------------------------------------------------------------
+    // 打印文件名去重后缀（P3-29）。
+
+    [Theory]
+    [InlineData("九（6）班课程表", "-课程表.pdf", "九（6）班课程表.pdf")]
+    [InlineData("九（6）班课程表", ".png", "九（6）班课程表.png")]
+    [InlineData("九（6）班", "-课程表.pdf", "九（6）班-课程表.pdf")]
+    [InlineData("", "-课程表.pdf", "课程表.pdf")]
+    [InlineData("   ", ".png", "课程表.png")]
+    public void BuildSuggestedFileName_DedupesCourseTableSuffix(
+        string title, string suffix, string expected)
+    {
+        Assert.Equal(expected, ClassBlock.App.ClassBlockWindow.BuildSuggestedFileName(title, suffix));
+    }
+
+    // ------------------------------------------------------------------
+    // 渲染主行字号（P3-30）：同一行内不得倒挂。
+
+    [Fact]
+    public void Renderer_PrimarySizeDoesNotDependOnBold()
+    {
+        var source = RepoRoot.Read(Path.Combine("src", "ClassBlock.Core", "Rendering", "TimetableRenderer.cs"));
+
+        Assert.DoesNotContain("bold ? 18f : 20f", source, StringComparison.Ordinal);
+        Assert.Contains("const float primarySize = 20f;", source, StringComparison.Ordinal);
+    }
 }

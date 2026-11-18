@@ -127,4 +127,57 @@ internal static class ClassBlockFixtures
             sheet.Cell(6, start + 2).Value = "吴刚";
         }
     }
+
+    /// <summary>
+    /// 窄日块总表：每天只有 <paramref name="dayWidth"/> 列（7 节 + 其余），下一天紧挨着。
+    /// 用来验证导入器不会把「课后服务2 / 晚修」读到下一天的第一、二节（审计 P2-19）。
+    /// </summary>
+    public static string CreateNarrowDayBlockWorkbook(
+        string rootDirectory, int dayWidth, bool includeServiceHeader, string fileName = "narrow.xlsx")
+    {
+        var path = Path.Combine(rootDirectory, fileName);
+
+        using var workbook = new XLWorkbook();
+        var sheet = workbook.Worksheets.Add("2-课程表");
+        sheet.Cell(1, 1).Value = "表二：示例中学2026年春季学期九年级教师课程表（时间：2026年5月）";
+
+        for (var day = 0; day < 5; day++)
+        {
+            var start = 2 + day * dayWidth;
+            if (dayWidth > 1)
+                sheet.Range(sheet.Cell(2, start), sheet.Cell(2, start + dayWidth - 1)).Merge();
+            sheet.Cell(2, start).Value = DayHeaders[day];
+
+            for (var period = 0; period < 7; period++)
+                sheet.Cell(4, start + period).Value = period + 1;
+
+            if (includeServiceHeader && dayWidth > 7)
+                sheet.Cell(4, start + 7).Value = "课后服务";
+        }
+
+        sheet.Cell(5, 1).Value = "九（1）班";
+        sheet.Cell(6, 1).Value = "九（2）班";
+
+        string[] subjects = { "语文张兰", "数学李梅", "英语王芳", "物理赵强", "化学陈静", "历史周敏", "体育吴刚" };
+        for (var day = 0; day < 5; day++)
+        {
+            var start = 2 + day * dayWidth;
+            for (var period = 0; period < 7; period++)
+            {
+                sheet.Cell(5, start + period).Value = subjects[period];
+                sheet.Cell(6, start + period).Value = subjects[(period + 1) % 7];
+            }
+
+            // 紧挨着的下一列（窄日块里就是下一天的第一节）放一个显眼的值：
+            // 旧实现把课服2 / 晚修回退列读到这里，断言就能一眼看出串天。
+            if (includeServiceHeader && dayWidth > 7)
+            {
+                sheet.Cell(5, start + 7).Value = $"课服甲{day}";
+                sheet.Cell(6, start + 7).Value = $"课服乙{day}";
+            }
+        }
+
+        workbook.SaveAs(path);
+        return path;
+    }
 }

@@ -124,10 +124,37 @@ public static class ClassBlockPrefsStore
         }
     }
 
+    /// <summary>
+    /// 原子写入：先写同目录临时文件，再替换目标，避免中途崩溃留下半个 JSON。
+    /// 直接 WriteAllText 会在写入途中被截断时丢掉全部年级的模板记忆，且下次读取静默回落成空（审计 P3-31）。
+    /// </summary>
     public static void Save(ClassBlockPrefs prefs, string? directory = null)
     {
         var path = GetFilePath(directory);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(prefs));
+        var fullPath = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+
+        var tempPath = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(prefs));
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+        }
     }
 }

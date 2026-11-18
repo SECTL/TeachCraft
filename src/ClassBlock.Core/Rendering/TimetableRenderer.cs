@@ -122,7 +122,12 @@ public static class TimetableRenderer
         var height = TableTop() + HeaderHeight + timetable.Rows.Sum(RowHeight);
 
         if (timetable.Footnotes.Count > 0)
-            height += 10f + timetable.Footnotes.Count * 17f;
+        {
+            // 必须与 DrawFootnotes 用同一套换行：按条数算高度会在长脚注换行后把末尾裁掉。
+            using var font = new SKFont(RegularTypeface.Value, 11.5f);
+            var lines = timetable.Footnotes.Sum(note => Wrap(note, font, PageWidth - Pad * 2).Count());
+            height += 10f + lines * 17f;
+        }
 
         return height + Pad;
     }
@@ -327,9 +332,12 @@ public static class TimetableRenderer
     /// <summary>课程格：第一行学科加粗，任课教师排第二行；姓名类内容整体加粗。</summary>
     private static void DrawCellText(SKCanvas canvas, string text, SKRect rect)
     {
+        // 主行字号只跟「有没有第二行」有关，不跟加粗与否有关：
+        // 旧写法单行格 18px、带教师格主行 20px，同一行里并排看就像字号倒了挂（审计 P3-30）。
+        // 统一取 20px——带教师的格是常态，按它对齐后单行格也不会显得局促。
         var bold = !text.Contains('\n');
-        var primarySize = bold ? 18f : 20f;
-        var secondarySize = 13.5f;
+        const float primarySize = 20f;
+        const float secondarySize = 13.5f;
 
         var lines = new List<(string Text, float Size, bool Bold)>();
         foreach (var segment in text.Split('\n'))
@@ -390,6 +398,11 @@ public static class TimetableRenderer
         return lines;
     }
 
+    /// <summary>
+    /// 页脚说明。按版面宽度换行：早读规则写全时可能有两三句，
+    /// 单行直接画会一路冲出 964px 的表格右界（P2-20）。
+    /// 行高固定 17px，<see cref="MeasureHeight"/> 必须用同一套换行结果算高度。
+    /// </summary>
     private static void DrawFootnotes(SKCanvas canvas, ClassTimetable timetable, float tableBottom)
     {
         if (timetable.Footnotes.Count == 0) return;
@@ -400,8 +413,11 @@ public static class TimetableRenderer
         var y = tableBottom + 24f;
         foreach (var note in timetable.Footnotes)
         {
-            canvas.DrawText(note, Pad, y, SKTextAlign.Left, font, paint);
-            y += 17f;
+            foreach (var line in Wrap(note, font, PageWidth - Pad * 2))
+            {
+                canvas.DrawText(line, Pad, y, SKTextAlign.Left, font, paint);
+                y += 17f;
+            }
         }
     }
 
