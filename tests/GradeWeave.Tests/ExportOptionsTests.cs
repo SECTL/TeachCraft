@@ -157,6 +157,52 @@ public sealed class ExportOptionsTests
         Assert.True(vm.ShowSheetChoices);
     }
 
+    [Fact]
+    public void SelectingTeacher_ResetsClassSide_TeacherWins()
+    {
+        var project = WeaveSamples.CreateDemo(2);
+        // 主窗口带着当前班级打开弹窗：构造写入班级初始值（审计 P2-9 的病灶现场）。
+        var vm = new ExportOptionsViewModel(project, project.Classes[0], null, teacherView: false);
+        vm.SelectedFormat = vm.Formats.First(f => f.Format == WeaveExportFormat.Png);
+
+        // 用户改选教师：班级侧被重置为「未选择」，教师侧生效。
+        // 修复前必红——旧实现班级值仍在，ResolveTarget 按班级优先把教师选择静默压住。
+        vm.SelectedTeacherTarget = vm.TeacherTargets.First(o => o.Id == project.Teachers[0].Id);
+
+        Assert.Null(vm.SelectedClassTarget.Id);
+        Assert.True(vm.TryBuild(out var request, out _));
+        Assert.Equal(project.Teachers[0].Id, request!.TeacherId);
+        Assert.Null(request.ClassId);
+    }
+
+    [Fact]
+    public void SelectingClass_ResetsTeacherSide_ClassWins()
+    {
+        var project = WeaveSamples.CreateDemo(2);
+        var vm = new ExportOptionsViewModel(project, null, project.Teachers[0], teacherView: true);
+        vm.SelectedFormat = vm.Formats.First(f => f.Format == WeaveExportFormat.Pdf);
+
+        // 反向同理：用户改选班级时教师侧重置，班级侧生效（修复前必红）。
+        vm.SelectedClassTarget = vm.ClassTargets.First(o => o.Id == project.Classes[0].Id);
+
+        Assert.Null(vm.SelectedTeacherTarget.Id);
+        Assert.True(vm.TryBuild(out var request, out _));
+        Assert.Equal(project.Classes[0].Id, request!.ClassId);
+        Assert.Null(request.TeacherId);
+    }
+
+    [Fact]
+    public void Constructor_InitialValues_DoNotTriggerMutex()
+    {
+        var project = WeaveSamples.CreateDemo(2);
+        var vm = new ExportOptionsViewModel(project, project.Classes[0], project.Teachers[0], teacherView: false);
+
+        // 构造写入不算用户改动：两侧初始值并存，仍由 ResolveTarget 的既有顺序裁决。
+        Assert.Equal(project.Classes[0].Id, vm.SelectedClassTarget.Id);
+        Assert.Equal(project.Teachers[0].Id, vm.SelectedTeacherTarget.Id);
+        Assert.Contains("二选一", vm.TargetHint, StringComparison.Ordinal);
+    }
+
     private static ExportOptionsViewModel NewViewModel()
     {
         var project = WeaveSamples.CreateDemo(4);

@@ -61,7 +61,25 @@ public partial class TimetableEditorWindow : Window
 
     private void OnSort(object? sender, RoutedEventArgs e) => _viewModel?.SortByTime();
 
-    private void OnApplyPreset(object? sender, RoutedEventArgs e) => _viewModel?.ApplyPreset();
+    private void OnApplyPreset(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null) return;
+        _ = ApplyPresetWithConfirmAsync();
+    }
+
+    /// <summary>
+    /// 预设替换整个草稿；草稿有改动时先弹确认（文案点出所选预设名），同意才替换。
+    /// 确认钩子挂在 ViewModel 上，测试可以注入假实现，不必构造窗口。
+    /// </summary>
+    private async Task ApplyPresetWithConfirmAsync()
+    {
+        if (_viewModel is null) return;
+        _viewModel.ConfirmOverwritePreset ??= async presetName => await ConfirmDialog.ShowAsync(
+            this, "套用预设？",
+            $"预设「{presetName}」将替换当前已修改的作息草稿，未确认的改动不会保留。",
+            confirmText: "替换草稿", cancelText: "取消", danger: true);
+        await _viewModel.ApplyPresetConfirmed();
+    }
 
     private void OnCancel(object? sender, RoutedEventArgs e)
     {

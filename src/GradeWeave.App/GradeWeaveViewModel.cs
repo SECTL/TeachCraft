@@ -13,6 +13,7 @@ using GradeWeave.Core.Models;
 using GradeWeave.Core.Project;
 using GradeWeave.Core.Scheduling;
 using GradeWeave.Core.Timetable;
+using TeachCraft.Shared;
 
 namespace GradeWeave.App;
 
@@ -1941,7 +1942,9 @@ public partial class GradeWeaveViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SetStatus($"生成课表失败：{ex.Message}", true);
+            // 非业务异常走 ErrorText 网关（审计 P2-13）：不把 CLR / IO 原文抛给老师。
+            // Describe 返回「{action}失败：…」，action 只传动词短语。
+            SetStatus(ErrorText.Describe(ex, "生成课表"), true);
         }
         finally
         {
@@ -2017,7 +2020,8 @@ public partial class GradeWeaveViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            if (!quiet) SetStatus($"冲突检查失败：{ex.Message}", true);
+            // 同上：ErrorText 网关给出可执行的中文提示。
+            if (!quiet) SetStatus(ErrorText.Describe(ex, "冲突检查"), true);
         }
     }
 

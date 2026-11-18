@@ -54,6 +54,30 @@ public partial class TimetableEditorViewModel : ObservableObject
     /// <summary>时段或时间变化后触发；窗口用它重绘顶部时间轴。</summary>
     public event EventHandler? RowsChanged;
 
+    /// <summary>
+    /// 套用预设前的确认钩子：入参是预设名，返回 true 才继续替换。
+    /// 窗口层注入 ConfirmDialog 实现；测试注入假 Func 断言门控，不构造窗口。
+    /// </summary>
+    public Func<string, Task<bool>>? ConfirmOverwritePreset { get; set; }
+
+    /// <summary>
+    /// 「套用预设」入口：预设会整体替换当前草稿，草稿有改动时必须先征得同意
+    /// （审计 P2-8，上轮 T10② 回补）；没有改动时直达，不打扰。
+    /// 有改动却没有确认钩子时宁可不动草稿——绝不在老师不知情时覆盖。
+    /// </summary>
+    public async Task ApplyPresetConfirmed()
+    {
+        if (SelectedPreset is null) return;
+
+        if (IsDirty)
+        {
+            if (ConfirmOverwritePreset is null) return;
+            if (!await ConfirmOverwritePreset(SelectedPreset.Name)) return;
+        }
+
+        ApplyPreset();
+    }
+
     public string TableName => string.IsNullOrWhiteSpace(_draft.Name) ? "作息时间表" : _draft.Name;
 
     public string RowCountText

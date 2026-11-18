@@ -77,6 +77,16 @@ public partial class ActivityEditorViewModel : ObservableObject
     public bool IsEditing => _existing is not null;
     public string Title => IsEditing ? "编辑活动" : "新增活动";
 
+    /// <summary>
+    /// 打开时的存量活动是替换型。删除确认按它分级，而不是按表单当前的模式选择——
+    /// 删除作用于存量活动本身（窗口关闭后按 Id 删除），老师把表单改成「只叠加提醒」
+    /// 并不会让存量活动变成叠加型。
+    /// </summary>
+    public bool IsExistingReplace => _existing?.Mode == ActivityMode.Replace;
+
+    /// <summary>存量活动的名称；删除确认用它点名，而不是表单里可能已被改掉的名字。</summary>
+    public string ExistingActivityName => (_existing?.Name ?? string.Empty).Trim();
+
     /// <summary>草稿与打开时的活动配置有差异时为真，关闭窗口前用于询问是否放弃。</summary>
     public bool IsDirty => Snapshot() != _initialSnapshot;
 

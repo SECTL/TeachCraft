@@ -2632,6 +2632,12 @@ public partial class GradeWeaveWindow : Window
             return;
         }
 
-        ViewModel.SetStatus($"{prefix}：{ex.Message}", true);
+        // 非业务异常走 ErrorText 网关（审计 P2-13）：不把 CLR / IO 原文抛给老师。
+        // 调用方前缀已带「失败」（如「导入课表失败」），Describe 会自己补「失败：…」，
+        // 这里去掉尾巴只传动词短语，拼出来的话术与旧格式一致。
+        var action = prefix.EndsWith("失败", StringComparison.Ordinal)
+            ? prefix[..^"失败".Length]
+            : prefix;
+        ViewModel.SetStatus(ErrorText.Describe(ex, action), true);
     }
 }

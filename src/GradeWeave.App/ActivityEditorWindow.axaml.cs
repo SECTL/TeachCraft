@@ -42,13 +42,31 @@ public partial class ActivityEditorWindow : Window
         Close(new ActivityEditorResult(activity, false));
     }
 
-    private void OnDelete(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// 删除确认的文案：按打开时的存量活动是否替换型分级；替换型必须写明原课不自动恢复。
+    /// 抽成纯函数是为了可测：测试不构造窗口也能锁住分级与措辞。
+    /// </summary>
+    public static (string Title, string Message) DescribeDeleteConfirm(bool isReplaceMode, string activityName)
     {
-        if (_viewModel?.IsEditing == true)
-        {
-            _closeReady = true;
-            Close(new ActivityEditorResult(null, true));
-        }
+        return isReplaceMode
+            ? ("删除替换型活动？",
+                $"将删除「{activityName}」。被移除的原课不会自动恢复，删除后需要重新排课补上这些课。")
+            : ("移除该活动？",
+                $"将移除「{activityName}」，只撤掉提醒展示，不影响课程表。");
+    }
+
+    private async void OnDelete(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.IsEditing != true) return;
+
+        var (title, message) = DescribeDeleteConfirm(_viewModel.IsExistingReplace, _viewModel.ExistingActivityName);
+        var confirmed = await ConfirmDialog.ShowAsync(
+            this, title, message,
+            confirmText: "删除", cancelText: "取消", danger: _viewModel.IsExistingReplace);
+        if (!confirmed) return;
+
+        _closeReady = true;
+        Close(new ActivityEditorResult(null, true));
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e)

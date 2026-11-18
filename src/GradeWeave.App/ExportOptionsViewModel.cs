@@ -100,6 +100,8 @@ public partial class ExportOptionsViewModel : ObservableObject
         _selectedClassTarget = ClassTargets.FirstOrDefault(o => o.Id == selectedClass?.Id) ?? ClassTargets[0];
         _selectedTeacherTarget =
             TeacherTargets.FirstOrDefault(o => o.Id == selectedTeacher?.Id) ?? TeacherTargets[0];
+        // 初始值写入完成；此后只有用户（或测试）改下拉才触发互斥重置。
+        _initializing = false;
     }
 
     public ObservableCollection<ExportTargetOption> ClassTargets { get; } = new();
@@ -108,17 +110,28 @@ public partial class ExportOptionsViewModel : ObservableObject
     [ObservableProperty] private ExportTargetOption _selectedClassTarget;
     [ObservableProperty] private ExportTargetOption _selectedTeacherTarget;
 
+    /// <summary>构造写入初始值期间为真：互斥重置只认用户改动，初始化路径一律豁免。</summary>
+    private bool _initializing = true;
+
     /// <summary>PNG / PDF 下才需要选对象；Excel 是整本工作簿。</summary>
     public bool ShowTargetPickers => !IsExcel;
 
     partial void OnSelectedClassTargetChanged(ExportTargetOption value)
     {
+        // 班级 / 教师二选一互斥（审计 P2-9）：用户在一侧选定对象时把另一侧重置为「未选择」，
+        // 不再让初始班级把教师选择静默压住。重置写入的是「未选择」项（Id 为 null），
+        // 不满足「选定了对象」这个条件，因此不会级联回来把用户刚选的一侧也清掉。
+        if (!_initializing && value.Id is not null && SelectedTeacherTarget.Id is not null)
+            SelectedTeacherTarget = TeacherTargets.First(o => o.Id is null);
         RaiseDerivedProperties();
         RequestPreview();
     }
 
     partial void OnSelectedTeacherTargetChanged(ExportTargetOption value)
     {
+        // 反向同理：用户选定教师时清掉班级侧。
+        if (!_initializing && value.Id is not null && SelectedClassTarget.Id is not null)
+            SelectedClassTarget = ClassTargets.First(o => o.Id is null);
         RaiseDerivedProperties();
         RequestPreview();
     }
@@ -289,7 +302,7 @@ public partial class ExportOptionsViewModel : ObservableObject
         }
     }
 
-    public string TargetHint => "PNG / PDF 导出当前选中的班级或教师课表；如需切换，请先在主窗口左侧选择。";
+    public string TargetHint => "在下方选择导出对象，班级与教师二选一。";
 
     /// <summary>底部摘要：当前要导出什么。</summary>
     public string ExportSummary
