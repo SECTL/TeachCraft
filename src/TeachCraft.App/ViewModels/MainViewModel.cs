@@ -297,6 +297,9 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>当前可下载的更新提案；没有时为 null。</summary>
     public UpdateProposal? PendingUpdate { get; private set; }
+
+    /// <summary>最近一次点「跳过这版」记下的版本号；从未跳过时为 null（审计 P3-35 的反馈话术用）。</summary>
+    public string? LastSkippedVersion { get; private set; }
     [ObservableProperty] private bool _isAllActive = true;
     [ObservableProperty] private bool _isImageActive;
     [ObservableProperty] private bool _isFileActive;
@@ -662,6 +665,7 @@ public partial class MainViewModel : ObservableObject
     {
         // 必须在清空 PendingUpdate 之前拿到版本号，否则记不下任何东西。
         var skippedVersion = PendingUpdate?.VersionText;
+        LastSkippedVersion = skippedVersion;
 
         PendingUpdate = null;
         IsUpdateAvailable = false;
@@ -713,6 +717,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
+            IsLastInstallFailure = false;
             SetStatus($"正在下载 {proposal.VersionText}…");
 
             // handler 由 Core 统一提供（全进程复用），并通过构造注入以便测试替身。
@@ -728,6 +733,7 @@ public partial class MainViewModel : ObservableObject
 
             if (!checksumResult.IsSuccess)
             {
+                IsLastInstallFailure = true;
                 SetStatus(checksumResult.Failure!, error: true);
                 return checksumResult.Failure!;
             }
@@ -736,6 +742,7 @@ public partial class MainViewModel : ObservableObject
             if (checksums is null)
             {
                 var missing = UpdateErrorText.ForMissingChecksums("下载更新");
+                IsLastInstallFailure = true;
                 SetStatus(missing, error: true);
                 return missing;
             }
@@ -744,6 +751,7 @@ public partial class MainViewModel : ObservableObject
             if (string.IsNullOrEmpty(expected))
             {
                 var missing = UpdateErrorText.ForAssetNotInChecksums("下载更新");
+                IsLastInstallFailure = true;
                 SetStatus(missing, error: true);
                 return missing;
             }
@@ -753,6 +761,7 @@ public partial class MainViewModel : ObservableObject
 
             if (!download.IsSuccess)
             {
+                IsLastInstallFailure = true;
                 SetStatus(download.Failure!, error: true);
                 return download.Failure!;
             }
@@ -776,7 +785,12 @@ public partial class MainViewModel : ObservableObject
                     SetStatus(noHandler);
                     return noHandler;
                 }
-                return await handlerDelegate(download.Path!, plan).ConfigureAwait(true);
+                var handlerMessage = await handlerDelegate(download.Path!, plan).ConfigureAwait(true);
+                // 安装前置确认被拒（「暂不安装」）也是一次失败终态：状态栏必须保持红点，
+                // 否则绿色会让人误读成安装已在进行（审计 P2-28）。
+                // 失败的 App 层话术都以「已取消安装」开头，其余为成功指引。
+                IsLastInstallFailure = handlerMessage.StartsWith("已取消安装", StringComparison.Ordinal);
+                return handlerMessage;
             }
 
             var guidance = plan.Guidance ?? "已下载完成。";
@@ -786,10 +800,20 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             var reason = UpdateErrorText.DescribeForUi(ex, "下载更新");
+            IsLastInstallFailure = true;
             SetStatus(reason, error: true);
             return reason;
         }
     }
+
+    /// <summary>
+    /// 最近一次「下载并安装」是否以失败终态收场（网络失败、校验失败、安装前置确认被拒）。
+    ///
+    /// 状态栏把返回文案重报时必须沿用失败配色（审计 P2-28）：失败在 ViewModel 里已按
+    /// error:true 画过红点，调用方无条件 SetStatus 会把它冲成绿色——绿色的「已取消安装」
+    /// 读起来像「装好了」。成功终态（含 ShowGuidance 指引）恒为 false。
+    /// </summary>
+    public bool IsLastInstallFailure { get; private set; }
 
     /// <summary>需要真正启动安装包时由 App 层订阅，ViewModel 不直接起进程。</summary>
     public event Func<string, InstallerPlan, Task<string>>? InstallerRequested;

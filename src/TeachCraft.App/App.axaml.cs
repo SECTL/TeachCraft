@@ -21,9 +21,19 @@ public partial class App : Application
 
     /// <summary>
     /// 释放单实例锁。更新安装前必须调用，否则重启的新进程会被自己的锁挡住。
+    /// 等待线程一并停掉：本进程马上退出，不再需要唤回，也避免重启后的新进程
+    /// 在这两三秒窗口里把信号发进一个正在关闭的实例。
     /// </summary>
     private void ReleaseSingleInstance()
     {
+        try
+        {
+            SingleInstanceSignal.Reset();
+        }
+        catch (Exception)
+        {
+            // 停不下来也无所谓：后台线程随进程消亡，不影响安装。
+        }
         try
         {
             _singleInstance?.Release();
@@ -49,6 +59,9 @@ public partial class App : Application
 
             // 单实例守卫：更新时「关闭 → 安装 → 重启」若与旧实例并存，
             // 两个进程会抢同一个二进制文件。走查参数不参与，否则会和自动化打架。
+            // 第二实例退出前还会发唤醒信号（SingleInstanceSignal）：互斥锁只保证
+            // 不弹第二个窗口，但老师点任务栏图标时窗口毫无反应、看起来像程序坏了——
+            // 首实例收到信号后把主窗口激活置前（审计 P2-25）。
             var args = desktop.Args ?? Array.Empty<string>();
             var isWalkthrough = args.Any(a => a.StartsWith("--", StringComparison.Ordinal));
             if (!isWalkthrough)
@@ -56,10 +69,17 @@ public partial class App : Application
                 _singleInstance = new SingleInstanceGuard(@"Local\TeachCraft.App");
                 if (!_singleInstance.TryAcquire())
                 {
-                    // 已有实例在跑：直接退出，不再开第二个窗口。
+                    // 已有实例在跑：发信号唤回它的主窗口，然后直接退出，不再开第二个窗口。
+                    SingleInstanceSignal.SignalFirstInstance();
                     Environment.Exit(0);
                     return;
                 }
+
+                // 首实例注册等待线程。回调必须 Post 回 UI 线程——等待线程碰不了 Avalonia。
+                // 信号在窗口尚未创建的极端时序下也不会丢：命名事件留在内核里，
+                // Post 执行时 MainWindow 早已赋值。
+                SingleInstanceSignal.StartListener(() =>
+                    Dispatcher.UIThread.Post(() => desktop.MainWindow?.Activate()));
             }
 
             // 首次引导：走查参数默认抑制，但 --oobe 与 --oobe-* 自己例外
@@ -85,16 +105,22 @@ public partial class App : Application
                 ? (IOobeStateStore)new NoopOobeStateStore()
                 : new OobeStateStore();
 
-            // --oobe-metrics 把判定权交回 MainViewModel（传 null），其余走查抑制；
-            // 正常启动也传 null，由状态决定。
-            var oobeOverride = readsRealState ? (bool?)null : showOobe;
+            // oobeOverride 按四种组合取值（调研 P1-6：此前正常启动误传 showOobe=true，
+            // 引导每次启动都强制弹出，OobeStateStore 记的「已结束」形同虚设）：
+            //   --oobe-metrics → null：判定权交回 MainViewModel，按真实状态决定该不该弹；
+            //   普通走查（--shot 家族等）→ showOobe（此处为 false）：截图不带遮罩；
+            //   强制通道（--oobe / --oobe-shot 等）→ showOobe（此处为 true）：取证界面本身；
+            //   正常启动 → null：由 OobeStateStore 的状态决定，只弹一次，结束过就不再打扰。
+            var oobeOverride = readsRealState ? (bool?)null : (isWalkthrough ? showOobe : (bool?)null);
             var viewModel = new MainViewModel(oobeStateStore: oobeStore, showOobe: oobeOverride);
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
 
             // 真正启动安装包 / 替换文件只能由 App 层做：它决定何时关窗、何时退出、何时重启。
+            // 两条路径都先过同一道「未保存窗口」前置（ConfirmUnsavedBeforeInstall），
+            // 确认不通过就不会有任何助手进程被启动（审计 P1-1）。
             viewModel.InstallerRequested += (path, plan) => plan.Action == InstallerAction.ReplacePortable
-                ? Task.FromResult(this.RunPortableReplace(desktop, path, plan))
+                ? this.RunPortableReplace(desktop, path, plan)
                 : this.RunInstallerAsync(desktop, path, plan);
 
             // 启动时清掉上次被强杀留下的半截下载（进程被杀时 finally 不会执行）。
@@ -997,6 +1023,38 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// 安装包 / 绿色版替换共用的未保存前置：先扫描，再按需确认。
+    ///
+    /// 审计 P1-1：确认曾经排在安装包启动之后——点「暂不安装」时 Inno 已在后台跑，
+    /// 遇到文件占用会弹自己的「自动关闭应用程序」对话框，绕过全部确认；绿色版路径则完全没接。
+    /// 现在两条路径都必须先走这里：确认不通过就什么都不启动（安装包、重启帮手、替换助手）。
+    /// 「有未保存才弹窗、拒绝即取消」这条判定由
+    /// <see cref="Updating.UnsavedWindowGuard.DecideInstallGate"/> 纯函数锁住。
+    /// </summary>
+    private async Task<bool> ConfirmUnsavedBeforeInstall(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var unsaved = Updating.UnsavedWindowGuard.FindUnsaved(
+            desktop.Windows.Select(w => (
+                w.Title ?? "某个窗口",
+                Updating.UnsavedWindowGuard.HasUnsavedWork(w.DataContext))));
+
+        if (unsaved.Count == 0)
+            return Updating.UnsavedWindowGuard.DecideInstallGate(hasUnsavedWindows: false, userConfirmed: false)
+                == Updating.InstallGateOutcome.Proceed;
+
+        var proceed = await TeachCraft.Shared.ConfirmDialog.ShowAsync(
+            desktop.MainWindow ?? desktop.Windows.First(),
+            "安装更新会关闭所有窗口",
+            $"{string.Join("、", unsaved)} 还有未保存的内容。建议先导出或保存，再安装更新。仍要继续吗？",
+            "继续安装",
+            "暂不安装",
+            danger: true);
+
+        return Updating.UnsavedWindowGuard.DecideInstallGate(hasUnsavedWindows: true, userConfirmed: proceed)
+            == Updating.InstallGateOutcome.Proceed;
+    }
+
+    /// <summary>
     /// 执行安装包：静默升级、装完重启。
     ///
     /// 三个必须守住的点：
@@ -1017,6 +1075,12 @@ public partial class App : Application
             if (!File.Exists(setupPath))
                 return "安装包不见了，请重新下载。";
 
+            // 守卫必须在安装包启动之前（审计 P1-1）：确认排在 Process.Start 之后时，
+            // 点「暂不安装」拦不住已在后台运行的 Inno——它会弹自己的「自动关闭应用程序」
+            // 对话框，把带着未保存工作的窗口一并关掉，UnsavedWindowGuard 形同虚设。
+            if (!await ConfirmUnsavedBeforeInstall(desktop).ConfigureAwait(true))
+                return "已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。";
+
             var installerDir = Path.GetDirectoryName(setupPath) ?? ".";
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
@@ -1035,26 +1099,8 @@ public partial class App : Application
             {
                 // 助手进程负责：等安装包退出 → 等本进程退出 → 重启新版本。
                 // 它看不见本进程的 Dispatcher，所以不会被 Shutdown 打断。
+                // 必须等确认通过才安排——否则取消安装后帮手残留，等一个不会退出的进程。
                 StartRestartHelper(installer.Id, Environment.ProcessId, exe);
-            }
-
-            // 关窗之前先问一句：Shutdown 会绕过各窗口自己的 OnClosing 确认。
-            // 手动点 X 有防线、点「更新」反而没有，这个不对称最伤（审计 P1-3）。
-            var unsaved = Updating.UnsavedWindowGuard.FindUnsaved(
-                desktop.Windows.Select(w => (
-                    w.Title ?? "某个窗口",
-                    Updating.UnsavedWindowGuard.HasUnsavedWork(w.DataContext))));
-            if (unsaved.Count > 0)
-            {
-                var proceed = await TeachCraft.Shared.ConfirmDialog.ShowAsync(
-                    desktop.MainWindow ?? desktop.Windows.First(),
-                    "安装更新会关闭所有窗口",
-                    $"{string.Join("、", unsaved)} 还有未保存的内容。建议先导出或保存，再安装更新。仍要继续吗？",
-                    "继续安装",
-                    "暂不安装",
-                    danger: true);
-                if (!proceed)
-                    return "已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。";
             }
 
             // 到这里安装包已经在跑，可以安全退出。
@@ -1082,7 +1128,7 @@ public partial class App : Application
     /// 失败处理：助手把结果写进一个标记文件，新版本启动时读它并提示用户。
     /// 没有这一步，替换失败会表现成「点了更新，程序关了再没回来」。
     /// </summary>
-    private string RunPortableReplace(
+    private async Task<string> RunPortableReplace(
         IClassicDesktopStyleApplicationLifetime desktop,
         string archivePath,
         InstallerPlan plan)
@@ -1096,6 +1142,11 @@ public partial class App : Application
 
         try
         {
+            // 与安装包路径共用同一条前置（审计 P1-1）：替换助手一旦启动，
+            // 就会在本进程退出后覆盖文件，取消必须发生在助手启动之前。
+            if (!await ConfirmUnsavedBeforeInstall(desktop).ConfigureAwait(true))
+                return "已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。";
+
             StartPortableReplaceHelper(archivePath, targetDir, exe, Environment.ProcessId);
 
             // 与安装包路径同理：必须先释放单实例锁，否则重启的新版本 TryAcquire 失败会直接退出。

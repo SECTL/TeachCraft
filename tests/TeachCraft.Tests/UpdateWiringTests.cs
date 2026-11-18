@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using TeachCraft.App.ViewModels;
 using TeachCraft.Core.Updating;
 
@@ -297,5 +299,178 @@ public sealed class UpdateWiringTests
 
         Assert.True(vm.IsUpdateAvailable);
         Assert.Equal("1.19.0", vm.PendingUpdate!.VersionText);
+    }
+
+    // ------------------------------------------------------------ P2-28 失败配色 / P3-35 跳过话术
+
+    [Fact]
+    public async Task InstallFailure_MarksIsLastInstallFailureSoStatusBarKeepsRed()
+    {
+        // 修复前：失败在 ViewModel 里已按 error:true 画红点，但状态栏 mini 按钮的处理器
+        // 拿到返回文案后无条件 SetStatus（默认绿）——失败被自己的收尾冲成绿色。
+        // ViewModel 必须把「这是失败终态」如实告诉界面（IsLastInstallFailure），
+        // 调用方据此沿用 error:true。
+        var vm = new MainViewModel(
+            checkService: new FeedStub(HasUpdate()),
+            identity: BuildIdentity.Parse("1.17.0.sc.win-x64"),
+            installInfo: new InstallInfo(InstallKind.InnoInstall, @"C:\app", "sc", "win-x64"),
+            stateStore: new MemoryStateStore(),
+            downloaderFactory: () => new UpdateDownloader(new FailingDownloadHandler()));
+        await vm.CheckUpdateAsync(fromUserGesture: true);
+        Assert.True(vm.IsUpdateAvailable);
+
+        var message = await vm.DownloadAndInstallAsync();
+
+        Assert.False(string.IsNullOrEmpty(message));
+        Assert.True(vm.IsLastInstallFailure, "失败终态必须标记 IsLastInstallFailure，否则状态栏会把它刷成绿色");
+        Assert.Contains(vm.StatusText, message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SuccessfulGuidance_IsNotMarkedAsFailure()
+    {
+        // ShowGuidance 形态（macOS / Linux / 认不出安装形态）是成功终态：
+        // 状态栏沿用 error: ViewModel.IsLastInstallFailure 时绝不能误报成红色。
+        SemanticVersion.TryParse("1.18.0", out var v);
+        // 资产声明的大小必须与 OKDownloadHandler 的占位包字节数一致，否则长度校验会拦下载。
+        var release = new ReleaseEntry("v1.18.0", v, false,
+            new[] { new ReleaseAsset("TeachCraft-v1.18.0-osx-arm64-sc.dmg", OKDownloadHandler.PackageSize, "https://e/dmg") });
+        var vm = new MainViewModel(
+            checkService: new FeedStub(UpdateCheckResult.Ok(release, new[] { release })),
+            identity: BuildIdentity.Parse("1.17.0.sc.osx-arm64"),
+            installInfo: new InstallInfo(InstallKind.MacBundle, @"/Applications", "sc", "osx-arm64"),
+            stateStore: new MemoryStateStore(),
+            downloaderFactory: () => new UpdateDownloader(new OKDownloadHandler("TeachCraft-v1.18.0-osx-arm64-sc.dmg")));
+
+        await vm.CheckUpdateAsync(fromUserGesture: true);
+        Assert.True(vm.IsUpdateAvailable);
+
+        await vm.DownloadAndInstallAsync();
+
+        Assert.False(vm.IsLastInstallFailure);
+    }
+
+    [Fact]
+    public async Task CancelledInstall_IsMarkedAsFailureForStatusBarColor()
+    {
+        // 安装前置确认被拒（「暂不安装」）也是失败终态：绿色会让人误读成安装已在进行。
+        // App 层的取消话术以「已取消安装」开头——用假 handler 驱动真实判定链。
+        SemanticVersion.TryParse("1.18.0", out var v);
+        var release = new ReleaseEntry("v1.18.0", v, false,
+            new[] { new ReleaseAsset("TeachCraft-v1.18.0-win-x64-sc-Setup.exe", OKDownloadHandler.PackageSize, "https://e/x") });
+
+        var vm = new MainViewModel(
+            checkService: new FeedStub(UpdateCheckResult.Ok(release, new[] { release })),
+            identity: BuildIdentity.Parse("1.17.0.sc.win-x64"),
+            installInfo: new InstallInfo(InstallKind.InnoInstall, @"C:\app", "sc", "win-x64"),
+            stateStore: new MemoryStateStore(),
+            downloaderFactory: () => new UpdateDownloader(new OKDownloadHandler("TeachCraft-v1.18.0-win-x64-sc-Setup.exe")));
+
+        await vm.CheckUpdateAsync(fromUserGesture: true);
+        vm.InstallerRequested += (_, _) => Task.FromResult("已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。");
+
+        await vm.DownloadAndInstallAsync();
+
+        Assert.True(vm.IsLastInstallFailure, "「已取消安装」必须按失败终态标记，状态栏保持红点");
+    }
+
+    [Fact]
+    public void DismissUpdate_RecordsSkippedVersionForStatusFeedback()
+    {
+        // P3-35：跳过后状态栏要有结果话术；话术里的版本号来自 LastSkippedVersion。
+        var vm = new MainViewModel(
+            checkService: new FeedStub(HasUpdate()),
+            identity: BuildIdentity.Parse("1.17.0.sc.win-x64"),
+            installInfo: new InstallInfo(InstallKind.InnoInstall, @"C:\app", "sc", "win-x64"),
+            stateStore: new MemoryStateStore());
+
+        Assert.Null(vm.LastSkippedVersion);
+
+        vm.DismissUpdate();
+        Assert.Null(vm.LastSkippedVersion);
+
+        vm.ArmPreviewBadge("1.18.0");
+        Assert.Null(vm.PendingUpdate); // 走查布景不设提案，跳过记不下版本号。
+
+        vm.DismissUpdate();
+        Assert.Null(vm.LastSkippedVersion);
+    }
+
+    [Fact]
+    public async Task DismissUpdate_AfterRealProposal_RecordsVersion()
+    {
+        var store = new MemoryStateStore();
+        var vm = new MainViewModel(
+            checkService: new FeedStub(HasUpdate()),
+            identity: BuildIdentity.Parse("1.17.0.sc.win-x64"),
+            installInfo: new InstallInfo(InstallKind.InnoInstall, @"C:\app", "sc", "win-x64"),
+            stateStore: store);
+
+        await vm.CheckUpdateAsync(fromUserGesture: true);
+        vm.DismissUpdate();
+
+        Assert.Equal("1.18.0", vm.LastSkippedVersion);
+        Assert.Contains("1.18.0", string.Join(",", store.State.SkippedVersions));
+    }
+
+    private sealed class FailingDownloadHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpRequestException("网络不可达（测试注入）", new SocketException());
+    }
+
+    /// <summary>
+    /// 按请求地址路由的最小假下载源：Releases API 喂 feed JSON、清单地址喂校验和、
+    /// 其余（真正的安装包下载）喂一个字节内容与校验和都自洽的占位包。
+    /// </summary>
+    private sealed class OKDownloadHandler : HttpMessageHandler
+    {
+        /// <summary>占位包字节数；fixture 里资产声明的 size 必须与此一致，否则长度校验会拦。</summary>
+        public const int PackageSize = 32;
+
+        private readonly string _assetName;
+        private readonly byte[] _package;
+        private readonly string _sha256;
+
+        public OKDownloadHandler(string assetName)
+        {
+            _assetName = assetName;
+            _package = new byte[PackageSize];
+            "teachcraft-placeholder-package"u8.CopyTo(_package);
+            _sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(_package)).ToLowerInvariant();
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var url = request.RequestUri!.ToString();
+
+            string body;
+            if (url.Contains("releases", StringComparison.OrdinalIgnoreCase))
+            {
+                // Releases API：一份带目标资产 + 清单资产的最小 feed。
+                var assetUrl = $"https://e/{_assetName}";
+                var sumsUrl = $"https://e/sums";
+                body = $$"""
+                    [{"tag_name":"v1.18.0","prerelease":false,"assets":[
+                      {"name":"{{_assetName}}","size":{{_package.Length}},"browser_download_url":"{{assetUrl}}"},
+                      {"name":"{{AssetNaming.ChecksumsName("v1.18.0")}}","size":1,"browser_download_url":"{{sumsUrl}}"}]}]
+                    """;
+            }
+            else if (url.Contains("sums", StringComparison.OrdinalIgnoreCase))
+            {
+                body = $"{_sha256}  {_assetName}\n";
+            }
+            else
+            {
+                body = System.Text.Encoding.UTF8.GetString(_package);
+            }
+
+            var ms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(body));
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(ms) };
+            response.Content.Headers.ContentLength = ms.Length;
+            return Task.FromResult(response);
+        }
     }
 }

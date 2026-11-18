@@ -191,3 +191,140 @@ public sealed class SingleInstanceGuard : IDisposable
         }
     }
 }
+
+/// <summary>
+/// 「二次启动唤回已有窗口」的命名信号（审计 P2-25）。
+///
+/// 互斥锁只解决「不弹第二个窗口」——第二个进程退出后，老师点任务栏图标
+/// 仍然没有任何反应，看起来像程序坏了。有了这条信号，第二实例在退出前把
+/// 命名事件置为有信号状态，首实例的等待线程被唤醒后把主窗口激活置前。
+///
+/// 命名 <see cref="EventWaitHandle"/>（AutoReset）做跨进程唤醒是 Windows
+/// 常规做法；名字与互斥锁同域（Local\），跨用户会话互不可见，与守卫的
+/// 隔离语义一致。所有成员静态、内部全部走同一把锁，线程安全。
+///
+/// 这一层只做「信号与等待」的纯机制，不碰 UI；激活在 App 层的回调里
+/// Post 回 UI 线程。失败一律静默：唤回窗口是体验增强，不是数据安全线，
+/// 信号断掉的表现必须恰好是修复前的行为（第二实例退出、什么都不发生）。
+/// </summary>
+public static class SingleInstanceSignal
+{
+    private const string HandleName = @"Local\TeachCraft.App.Activate";
+
+    private static readonly object Gate = new();
+    private static readonly ManualResetEvent Quit = new(initialState: false);
+    private static EventWaitHandle? _handle;
+    private static Thread? _listener;
+    private static bool _listenerStarted;
+    private static volatile Action? _onSignal;
+
+    /// <summary>
+    /// 唤醒首实例：把信号置为有信号状态。首实例尚未注册等待也不丢——
+    /// 句柄是命名内核对象，信号留在系统里，首实例注册后第一次等待立即返回。
+    /// </summary>
+    public static void SignalFirstInstance()
+    {
+        try
+        {
+            EnsureHandle().Set();
+        }
+        catch (Exception)
+        {
+            // 信号发不出去就当没有唤回能力，绝不能影响第二实例的正常退出。
+        }
+    }
+
+    /// <summary>
+    /// 注册等待线程，信号到达时在专用线程上触发 <paramref name="signal"/>。
+    /// 回调应自行 Post 到 UI 线程——等待线程碰不了 Avalonia。
+    /// 重复调用只替换回调，不叠加线程；先于注册发出的信号也会送达。
+    /// </summary>
+    public static void StartListener(Action signal)
+    {
+        if (signal is null) throw new ArgumentNullException(nameof(signal));
+
+        lock (Gate)
+        {
+            if (_listenerStarted) { _onSignal = signal; return; }
+
+            Quit.Reset();
+            _onSignal = signal;
+            var listener = new Thread(ListenLoop)
+            {
+                IsBackground = true,
+                Name = "TeachCraft.SingleInstanceSignal",
+            };
+            _listener = listener;
+            _listenerStarted = true;
+            listener.Start();
+        }
+    }
+
+    /// <summary>停止等待线程并释放句柄。供测试复位；进程退出不需要调用（后台线程随进程消亡）。</summary>
+    public static void Reset()
+    {
+        lock (Gate)
+        {
+            if (!_listenerStarted && _handle is null) return;
+
+            try { Quit.Set(); } catch (Exception) { }
+            var listener = _listener;
+            _listener = null;
+            _listenerStarted = false;
+            _onSignal = null;
+            listener?.Join(TimeSpan.FromSeconds(2));
+            try { _handle?.Dispose(); } catch (Exception) { }
+            _handle = null;
+            try { Quit.Reset(); } catch (Exception) { }
+        }
+    }
+
+    private static EventWaitHandle EnsureHandle()
+    {
+        lock (Gate)
+        {
+            if (_handle is null)
+                _handle = new EventWaitHandle(false, EventResetMode.AutoReset, HandleName, out _);
+            return _handle;
+        }
+    }
+
+    private static void ListenLoop()
+    {
+        EventWaitHandle handle;
+        try
+        {
+            handle = EnsureHandle();
+        }
+        catch (Exception)
+        {
+            // 起不来等待线程就当没有唤回能力；别让一次内核对象失败掀掉进程。
+            return;
+        }
+
+        while (true)
+        {
+            int signaled;
+            try
+            {
+                signaled = WaitHandle.WaitAny(new WaitHandle[] { handle, Quit });
+            }
+            catch (Exception)
+            {
+                // 句柄失效（测试 Reset 后遗留等极端情形）：等待线程安静退出。
+                return;
+            }
+
+            if (signaled != 0) return; // Quit 或意外索引：退出线程
+
+            try
+            {
+                _onSignal?.Invoke();
+            }
+            catch (Exception)
+            {
+                // 回调炸了不能掀掉等待线程，下一次信号还要能送达。
+            }
+        }
+    }
+}

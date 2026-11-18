@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private MeetRoster.App.MeetRosterWindow? _meetRosterWindow;
     private GradeStrip.App.Views.MainWindow? _gradeStripWindow;
     private bool _runDialogOpen;   // 输出对话框 / 任务运行期间的重入守卫
+    private OobeViewModel? _oobeHooked; // 引导关闭焦点归还的订阅目标（随 DataContext 换绑）
     public MainWindow()
     {
         InitializeComponent();
@@ -45,6 +46,29 @@ public partial class MainWindow : Window
         // 仓库里其余 16 个窗口都在 Opened 时把自己钳进工作区，唯独主窗口一直没做：
         // 1366×768 @125% 下工作区只有约 590 DIP 高，而窗口固定 840，底栏会落在屏幕外。
         Opened += (_, _) => WindowFit.Clamp(this);
+
+        // 引导遮罩关闭后把焦点还给搜索框（审计 P3-38）：遮罩期间 AppContent 被禁用，
+        // 焦点随 IsVisible=false 丢回窗口级；不还回去的话，老师关闭引导后直接敲键盘没反应，
+        // 要先拿鼠标点一下界面。DataContext 由 App 层在构造之后赋值，只能在这里挂钩。
+        // DataContext 可能更换（走查/测试重复赋值），旧的订阅跟着 OobeViewModel 一起解绑。
+        // 走查通道不受影响：焦点归还只是把键盘焦点挪回搜索框，无副作用。
+        DataContextChanged += (_, _) =>
+        {
+            if (_oobeHooked is not null) _oobeHooked.Closed -= OnOobeClosed;
+            _oobeHooked = DataContextAsMainViewModel?.Oobe;
+            _oobeHooked?.Closed += OnOobeClosed;
+        };
+    }
+
+    /// <summary>引导遮罩关闭（看完 / 跳过）后，焦点回到搜索框，键盘立即可用。</summary>
+    private void OnOobeClosed()
+    {
+        // 关闭引导的入口（Esc / 跳过 / 开始使用 / 第 4 页入口按钮）之后内容区重新启用，
+        // 此时焦点归还搜索框与 Ctrl+K 的行为一致。
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (IsEffectivelyEnabled && SearchBox.IsEffectivelyEnabled) SearchBox.Focus();
+        }, DispatcherPriority.Input);
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext!;
@@ -52,11 +76,15 @@ public partial class MainWindow : Window
     /// <summary>走查用：把当前 DataContext 暴露成 ViewModel，供 --preview-update-badge 使用。</summary>
     internal MainViewModel? DataContextAsMainViewModel => DataContext as MainViewModel;
 
-    /// <summary>用户点「稍后」：收起提示条，并把该版本记进跳过列表。</summary>
+    /// <summary>
+    /// 用户点「跳过这版」：收起提示条、把该版本记进跳过列表，并在状态栏说清后果
+    /// （审计 P3-35：只恢复默认文案会让点击看起来毫无反应）。
+    /// </summary>
     private void OnDismissUpdateClick(object? sender, RoutedEventArgs e)
     {
         ViewModel.DismissUpdate();
-        ViewModel.SetStatus(TeachCraft.App.ViewModels.MainViewModel.DefaultStatusText);
+        ViewModel.SetStatus(
+            $"已跳过 v{ViewModel.LastSkippedVersion ?? "此版本"}，可随时在「检查更新」页恢复提示。");
     }
 
     /// <summary>
@@ -83,7 +111,10 @@ public partial class MainWindow : Window
             });
 
             var message = await ViewModel.DownloadAndInstallAsync(progress);
-            ViewModel.SetStatus(message);
+            // 失败（含「已取消安装」）在 ViewModel 里已按 error:true 报过一次；
+            // 这里若无条件重报，红点会被这句默认绿色冲掉——失败的话术必须沿用失败配色（审计 P2-28）。
+            // 与面板版 OnPanelInstallUpdate（只写 UpdateStateText，不碰状态栏）保持各自的分工不变。
+            ViewModel.SetStatus(message, error: ViewModel.IsLastInstallFailure);
         }
         catch (Exception ex)
         {
