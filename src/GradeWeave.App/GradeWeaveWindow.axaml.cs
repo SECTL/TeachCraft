@@ -1417,7 +1417,8 @@ public partial class GradeWeaveWindow : Window
 
         ConstraintRules.TryGetLayeredGroupAt(
             ViewModel.Project, tag.ClassId, tag.DayIndex, tag.Period, out var layeredGroup);
-        if (lessons.Any(item => item.IsLayered) || layeredGroup is not null)
+        // 组已删除的孤儿走班课放行：ClearLessonAt 与拖拽也按同一判定放行，不能让指针入口互相矛盾。
+        if (ScheduleCellRules.IsActiveLayeredSlot(ViewModel.Project, lessons, layeredGroup))
         {
             var groupText = layeredGroup is null ? string.Empty : $"「{layeredGroup.Name}」";
             ViewModel.SetStatus($"这是走班组{groupText}的时段，生成课表时自动填入，不能手动放课。", true);
@@ -1453,11 +1454,20 @@ public partial class GradeWeaveWindow : Window
         var lesson = ViewModel.Project.LessonAt(tag.ClassId, tag.DayIndex, tag.Period);
         ConstraintRules.TryGetLayeredGroupAt(
             ViewModel.Project, tag.ClassId, tag.DayIndex, tag.Period, out var layeredGroup);
+        var slotLessons = ViewModel.Project.Lessons
+            .Where(item => item.ClassId == tag.ClassId &&
+                           item.DayIndex == tag.DayIndex &&
+                           item.Period == tag.Period)
+            .ToList();
         var isActivity = lesson?.IsActivity == true;
-        var isLayered = lesson?.IsLayered == true || layeredGroup is not null;
+        // 活走班照旧整格只读；孤儿走班课（组已删除）与 ClearLessonAt 同款放行，可编辑可清除。
+        var isLayered = ScheduleCellRules.IsActiveLayeredSlot(ViewModel.Project, slotLessons, layeredGroup);
+        var layeredMenu = ScheduleCellRules.LayeredMenuHeader(ViewModel.Project, slotLessons, layeredGroup);
+        // 锁定对任何走班课（含孤儿）都不适用：ToggleLessonLock 按 IsLayered 一律拒绝，菜单不能给假入口。
+        var hasLayeredLesson = lesson?.IsLayered == true || slotLessons.Any(item => item.IsLayered);
         var isLocked = lesson is not null && lesson.IsFixed && !isActivity;
         var canEdit = ViewModel.IsTimetableConfirmed && !isActivity && !isLayered;
-        var canLock = lesson is not null && !isActivity && !isLayered;
+        var canLock = lesson is not null && !isActivity && !hasLayeredLesson && layeredGroup is null;
 
         var menu = new ContextMenu();
 
@@ -1484,8 +1494,12 @@ public partial class GradeWeaveWindow : Window
 
         if (isActivity)
             menu.Items.Add(CreateMenuItem("活动占位由「活动」列表管理", null));
-        else if (isLayered)
-            menu.Items.Add(CreateMenuItem("走班时段由 03 步走班组管理", null));
+        else if (layeredMenu.Length > 0)
+            menu.Items.Add(CreateMenuItem(
+                layeredMenu,
+                layeredMenu == "清除残留走班课"
+                    ? () => ViewModel.ClearLessonAt(tag.ClassId, tag.DayIndex, tag.Period)
+                    : null));
 
         menu.Items.Add(new Separator());
 
@@ -1972,13 +1986,31 @@ public partial class GradeWeaveWindow : Window
     /// 切换工程前的确认。无路径工程的实体只存在于恢复文件里，而各入口都会 clearRecovery，
     /// 所以这里必须拦一次，否则误点「载入示例数据」会连恢复副本一起抹掉。
     /// </summary>
-    private async Task<bool> ConfirmSwitchProjectAsync(string action)
+    /// <param name="includeRecovery">
+    /// 为真时，即使当前没有打开工程，只要本机还躺着恢复文件也要确认——拖入导入这类入口
+    /// 在空状态下同样会 clearRecovery，不拦就会把崩溃前的成果静默抹掉。
+    /// </param>
+    private async Task<bool> ConfirmSwitchProjectAsync(string action, bool includeRecovery = false)
     {
-        if (!ViewModel.HasProject) return true;
+        var recovery = includeRecovery ? _autosaveStore.TryGetInfo() : null;
+        if (!ViewModel.HasProject && recovery is null) return true;
 
-        var detail = string.IsNullOrEmpty(_currentProjectPath)
-            ? "当前工程还没有保存到文件，切换后只留在恢复文件里，且会被新工程覆盖。"
-            : $"当前工程未保存的改动会丢失。已保存的部分在：{_currentProjectPath}";
+        string detail;
+        if (!string.IsNullOrEmpty(_currentProjectPath))
+        {
+            detail = $"当前工程未保存的改动会丢失。已保存的部分在：{_currentProjectPath}";
+        }
+        else if (ViewModel.HasProject)
+        {
+            detail = "当前工程还没有保存到文件，切换后只留在恢复文件里，且会被新工程覆盖。";
+        }
+        else
+        {
+            detail =
+                $"本机还有一份上次自动保存的恢复文件（{recovery!.SavedAt:MM-dd HH:mm} · " +
+                $"{(string.IsNullOrWhiteSpace(recovery.GradeName) ? "未命名年级" : recovery.GradeName)} " +
+                $"{recovery.ClassCount} 个班），导入新文件会把它清掉。";
+        }
 
         return await ConfirmDialog.ShowAsync(
             this, $"切换到「{action}」？", detail, "继续切换", "留在当前工程", danger: true);
@@ -2090,13 +2122,24 @@ public partial class GradeWeaveWindow : Window
         ViewModel.SetStatus("正在读取工作簿…");
         try
         {
-            var result = await Task.Run(() => new WeaveWorkbookImporter().Import(path));
-            StartAutosaveSession(null, clearRecovery: true);
+            // 先解析、成功后才开新会话（其中清恢复文件）：导入一份坏文件不该把上一次的恢复副本抹掉。
+            var result = await WorkbookImportGuard.ImportThenResetSessionAsync(
+                path,
+                target => new WeaveWorkbookImporter().Import(target),
+                () => StartAutosaveSession(null, clearRecovery: true));
             ViewModel.LoadImportResult(result, path);
         }
         catch (Exception ex)
         {
             Report(ex, "导入课表失败");
+            if (_autosaveStore.TryGetInfo() is not null)
+            {
+                ViewModel.SetAutosaveStatus(
+                    "自动保存 · 恢复文件仍在本机",
+                    "这次导入没有成功，上次的恢复文件未被清除，可以随时恢复。",
+                    false,
+                    false);
+            }
         }
         finally
         {
@@ -2463,13 +2506,21 @@ public partial class GradeWeaveWindow : Window
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
+        // 根 Grid 与空状态 Border 挂的是同一对处理器；冒泡到根时事件已被内层处理，不再重复判定。
+        if (e.Handled) return;
+
         e.DragEffects = e.DataTransfer.Contains(DataFormat.File) && !ViewModel.IsBusy
             ? DragDropEffects.Copy
             : DragDropEffects.None;
+        e.Handled = true;
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)
     {
+        // 空状态 Border 先处理时根 Grid 会再收到一次冒泡；不判 Handled 会导入两遍。
+        if (e.Handled) return;
+        e.Handled = true;
+
         if (ViewModel.IsBusy) return;
 
         var files = e.DataTransfer.TryGetFiles();
@@ -2478,13 +2529,15 @@ public partial class GradeWeaveWindow : Window
         var path = files.Select(GetLocalPath).FirstOrDefault(item => !string.IsNullOrWhiteSpace(item));
         if (string.IsNullOrWhiteSpace(path)) return;
 
-        var extension = Path.GetExtension(path);
-        if (!string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(extension, ".xls", StringComparison.OrdinalIgnoreCase))
-        {
-            ViewModel.SetStatus("织序支持 .xlsx 与 .xls 工作簿，其他格式请先在 Excel 中另存。", true);
-            return;
-        }
+        // 与「导入课表」按钮同标准，且空状态下也把恢复文件算进来：导入成功会清掉恢复副本，
+        // 拖一下就把崩溃前的成果抹掉，老师连后悔的机会都没有。
+        var proceed = await WorkbookImportGuard.ConfirmDropAsync(
+            path!,
+            ViewModel.HasProject,
+            _autosaveStore.TryGetInfo(),
+            (action, includeRecovery) => ConfirmSwitchProjectAsync(action, includeRecovery),
+            message => ViewModel.SetStatus(message, true));
+        if (!proceed) return;
 
         await ImportProjectAsync(path!);
     }

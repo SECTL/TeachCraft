@@ -32,6 +32,15 @@ public static class ConstraintRules
         return group is not null;
     }
 
+    /// <summary>
+    /// 走班课是否为「孤儿」：课带着 GroupId，但该组已不在工程里（旧文件或其他入口删组没清课）。
+    /// 活走班（组仍存在）返回 false，任何入口都必须照旧拒绝单独改动。
+    /// </summary>
+    public static bool IsOrphanedLayeredLesson(WeaveProject project, LessonPlacement? lesson) =>
+        lesson is { IsLayered: true } &&
+        !string.IsNullOrEmpty(lesson.GroupId) &&
+        project.LayeredGroups.All(g => g.Id != lesson.GroupId);
+
     /// <summary>走班组是否占用指定时段：固定组看配置区间，自动安排组看生成后的落位。</summary>
     public static bool IsGroupAt(LayeredClassGroup group, int dayIndex, int period) =>
         group.IsFlexible

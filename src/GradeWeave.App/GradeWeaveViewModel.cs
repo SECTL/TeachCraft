@@ -1564,7 +1564,8 @@ public partial class GradeWeaveViewModel : ObservableObject
             return;
         }
 
-        if (source.IsLayered)
+        // 活走班不能单独拖动；组已删除的孤儿走班课放行，与 ClearLessonAt / 指针入口同一判定。
+        if (source.IsLayered && !ConstraintRules.IsOrphanedLayeredLesson(Project, source))
         {
             SetStatus("走班课由走班组统一安排，不能单独拖动；请到 03 步调整走班组。", true);
             return;

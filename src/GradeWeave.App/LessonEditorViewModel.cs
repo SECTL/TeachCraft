@@ -30,7 +30,10 @@ public partial class LessonEditorViewModel : ObservableObject
             .ToList();
         var current = existing.FirstOrDefault(lesson => !lesson.IsLayered) ?? existing.FirstOrDefault();
 
-        CanClear = current is not null && !current.IsActivity && !current.IsLayered;
+        // 活走班课不能在这里清（走班组统一管理）；组已删除的孤儿课与 ClearLessonAt 同款放行。
+        CanClear = current is not null &&
+                   !current.IsActivity &&
+                   (!current.IsLayered || ConstraintRules.IsOrphanedLayeredLesson(project, current));
         CurrentText = DescribeCurrent(project, existing, current);
 
         foreach (var candidate in LessonPlacementService.GetCandidates(project, classId))

@@ -130,7 +130,8 @@ public static class LessonPlacementService
         if (existing.Any(lesson => lesson.IsActivity))
             return Fail($"{schoolClass.Name} {slotText} 是活动占位，请先在「活动」列表里处理。");
 
-        var layeredLesson = existing.Any(lesson => lesson.IsLayered);
+        var layeredLesson = existing.Any(lesson =>
+            lesson.IsLayered && !ConstraintRules.IsOrphanedLayeredLesson(project, lesson));
         LayeredClassGroup? layeredGroup = null;
         if (!layeredLesson)
             ConstraintRules.TryGetLayeredGroupAt(project, classId, dayIndex, period, out layeredGroup);
