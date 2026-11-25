@@ -2383,7 +2383,7 @@ public partial class GradeWeaveWindow : Window
             var conflicts = ViewModel.ConflictModels;
             var options = request.Options;
             await Task.Run(() => new WeaveExcelExporter().Export(project, conflicts, path, options));
-            var style = options.Style == WeaveExportStyle.Reference ? "参考校样式" : "软件自带样式";
+            var style = options.Style == WeaveExportStyle.Reference ? "软件自带样式2" : "软件自带样式";
             ViewModel.SetStatus($"已导出 Excel 课表（{style}）。");
         }
         catch (Exception ex)

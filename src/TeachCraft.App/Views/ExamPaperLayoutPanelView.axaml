@@ -1,0 +1,125 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             x:Class="TeachCraft.App.Views.ExamPaperLayoutPanelView"
+             x:DataType="vm:ToolItemViewModel">
+    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="420,*"
+          ColumnSpacing="18" Margin="28,24,28,28">
+        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Border Width="18" Height="1" Background="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="FILE / PDF" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                           LetterSpacing="1.8" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="9" Foreground="#C9C1AE" />
+                <TextBlock Text="试卷排版" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="panel-close" Click="OnClose" ToolTip.Tip="关闭"
+                    AutomationProperties.Name="关闭">
+                <Path Width="11" Height="11" Stretch="Uniform" Data="M3,3 L11,11 M11,3 L3,11"
+                      Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" StrokeLineCap="Round" />
+            </Button>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12" Margin="0,0,8,0">
+                <StackPanel Spacing="3" Margin="0,0,0,4">
+                    <TextBlock Text="试卷排版" FontFamily="{StaticResource SerifFont}" FontSize="26"
+                               Foreground="{StaticResource InkBrush}" />
+                    <TextBlock Text="把试卷排成便于复印、双面打印或折页装订的版式。"
+                               FontSize="11.5" LineHeight="18" TextWrapping="Wrap"
+                               Foreground="{StaticResource InkSoftBrush}" />
+                </StackPanel>
+
+                <Button Classes="dropzone" Click="OnPick" AutomationProperties.Name="选择试卷 PDF">
+                    <Border Classes="dropzone-inner">
+                        <Panel>
+                            <Rectangle Classes="dropzone-dash" />
+                            <StackPanel Spacing="6" HorizontalAlignment="Center" Margin="14,16">
+                                <TextBlock Text="选择一份 PDF 试卷" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
+                                <TextBlock Text="支持含文字、表格和扫描页的 PDF" FontSize="10"
+                                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Panel>
+                    </Border>
+                </Button>
+                <Grid ColumnDefinitions="*,Auto" Margin="2,0,0,0">
+                    <TextBlock Text="{Binding FileSummary}" FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource MutedBrush}" />
+                    <Button Grid.Column="1" Classes="link" Content="清空" FontSize="10.5"
+                            Foreground="{StaticResource MutedBrush}" IsVisible="{Binding HasFiles}"
+                            Click="OnClearFiles" />
+                </Grid>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="field-label" Text="排版方式" />
+                    <ComboBox Classes="field" ItemsSource="{Binding ExamPaperLayoutModes}"
+                              SelectedItem="{Binding SelectedExamPaperLayoutMode, Mode=TwoWay}"
+                              AutomationProperties.Name="排版方式" />
+                    <TextBlock Classes="helper" Text="2 合 1 保持原页顺序；小册子按折页顺序排列，打印时选择双面短边翻转。" />
+                </StackPanel>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="field-label" Text="最终打印清晰度" />
+                    <ComboBox Classes="field" ItemsSource="{Binding ExamPaperDpiModes}"
+                              SelectedItem="{Binding SelectedExamPaperDpi, Mode=TwoWay}"
+                              AutomationProperties.Name="最终打印清晰度" />
+                    <TextBlock Text="{Binding ExamPaperDpiHint}" Classes="helper" />
+                </StackPanel>
+
+                <Border Classes="chart-card" Padding="10,8">
+                    <TextBlock Text="{Binding PlainNote}" Classes="helper" />
+                </Border>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
+                    <TextBlock Text="正在排版…" FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+                    <Button Classes="link" Content="取消" Click="OnCancelTool"
+                            IsVisible="{Binding !CancelRequested}" AutomationProperties.Name="取消试卷排版" />
+                </StackPanel>
+                <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}" FontSize="10.5"
+                           LineHeight="17" TextWrapping="Wrap" Foreground="{Binding ResultBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Grid.Column="1" Background="{StaticResource PaperDeepBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="14">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,2,10">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="排版预览" FontFamily="{StaticResource SerifFont}" FontSize="15"
+                                   Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="{Binding ExamPaperPreviewCaption}" FontSize="10"
+                                   Foreground="{StaticResource InkSoftBrush}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="PREVIEW" FontFamily="{StaticResource MonoFont}"
+                               FontSize="9" LetterSpacing="1.6" Foreground="{StaticResource MutedBrush}"
+                               VerticalAlignment="Center" />
+                </Grid>
+                <Border Grid.Row="1" Background="{StaticResource CardBrush}"
+                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <Panel>
+                        <Image IsVisible="{Binding HasExamPaperPreview}"
+                               Source="{Binding ExamPaperPreviewImage}" Stretch="Uniform"
+                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                               AutomationProperties.Name="试卷排版预览" />
+                        <StackPanel IsVisible="{Binding ShowExamPaperPreviewEmpty}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="7">
+                            <TextBlock Text="{Binding ExamPaperPreviewEmptyText}" FontSize="11"
+                                       TextAlignment="Center" TextWrapping="Wrap" MaxWidth="320"
+                                       Foreground="{StaticResource MutedBrush}" />
+                        </StackPanel>
+                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsExamPaperPreviewBusy}"
+                                     VerticalAlignment="Bottom" Height="2" />
+                    </Panel>
+                </Border>
+                <TextBlock Grid.Row="2" Text="{Binding ExamPaperPreviewDetail}"
+                           FontSize="10" LineHeight="16" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}" Margin="2,8,2,0" />
+            </Grid>
+        </Border>
+
+        <Button Grid.Column="0" Grid.Row="2" Classes="primary" Content="开始排版" Click="OnRun"
+                IsEnabled="{Binding CanRun}" HorizontalAlignment="Stretch" Height="40"
+                Margin="0,12,8,0" AutomationProperties.Name="开始试卷排版" />
+    </Grid>
+</UserControl>

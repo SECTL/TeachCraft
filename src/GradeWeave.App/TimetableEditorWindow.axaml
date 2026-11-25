@@ -9,43 +9,13 @@
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource PaperBrush}">
     <Window.Styles>
-        <Style Selector="TextBlock.field-label">
-            <Setter Property="FontSize" Value="10.5" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="LetterSpacing" Value="0.4" />
-        </Style>
-        <Style Selector="TextBlock.helper">
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="LineHeight" Value="16" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
         <Style Selector="TextBlock.card-title">
-            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="FontSize" Value="15" />
             <Setter Property="FontFamily" Value="{StaticResource SerifFont}" />
             <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
         </Style>
         <Style Selector="TextBlock.mono">
             <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-        </Style>
-        <Style Selector="TextBox.field">
-            <Setter Property="Background" Value="#FCFBF7" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="MinHeight" Value="30" />
-        </Style>
-        <Style Selector="ComboBox.field">
-            <Setter Property="Background" Value="#FCFBF7" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="8,0" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
         </Style>
         <Style Selector="ListBox.timetable">
             <Setter Property="Background" Value="Transparent" />
@@ -62,30 +32,29 @@
             <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style Selector="ListBox.timetable ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#F8F4EA" />
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
         </Style>
         <Style Selector="ListBox.timetable ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#FBF3EC" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#F1EEE5" />
+            <Setter Property="BorderBrush" Value="#D6D1C4" />
         </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
         <!-- 顶栏：标题 + 内置预设 -->
-        <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="20,14">
+        <Border Grid.Row="0" Classes="dialog-header">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
                 <StackPanel Spacing="3">
                     <StackPanel Orientation="Horizontal" Spacing="9">
-                        <TextBlock Text="作息时间表" FontFamily="{StaticResource SerifFont}"
-                                   FontSize="19" Foreground="{StaticResource InkBrush}" />
-                        <Border Background="#F4F1E8" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
-                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                        <TextBlock Text="作息时间表" Classes="section-title" FontSize="18" />
+                        <Border Classes="seat-tag">
                             <TextBlock Text="{Binding TableName}" FontSize="10" Foreground="{StaticResource MutedBrush}" />
                         </Border>
+                        <TextBlock Text="TIMETABLE" Classes="eyebrow" />
                     </StackPanel>
                     <TextBlock Text="按学校作息排出一天的时段；确认后「正课」与「课服 / 晚修」会成为编排节次。"
-                               FontSize="10" Foreground="{StaticResource MutedBrush}" />
+                               Classes="helper" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <ComboBox Classes="field" Width="250" ItemsSource="{Binding Presets}"
@@ -101,8 +70,7 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Button Classes="ghost" Content="套用预设" Click="OnApplyPreset"
-                            FontSize="11.5" Padding="12,7"
+                    <Button Classes="ghost top" Content="套用预设" Click="OnApplyPreset"
                             AutomationProperties.Name="用所选预设替换作息草稿" />
                 </StackPanel>
             </Grid>
@@ -384,17 +352,15 @@
         </Border>
 
         <!-- 底部按钮 -->
-        <Border Grid.Row="4" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="20,12">
+        <Border Grid.Row="4" Classes="dialog-footer">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <TextBlock Text="改动先保存在草稿里；点「确认并应用」才会写入工程并重新生成节次。"
-                           FontSize="10" Foreground="{StaticResource MutedBrush}"
-                           VerticalAlignment="Center" TextWrapping="Wrap" />
+                           Classes="helper" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Button Classes="ghost" Content="取消" Click="OnCancel"
-                            FontSize="11.5" Padding="14,7" IsCancel="True"
-                            AutomationProperties.Name="取消编辑作息" />
-                    <Button Classes="primary" Content="确认并应用" Click="OnConfirm"
-                            FontSize="11.5" Padding="16,7" IsEnabled="{Binding CanConfirm}" IsDefault="True"
+                    <Button Classes="ghost top" Content="取消" Click="OnCancel"
+                            IsCancel="True" AutomationProperties.Name="取消编辑作息" />
+                    <Button Classes="primary top" Content="确认并应用" Click="OnConfirm"
+                            Padding="16,7" IsEnabled="{Binding CanConfirm}" IsDefault="True"
                             AutomationProperties.Name="确认并应用作息" />
                 </StackPanel>
             </Grid>

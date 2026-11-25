@@ -10,19 +10,8 @@
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource PaperBrush}">
     <Window.Styles>
-        <Style Selector="TextBlock.field-label">
-            <Setter Property="FontSize" Value="10.5" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="LetterSpacing" Value="0.4" />
-        </Style>
-        <Style Selector="TextBlock.helper">
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="LineHeight" Value="16" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
         <Style Selector="TextBox.cell">
-            <Setter Property="Background" Value="{StaticResource WashBrush}" />
+            <Setter Property="Background" Value="#FCFBF7" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="4" />
@@ -31,7 +20,7 @@
             <Setter Property="MinHeight" Value="26" />
         </Style>
         <Style Selector="ComboBox.cell">
-            <Setter Property="Background" Value="{StaticResource WashBrush}" />
+            <Setter Property="Background" Value="#FCFBF7" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="4" />
@@ -48,50 +37,6 @@
             <Setter Property="Height" Value="26" />
             <Setter Property="Margin" Value="0,0,4,0" />
         </Style>
-        <Style Selector="Button.seg">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="6,6" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="FontWeight" Value="Normal" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-        </Style>
-        <Style Selector="Button.seg:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-        </Style>
-        <Style Selector="Button.seg.active /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource WashHoverBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
-        </Style>
-        <!-- 悬停在已选中的分段按钮上时保留陶土色，否则看起来像被取消选中。 -->
-        <Style Selector="Button.seg.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#F8EDE4" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
-        </Style>
-        <Style Selector="Border.panel-card">
-            <Setter Property="Background" Value="{StaticResource CardBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="10" />
-        </Style>
-        <Style Selector="TextBox.search-mini">
-            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="FontSize" Value="10.5" />
-            <Setter Property="MinHeight" Value="28" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-        </Style>
         <Style Selector="ListBox.pick">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -99,15 +44,15 @@
         </Style>
         <Style Selector="ListBox.pick ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="7,6" />
+            <Setter Property="Padding" Value="8,6" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Margin" Value="0,1" />
         </Style>
-        <Style Selector="ListBox.pick ListBoxItem:pointerover">
+        <Style Selector="ListBox.pick ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
         </Style>
-        <Style Selector="ListBox.pick ListBoxItem:selected">
-            <Setter Property="Background" Value="{StaticResource PaperDeepBrush}" />
+        <Style Selector="ListBox.pick ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1EEE5" />
         </Style>
         <Style Selector="Border.table-head">
             <Setter Property="Background" Value="#F1EFE9" />
@@ -145,37 +90,41 @@
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="18,12">
-            <StackPanel Spacing="2">
-                <TextBlock Text="教师分工" FontFamily="{StaticResource SerifFont}"
-                           FontSize="18" Foreground="{StaticResource InkBrush}" />
-                <TextBlock Text="第 1 步先建立教师名单（姓名 + 学科），再到班级、教师、学科视角分配任课；五种视角共享同一份草稿，点「保存分工」才写回工程。"
-                           FontSize="10" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
-                <TextBlock Text="工程里还没有学科：请先导入含分工表 / 课程表的工作簿，或用「全新制作」配置学科与周课时。"
-                           IsVisible="{Binding !HasSubjects}" FontSize="10"
-                           Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
-            </StackPanel>
+        <Border Grid.Row="0" Classes="dialog-header">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="教师分工" Classes="section-title" FontSize="18" />
+                    <TextBlock Text="第 1 步先建立教师名单（姓名 + 学科），再到班级、教师、学科视角分配任课；五种视角共享同一份草稿，点「保存分工」才写回工程。"
+                               Classes="helper" />
+                    <TextBlock Text="工程里还没有学科：请先导入含分工表 / 课程表的工作簿，或用「全新制作」配置学科与周课时。"
+                               IsVisible="{Binding !HasSubjects}" FontSize="10"
+                               Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="ASSIGNMENTS" Classes="eyebrow" />
+            </Grid>
         </Border>
 
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="12"
-              Margin="18,10,18,0">
-            <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4" Width="560">
-                <Button Classes="seg" Classes.active="{Binding IsRosterView}"
-                        Command="{Binding ShowRosterViewCommand}" Content="教师名单"
-                        AutomationProperties.Name="切换到教师名单" />
-                <Button Grid.Column="1" Classes="seg" Classes.active="{Binding IsClassView}"
-                        Command="{Binding ShowClassViewCommand}" Content="班级视角"
-                        AutomationProperties.Name="切换到班级视角" />
-                <Button Grid.Column="2" Classes="seg" Classes.active="{Binding IsTeacherView}"
-                        Command="{Binding ShowTeacherViewCommand}" Content="教师视角"
-                        AutomationProperties.Name="切换到教师视角" />
-                <Button Grid.Column="3" Classes="seg" Classes.active="{Binding IsSubjectView}"
-                        Command="{Binding ShowSubjectViewCommand}" Content="学科视角"
-                        AutomationProperties.Name="切换到学科视角" />
-                <Button Grid.Column="4" Classes="seg" Classes.active="{Binding IsOverviewView}"
-                        Command="{Binding ShowOverviewViewCommand}" Content="分工体检"
-                        AutomationProperties.Name="切换到分工体检" />
-            </Grid>
+              Margin="16,12,16,0">
+            <Border Classes="segmented">
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="2" Width="540">
+                    <Button Classes="segment" Classes.active="{Binding IsRosterView}"
+                            Command="{Binding ShowRosterViewCommand}" Content="教师名单"
+                            AutomationProperties.Name="切换到教师名单" />
+                    <Button Grid.Column="1" Classes="segment" Classes.active="{Binding IsClassView}"
+                            Command="{Binding ShowClassViewCommand}" Content="班级视角"
+                            AutomationProperties.Name="切换到班级视角" />
+                    <Button Grid.Column="2" Classes="segment" Classes.active="{Binding IsTeacherView}"
+                            Command="{Binding ShowTeacherViewCommand}" Content="教师视角"
+                            AutomationProperties.Name="切换到教师视角" />
+                    <Button Grid.Column="3" Classes="segment" Classes.active="{Binding IsSubjectView}"
+                            Command="{Binding ShowSubjectViewCommand}" Content="学科视角"
+                            AutomationProperties.Name="切换到学科视角" />
+                    <Button Grid.Column="4" Classes="segment" Classes.active="{Binding IsOverviewView}"
+                            Command="{Binding ShowOverviewViewCommand}" Content="分工体检"
+                            AutomationProperties.Name="切换到分工体检" />
+                </Grid>
+            </Border>
             <TextBlock Grid.Column="1" Text="{Binding DraftSummary}" FontFamily="{StaticResource MonoFont}"
                        FontSize="9.5" Foreground="{StaticResource MutedBrush}"
                        VerticalAlignment="Center" HorizontalAlignment="Right" />
@@ -210,16 +159,15 @@
             <Border Grid.Row="1" Classes="panel-card">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,180,Auto" ColumnSpacing="8">
-                        <TextBox Classes="search-mini" Text="{Binding NewTeacherName, Mode=TwoWay}"
+                        <TextBox Classes="field" Text="{Binding NewTeacherName, Mode=TwoWay}"
                                  PlaceholderText="教师姓名"
                                  AutomationProperties.Name="新教师姓名" />
-                        <ComboBox Grid.Column="1" Classes="cell" MinHeight="28"
+                        <ComboBox Grid.Column="1" Classes="field"
                                   ItemsSource="{Binding SubjectChoices}"
                                   SelectedItem="{Binding NewTeacherSubject, Mode=TwoWay}"
                                   AutomationProperties.Name="新教师学科" />
-                        <Button Grid.Column="2" Classes="primary" Content="+ 添加教师"
+                        <Button Grid.Column="2" Classes="primary top" Content="+ 添加教师"
                                 Command="{Binding AddTeacherCommand}"
-                                FontSize="10.5" Padding="12,5"
                                 AutomationProperties.Name="添加教师到名单" />
                     </Grid>
 
@@ -437,7 +385,7 @@
                 <Grid RowDefinitions="Auto,Auto,*">
                     <TextBlock Text="教师名录" Classes="field-label" />
                     <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,6,0,6">
-                        <TextBox Classes="search-mini" Text="{Binding TeacherSearchText, Mode=TwoWay}"
+                        <TextBox Classes="search compact" Text="{Binding TeacherSearchText, Mode=TwoWay}"
                                  PlaceholderText="搜索教师或学科"
                                  AutomationProperties.Name="搜索教师" />
                         <Button Grid.Column="1" Classes="ghost" Content="+ 添加教师"
@@ -931,15 +879,15 @@
             </Grid>
         </Grid>
 
-        <Border Grid.Row="3" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="18,12">
+        <Border Grid.Row="3" Classes="dialog-footer">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                 <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}"
                            FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}"
                            VerticalAlignment="Center" TextWrapping="Wrap" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Button Classes="ghost" Content="取消" Click="OnCancel" FontSize="11.5" Padding="14,7"
+                    <Button Classes="ghost top" Content="取消" Click="OnCancel"
                             IsCancel="True" AutomationProperties.Name="取消编辑分工" />
-                    <Button Classes="primary" Content="保存分工" Click="OnSave" FontSize="11.5" Padding="16,7"
+                    <Button Classes="primary top" Content="保存分工" Click="OnSave" Padding="16,7"
                             IsDefault="True" AutomationProperties.Name="保存分工" />
                 </StackPanel>
             </Grid>

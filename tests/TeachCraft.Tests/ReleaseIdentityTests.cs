@@ -159,9 +159,11 @@ public sealed class ReleaseIdentityTests
     }
 
     [Fact]
-    public void Release_BodyStatesCheckUpdateIsTheOnlyNetworkUse()
+    public void Release_BodyStatesThreeOptInNetworkSurfaces()
     {
         var wf = RepoRoot.Read(".github/workflows/release-draft.yml");
-        Assert.Contains("仅「检查更新」会联网", wf);
+        Assert.Contains("联网只有三处", wf);
+        Assert.Contains("默认关闭", wf);
+        Assert.DoesNotContain("仅「检查更新」会联网", wf);
     }
 }

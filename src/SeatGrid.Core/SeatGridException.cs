@@ -12,4 +12,6 @@ public sealed class SeatGridException : Exception
     public SeatGridException(string message, Exception inner) : base(message, inner)
     {
     }
+
+    public string UserFacingMessage => Message;
 }

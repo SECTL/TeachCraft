@@ -266,4 +266,34 @@ public sealed class NoAdHocHttpClientTests
                 $"{path} 里出现了用默认 handler 构造的 HttpClient：{line}");
         }
     }
+
+    [Fact]
+    public void HttpClientIsOnlyConstructedFromInjectedHandlers_IncludesCloud()
+    {
+        // 与 HttpClientIsOnlyConstructedFromInjectedHandlers 同构，范围换到云同步层：
+        // new HttpClient( 必须带注入的 handler（SectlOAuthClient 就是这么做的）；
+        // 自建 new HttpClientHandler / new SocketsHttpHandler 一律禁止——那会绕过测试桩。
+        var files = RepoRoot.ReadAll(Path.Combine("src", "TeachCraft.Core", "Cloud"), ".cs").ToList();
+
+        var adHoc = files
+            .Where(f => f.Text.Contains("new HttpClientHandler(", StringComparison.Ordinal)
+                     || f.Text.Contains("new System.Net.Http.HttpClientHandler(", StringComparison.Ordinal)
+                     || f.Text.Contains("new SocketsHttpHandler(", StringComparison.Ordinal)
+                     || f.Text.Contains("new System.Net.Http.SocketsHttpHandler(", StringComparison.Ordinal))
+            .Select(f => f.Path)
+            .ToList();
+        Assert.Empty(adHoc);
+
+        var sites = files
+            .SelectMany(f => f.Text.Split('\n').Select(l => (f.Path, Line: l.Trim())))
+            .Where(x => x.Line.Contains("new HttpClient(", StringComparison.Ordinal))
+            .ToList();
+
+        foreach (var (path, line) in sites)
+        {
+            Assert.True(
+                line.Contains("handler", StringComparison.Ordinal) || line.Contains("SharedHandlers", StringComparison.Ordinal),
+                $"{path} 里出现了用默认 handler 构造的 HttpClient：{line}");
+        }
+    }
 }

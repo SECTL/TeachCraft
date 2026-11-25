@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using Avalonia.Media.Imaging;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TeachCraft.Core.Tools;
 
@@ -25,6 +28,7 @@ public partial class ToolItemViewModel : ObservableObject
     public ObservableCollection<FileEntryViewModel> FileEntries { get; } = new();
     public IReadOnlyList<string> Formats { get; }
     public IReadOnlyList<string> WatermarkPositions { get; } = new[] { "右下角", "左下角", "右上角", "左上角", "居中" };
+    public CertificateBatchDraft? Certificate { get; }
 
     [ObservableProperty] private string _selectedFormat = "PNG";
     [ObservableProperty] private double _quality = 85;
@@ -42,6 +46,17 @@ public partial class ToolItemViewModel : ObservableObject
     [ObservableProperty] private decimal? _dpiValue = 150;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private double _progress;
+    [ObservableProperty] private Bitmap? _examPaperPreviewImage;
+    [ObservableProperty] private string _examPaperPreviewCaption = string.Empty;
+    [ObservableProperty] private string _examPaperPreviewDetail = string.Empty;
+    [ObservableProperty] private string _examPaperPreviewEmptyText = "选择 PDF 后预览排版效果";
+    [ObservableProperty] private bool _isExamPaperPreviewBusy;
+    [ObservableProperty] private Bitmap? _certificatePreviewImage;
+    [ObservableProperty] private bool _isCertificatePreviewBusy;
+    [ObservableProperty] private string? _certificatePreviewError;
+    [ObservableProperty] private string _certificatePreviewCaption = string.Empty;
+    private CertificateDraftSignature? _certificateOutputSignature;
+    private CertificateDraftSignature? _certificateRequestSignature;
 
     /// <summary>真的开始推进时才显示进度条：恒为 0% 的进度条看起来像死机（审计 P2-30）。</summary>
     [ObservableProperty] private bool _hasProgress;
@@ -74,12 +89,27 @@ public partial class ToolItemViewModel : ObservableObject
         Description = description;
         Detail = detail ?? ToolDescriptionCatalog.ForTool(id);
         Category = category;
-        CategoryLabel = category == "image" ? "图片处理" : "格式工厂";
-        CategoryEn = category == "image" ? "IMAGE" : "FILE / PDF";
+        CategoryLabel = category switch
+        {
+            "image" => "图片处理",
+            "teach" => "教学工具",
+            _ => "格式工厂",
+        };
+        CategoryEn = category switch
+        {
+            "image" => "IMAGE",
+            "teach" => "TEACH / CLASS",
+            _ => "FILE / PDF",
+        };
         Glyph = glyph;
         InputText = inputText;
         OutputText = outputText;
         Formats = formats?.ToArray() ?? Array.Empty<string>();
+        if (kind == ToolKind.CertificateBatch)
+        {
+            Certificate = new CertificateBatchDraft();
+            Certificate.StateChanged += OnCertificateStateChanged;
+        }
 
         if (Formats.Count > 0) SelectedFormat = Formats[0];
         if (kind == ToolKind.ImageResize)
@@ -109,8 +139,9 @@ public partial class ToolItemViewModel : ObservableObject
     public string DescriptionAccessibleName =>
         Detail is null ? Name : $"{Name}，{DescriptionToggleLabel}";
 
-    public bool HasFiles => Files.Count > 0;
-    public bool CanRun => HasFiles && !IsBusy;
+    public bool HasFiles => IsCertificateBatch ? Certificate!.HasBothInputs : Files.Count > 0;
+    public bool CanRun => (IsCertificateBatch ? Certificate!.CanGenerate : HasFiles && (!IsTwoFile || Files.Count == 2)) && !IsBusy
+        && (!IsExcelClassSplit || CanRunExcelClassSplit);
     public bool HasOutput => !string.IsNullOrEmpty(LastOutputPath);
 
     public Avalonia.Media.IBrush ResultBrush => ResultIsError
@@ -125,7 +156,47 @@ public partial class ToolItemViewModel : ObservableObject
              (Files.Count > 2 ? " 等" : string.Empty),
     };
 
-    public bool IsMultiFile => Kind is ToolKind.ImagesToPdf or ToolKind.PdfMerge;
+    public bool IsTwoFile => Kind == ToolKind.RosterCompare;
+    public bool IsMultiFile => IsTwoFile || Kind is ToolKind.ImagesToPdf or ToolKind.PdfMerge;
+    public bool IsExcelClassSplit => Kind == ToolKind.ExcelClassSplit;
+    public bool IsExamPaperLayout => Kind == ToolKind.ExamPaperLayout;
+    public bool IsCertificateBatch => Kind == ToolKind.CertificateBatch;
+    public IReadOnlyList<string> ExamPaperLayoutModes { get; } = new[] { "2 合 1", "小册子" };
+    public IReadOnlyList<string> ExamPaperDpiModes { get; } = new[] { "300 DPI", "600 DPI", "1200 DPI" };
+    [ObservableProperty] private string _selectedExamPaperLayoutMode = "2 合 1";
+    [ObservableProperty] private string _selectedExamPaperDpi = "600 DPI";
+    private ExcelClassSplitPreview? _excelClassSplitPreview;
+    public bool CanRunExcelClassSplit => IsExcelClassSplit && Files.Count == 1 && _excelClassSplitPreview is not null;
+    public string ExcelClassSplitStatus { get; private set; } = "选择工作簿后先检测班级列。";
+
+    public bool UsesOutputFolder => IsFolderOutput(Kind);
+
+    public static bool IsFolderOutput(ToolKind kind) => kind is ToolKind.PdfToImages or ToolKind.ExcelClassSplit;
+
+    public bool TrySelectExcelClassSplitInput(IReadOnlyList<string> paths)
+    {
+        if (!IsExcelClassSplit || paths.Count != 1) return false;
+
+        var extension = Path.GetExtension(paths[0]);
+        if (!extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase)
+            && !extension.Equals(".xls", StringComparison.OrdinalIgnoreCase)) return false;
+
+        ReplaceFiles(paths);
+        try
+        {
+            _excelClassSplitPreview = ExcelClassSplitter.Inspect(paths[0]);
+            ExcelClassSplitStatus = $"已识别：{_excelClassSplitPreview.SheetName} · 班级列“{_excelClassSplitPreview.ClassColumnName}” · {_excelClassSplitPreview.ClassNames.Count} 个班级。";
+        }
+        catch (ToolboxException ex)
+        {
+            _excelClassSplitPreview = null;
+            ExcelClassSplitStatus = ex.Message;
+        }
+        OnPropertyChanged(nameof(CanRunExcelClassSplit));
+        OnPropertyChanged(nameof(ExcelClassSplitStatus));
+        return true;
+    }
+
     public bool ShowFormat => Kind == ToolKind.ImageConvert;
 
     /// <summary>
@@ -161,7 +232,30 @@ public partial class ToolItemViewModel : ObservableObject
 
     public bool ShowKeepLayout => Kind == ToolKind.PdfToWord;
 
-    public bool ShowPlainNote => Kind is ToolKind.WordToPdf or ToolKind.ImagesToPdf or ToolKind.PdfMerge;
+    public bool ShowPlainNote => IsTwoFile || IsExamPaperLayout
+        || Kind is ToolKind.WordToPdf or ToolKind.ImagesToPdf or ToolKind.PdfMerge;
+    public bool ShowExamPaperLayout => IsExamPaperLayout;
+    public bool ShowCertificateBatch => IsCertificateBatch;
+    public bool HasCertificatePreview => CertificatePreviewImage is not null;
+    public bool HasCertificatePreviewError => !string.IsNullOrEmpty(CertificatePreviewError);
+    public bool ShowCertificatePreviewEmpty => !HasCertificatePreview && !IsCertificatePreviewBusy && !HasCertificatePreviewError;
+    public string CertificatePreviewStatus => IsCertificatePreviewBusy
+        ? HasCertificatePreview ? "正在更新预览…当前显示上一次预览。" : "正在生成预览…"
+        : HasCertificatePreviewError ? CertificatePreviewError + (HasCertificatePreview ? " 当前显示上一次预览。" : string.Empty)
+        : HasCertificatePreview ? "预览已更新 · 定位点不会导出。" : "选择底图后可预览并调整文字位置。";
+    public bool IsCertificateOutputStale => IsCertificateBatch && HasOutput
+        && _certificateOutputSignature != Certificate!.Signature;
+    public string CertificateOutputFeedback => !HasOutput ? string.Empty
+        : IsCertificateOutputStale ? "上次生成的 PDF · 设置已改变，需重新生成；仍可打开上次成品。"
+        : "上次生成的 PDF · 与当前设置一致。";
+    public bool HasExamPaperPreview => ExamPaperPreviewImage is not null;
+    public bool ShowExamPaperPreviewEmpty => ExamPaperPreviewImage is null && !IsExamPaperPreviewBusy;
+    public string ExamPaperDpiHint => SelectedExamPaperDpi switch
+    {
+        "300 DPI" => "普通打印清晰度，处理较快、文件较小。",
+        "1200 DPI" => "高精度打印；A5 单页位图约 266 MiB，设备内存较小时建议选 300 或 600 DPI。",
+        _ => "默认打印清晰度，适合大多数数码印刷设备。",
+    };
 
     /// <summary>
     /// PDF 转 Word 的图片去向必须披露：文字模式只抽文本，图文并茂的通知转完图全没了，
@@ -176,13 +270,38 @@ public partial class ToolItemViewModel : ObservableObject
         ToolKind.WordToPdf => "保留标题、段落与表格；图片与页眉页脚暂不参与转换。",
         ToolKind.ImagesToPdf => "按选择顺序每页放一张图，A4 居中，长边自动适配。",
         ToolKind.PdfMerge => "按选择顺序拼接，页码范围可在合并后用“PDF 拆分提取”处理。",
+        ToolKind.RosterCompare => ToolDescriptionCatalog.ForTool(Id)!.Features[0],
+        ToolKind.ExamPaperLayout => $"{SelectedExamPaperLayoutMode} · 最终印刷清晰度 {SelectedExamPaperDpi}。输出为图像化 PDF；1200 DPI 单页临时图像可能占用数百 MB 内存。",
+        ToolKind.CertificateBatch => Certificate?.StatusText ?? "请选择奖状底图和名单。",
         _ => string.Empty,
     };
 
-    public string InputHint => IsMultiFile ? "可一次选择多个文件" : "支持 " + InputText;
+    public string InputHint => IsExcelClassSplit ? "请选择一份 XLSX / XLS 工作簿" :
+        IsTwoFile ? "请选择两份 TXT / XLSX / XLS 名单，可用上下箭头调整顺序" :
+        IsMultiFile ? "可一次选择多个文件" : "支持 " + InputText;
 
-    public ToolRequest ToRequest(string output) => new()
+    public ToolRequest ToRequest(string output)
     {
+        if (IsCertificateBatch)
+        {
+            if (Certificate is null || !Certificate.CanGenerate)
+                throw new ToolboxException(Certificate?.StatusText ?? "请先完成奖状生成设置。");
+            _certificateRequestSignature = Certificate.Signature;
+            return new ToolRequest
+            {
+                Kind = Kind,
+                Inputs = new[] { Certificate.TemplatePath!, Certificate.RosterPath! },
+                Output = output,
+                CertificateWorksheet = Certificate.SelectedWorksheetName,
+                CertificateHeaderRow = decimal.ToInt32(Certificate.HeaderRow),
+                CertificateNameColumn = Certificate.SelectedNameColumn!.Index,
+                CertificateAwardColumn = Certificate.SelectedAwardColumn!.Index,
+                CertificatePlacement = Certificate.Placement,
+            };
+        }
+
+        return new ToolRequest
+        {
         Kind = Kind,
         Inputs = Files.ToArray(),
         Output = output,
@@ -207,11 +326,21 @@ public partial class ToolItemViewModel : ObservableObject
         PageRange = PageRange,
         KeepLayout = KeepLayout,
         Dpi = ToInt(DpiValue) ?? 150,
-    };
+        LayoutMode = SelectedExamPaperLayoutMode == "小册子" ? "booklet" : "two-up",
+        ExamPaperDpi = SelectedExamPaperDpi switch
+        {
+            "300 DPI" => 300,
+            "1200 DPI" => 1200,
+            _ => 600,
+        },
+        };
+    }
 
     public string SuggestedFileName()
     {
-        var source = Files.Count > 0 ? Path.GetFileNameWithoutExtension(Files[0]) : "文件";
+        var source = IsCertificateBatch && Certificate?.RosterPath is { } roster
+            ? Path.GetFileNameWithoutExtension(roster)
+            : Files.Count > 0 ? Path.GetFileNameWithoutExtension(Files[0]) : "文件";
         var extension = Files.Count > 0 ? Path.GetExtension(Files[0]) : ".png";
         var safeExtension = extension.ToLowerInvariant() is ".jpg" or ".jpeg" or ".png" or ".webp"
             ? extension
@@ -228,21 +357,38 @@ public partial class ToolItemViewModel : ObservableObject
             ToolKind.ImagesToPdf => "图片合成.pdf",
             ToolKind.PdfMerge => "合并结果.pdf",
             ToolKind.PdfSplit => $"{source}-提取.pdf",
+            ToolKind.RosterCompare => $"{source}-核对报告.txt",
+            ToolKind.ExamPaperLayout => $"{source}-排版.pdf",
+            ToolKind.CertificateBatch => $"{source}-奖状.pdf",
             _ => $"{source}-输出",
         };
     }
 
     public void ReplaceFiles(IEnumerable<string> paths)
     {
+        if (IsCertificateBatch)
+        {
+            Certificate!.AssignPaths(paths.ToArray(), out _);
+            return;
+        }
         Files.Clear();
+        _excelClassSplitPreview = null;
+        ExcelClassSplitStatus = IsExcelClassSplit ? "选择工作簿后先检测班级列。" : ExcelClassSplitStatus;
         foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase)) Files.Add(path);
         LastOutputPath = null;
         ResultText = string.Empty;
         HasResult = false;
+        OnPropertyChanged(nameof(CanRunExcelClassSplit));
+        OnPropertyChanged(nameof(ExcelClassSplitStatus));
     }
 
     public void AddFiles(IEnumerable<string> paths)
     {
+        if (IsCertificateBatch)
+        {
+            Certificate!.AssignPaths(paths.ToArray(), out _);
+            return;
+        }
         foreach (var path in paths)
         {
             if (!Files.Contains(path, StringComparer.OrdinalIgnoreCase)) Files.Add(path);
@@ -281,8 +427,87 @@ public partial class ToolItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowQuality));
     }
 
+    private void OnCertificateStateChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(HasFiles));
+        OnPropertyChanged(nameof(CanRun));
+        OnPropertyChanged(nameof(FileSummary));
+        OnPropertyChanged(nameof(PlainNote));
+        OnPropertyChanged(nameof(HasOutput));
+        NotifyCertificateOutput();
+    }
+
+    partial void OnCertificatePreviewImageChanged(Bitmap? oldValue, Bitmap? newValue)
+    {
+        oldValue?.Dispose();
+        OnPropertyChanged(nameof(HasCertificatePreview));
+        NotifyCertificatePreview();
+    }
+
+    public void BeginCertificatePreview()
+    {
+        CertificatePreviewError = null;
+        IsCertificatePreviewBusy = true;
+    }
+
+    public void FinishCertificatePreview()
+    {
+        CertificatePreviewError = null;
+        IsCertificatePreviewBusy = false;
+    }
+
+    public void FailCertificatePreview(string message)
+    {
+        CertificatePreviewError = "预览失败：" + message;
+        IsCertificatePreviewBusy = false;
+    }
+
+    public void ClearCertificatePreview()
+    {
+        CertificatePreviewImage = null;
+        CertificatePreviewCaption = string.Empty;
+        CertificatePreviewError = null;
+        IsCertificatePreviewBusy = false;
+    }
+
+    public void RecordCertificateOutput(string path)
+    {
+        _certificateOutputSignature = _certificateRequestSignature ?? Certificate?.Signature;
+        LastOutputPath = path;
+        NotifyCertificateOutput();
+    }
+
+    private void NotifyCertificatePreview()
+    {
+        OnPropertyChanged(nameof(HasCertificatePreviewError));
+        OnPropertyChanged(nameof(ShowCertificatePreviewEmpty));
+        OnPropertyChanged(nameof(CertificatePreviewStatus));
+    }
+
+    private void NotifyCertificateOutput()
+    {
+        OnPropertyChanged(nameof(IsCertificateOutputStale));
+        OnPropertyChanged(nameof(CertificateOutputFeedback));
+    }
+
+    partial void OnIsCertificatePreviewBusyChanged(bool value) => NotifyCertificatePreview();
+    partial void OnCertificatePreviewErrorChanged(string? value) => NotifyCertificatePreview();
+
+    public bool TryAssignCertificateTemplate(string path) =>
+        IsCertificateBatch && Certificate is not null && Certificate.AssignTemplate(path);
+
+    public bool TryAssignCertificateRoster(string path) =>
+        IsCertificateBatch && Certificate is not null && Certificate.AssignRoster(path);
+
+    public bool AssignCertificatePaths(IReadOnlyList<string> paths, out string? error)
+    {
+        error = IsCertificateBatch ? null : "当前工具不接收奖状文件。";
+        return IsCertificateBatch && Certificate is not null && Certificate.AssignPaths(paths, out error);
+    }
+
     partial void OnIsBusyChanged(bool value)
     {
+        if (Certificate is { } draft) draft.IsBusy = value;
         OnPropertyChanged(nameof(CanRun));
     }
 
@@ -290,6 +515,23 @@ public partial class ToolItemViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ShowQuality));
     }
+
+    partial void OnSelectedExamPaperLayoutModeChanged(string value) => OnPropertyChanged(nameof(PlainNote));
+
+    partial void OnSelectedExamPaperDpiChanged(string value)
+    {
+        OnPropertyChanged(nameof(PlainNote));
+        OnPropertyChanged(nameof(ExamPaperDpiHint));
+    }
+
+    partial void OnExamPaperPreviewImageChanged(Bitmap? oldValue, Bitmap? newValue)
+    {
+        oldValue?.Dispose();
+        OnPropertyChanged(nameof(HasExamPaperPreview));
+        OnPropertyChanged(nameof(ShowExamPaperPreviewEmpty));
+    }
+
+    partial void OnIsExamPaperPreviewBusyChanged(bool value) => OnPropertyChanged(nameof(ShowExamPaperPreviewEmpty));
 
     partial void OnKeepLayoutChanged(bool value)
     {
@@ -300,7 +542,10 @@ public partial class ToolItemViewModel : ObservableObject
 
     partial void OnLastOutputPathChanged(string? value)
     {
+        if (IsCertificateBatch)
+            _certificateOutputSignature = value is null ? null : _certificateRequestSignature ?? Certificate!.Signature;
         OnPropertyChanged(nameof(HasOutput));
+        NotifyCertificateOutput();
     }
 
     partial void OnResultIsErrorChanged(bool value)

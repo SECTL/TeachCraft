@@ -1,0 +1,222 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Name="Root"
+        x:Class="Homework.App.RosterImportWindow"
+        Title="导入学生名单"
+        Width="760" Height="680"
+        MinWidth="640" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PaperBrush}">
+    <Window.Styles>
+        <Style Selector="TextBox.paste">
+            <Setter Property="Background" Value="#FCFBF7" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="LineHeight" Value="20" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 标题 + 分段页签 -->
+        <Border Grid.Row="0" Classes="dialog-header">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel Spacing="3">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="导入学生名单" Classes="section-title" FontSize="18" />
+                        <TextBlock Text="ROSTER IMPORT" Classes="eyebrow" />
+                    </StackPanel>
+                    <TextBlock Text="名单只在本机读取；确认后替换当前批次的学生与班级" Classes="helper" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="segmented" Width="232" VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="*,*">
+                        <Button x:Name="ExcelTabButton" Grid.Column="0" Classes="segment active"
+                                Content="从 Excel 导入" Click="OnExcelTab"
+                                AutomationProperties.Name="从 Excel 导入" />
+                        <Button x:Name="PasteTabButton" Grid.Column="1" Classes="segment"
+                                Content="手动粘贴" Click="OnPasteTab"
+                                AutomationProperties.Name="手动粘贴" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- 内容 -->
+        <Grid Grid.Row="1" Margin="16,14">
+            <!-- Excel -->
+            <ScrollViewer x:Name="ExcelPanel" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="12" Margin="0,0,14,0">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBlock x:Name="FilePathText" Text="尚未选择名单文件" FontSize="11"
+                                   Foreground="{StaticResource InkSoftBrush}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="1" Classes="ghost top" Content="选择文件…"
+                                Click="OnPickFile" AutomationProperties.Name="选择名单文件" />
+                    </Grid>
+
+                    <Border Classes="workspace-panel">
+                        <StackPanel>
+                            <Border Classes="inspector-section">
+                                <StackPanel Spacing="9">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="列映射" Classes="section-title" />
+                                        <TextBlock Grid.Column="1" Text="COLUMNS" Classes="eyebrow" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="92,*" RowDefinitions="Auto,Auto" RowSpacing="8" ColumnSpacing="8">
+                                        <TextBlock Grid.Row="0" Classes="field-label" Text="工作表" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="SheetBox" Grid.Row="0" Grid.Column="1" Classes="field"
+                                                  SelectionChanged="OnSheetChanged"
+                                                  AutomationProperties.Name="工作表" />
+
+                                        <TextBlock Grid.Row="1" Classes="field-label" Text="表头行" VerticalAlignment="Center" />
+                                        <NumericUpDown x:Name="HeaderUpDown" Grid.Row="1" Grid.Column="1" Classes="field"
+                                                       Minimum="1" Maximum="1" Increment="1"
+                                                       FormatString="0"
+                                                       Value="{Binding #Root.HeaderRow, Mode=TwoWay}"
+                                                       AutomationProperties.Name="表头行" />
+                                    </Grid>
+
+                                    <CheckBox x:Name="HasClassColumnBox" Content="名单里有「班级」列"
+                                              IsChecked="True" IsCheckedChanged="OnClassColumnToggled" FontSize="11.5"
+                                              AutomationProperties.Name="包含班级列" />
+
+                                    <Grid ColumnDefinitions="92,*" RowDefinitions="Auto,Auto,Auto,Auto"
+                                          RowSpacing="8" ColumnSpacing="8">
+                                        <TextBlock Grid.Row="0" Classes="field-label" Text="姓名列" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="NameColumnBox" Grid.Row="0" Grid.Column="1" Classes="field"
+                                                  SelectionChanged="OnColumnChanged"
+                                                  AutomationProperties.Name="姓名列" />
+
+                                        <TextBlock Grid.Row="1" Classes="field-label" Text="学号列" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="NumberColumnBox" Grid.Row="1" Grid.Column="1" Classes="field"
+                                                  SelectionChanged="OnColumnChanged"
+                                                  AutomationProperties.Name="学号列" />
+
+                                        <TextBlock Grid.Row="2" Classes="field-label" Text="班级列" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="ClassColumnBox" Grid.Row="2" Grid.Column="1" Classes="field"
+                                                  SelectionChanged="OnColumnChanged"
+                                                  AutomationProperties.Name="班级列" />
+
+                                        <TextBlock Grid.Row="3" Classes="field-label" Text="默认班级" VerticalAlignment="Center" />
+                                        <TextBox x:Name="ExcelDefaultClassBox" Grid.Row="3" Grid.Column="1" Classes="field"
+                                                 TextChanged="OnDefaultClassChanged" PlaceholderText="没有班级列时使用"
+                                                 AutomationProperties.Name="默认班级" />
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="换工作表、表头行或勾选状态时会重新猜测列；也可以手动指定。" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Classes="inspector-divider" />
+
+                            <Border Classes="inspector-section">
+                                <StackPanel Spacing="7">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock x:Name="ExcelSummary" Text="选择文件后可预览识别结果"
+                                                   Classes="section-title" />
+                                        <TextBlock Grid.Column="1" Text="PREVIEW" Classes="eyebrow" />
+                                    </Grid>
+                                    <ItemsControl x:Name="ExcelPreviewLines">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="10.5" Foreground="{StaticResource InkSoftBrush}"
+                                                           Margin="0,0,0,2" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl x:Name="ExcelWarnings">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" Classes="helper"
+                                                           Margin="0,0,0,2" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="ExcelError" IsVisible="False" FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource AccentDeepBrush}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 手动粘贴 -->
+            <ScrollViewer x:Name="PastePanel" IsVisible="False" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="12" Margin="0,0,14,0">
+                    <Border Classes="workspace-panel">
+                        <StackPanel>
+                            <Border Classes="inspector-section">
+                                <StackPanel Spacing="9">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="粘贴文本" Classes="section-title" />
+                                        <TextBlock Grid.Column="1" Text="PASTE" Classes="eyebrow" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="92,*" ColumnSpacing="8">
+                                        <TextBlock Grid.Column="0" Classes="field-label" Text="默认班级" VerticalAlignment="Center" />
+                                        <TextBox x:Name="PasteDefaultClassBox" Grid.Column="1" Classes="field"
+                                                 PlaceholderText="未写班级的行归入此班"
+                                                 AutomationProperties.Name="粘贴默认班级" />
+                                    </Grid>
+                                    <TextBlock Classes="helper" Text="每行一名：学号 姓名，或 班级,学号,姓名；也支持从 Excel 直接粘贴（制表符分隔）。" />
+                                    <TextBox x:Name="PasteBox" Classes="paste" Height="210"
+                                             PlaceholderText="每行一名：学号 姓名，或 班级,学号,姓名"
+                                             AutomationProperties.Name="粘贴名单内容" />
+                                    <Button Classes="ghost top" Content="解析" HorizontalAlignment="Left"
+                                            Padding="16,6" Click="OnParsePaste" AutomationProperties.Name="解析名单" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Classes="inspector-divider" />
+
+                            <Border Classes="inspector-section">
+                                <StackPanel Spacing="7">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock x:Name="PasteSummary" Text="粘贴后点「解析」查看结果"
+                                                   Classes="section-title" />
+                                        <TextBlock Grid.Column="1" Text="RESULT" Classes="eyebrow" />
+                                    </Grid>
+                                    <ItemsControl x:Name="PasteErrors">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" FontSize="10.5" LineHeight="16"
+                                                           Foreground="{StaticResource AccentDeepBrush}"
+                                                           TextWrapping="Wrap" Margin="0,0,0,2" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="PasteError" IsVisible="False" FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource AccentDeepBrush}" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- 页脚 -->
+        <Border Grid.Row="2" Classes="dialog-footer">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Text="确认后当前名单会被替换，未导出的改动将丢失。"
+                           Classes="helper" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Classes="primary top" Content="确定" Click="OnConfirm"
+                        IsEnabled="{Binding #Root.CanConfirm}" IsDefault="True"
+                        Padding="18,7" AutomationProperties.Name="确认导入" />
+                <Button Grid.Column="2" Classes="ghost top" Content="取消" Click="OnCancel"
+                        Padding="14,7" IsCancel="True"
+                        AutomationProperties.Name="取消导入" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

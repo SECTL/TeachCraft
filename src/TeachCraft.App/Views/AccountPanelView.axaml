@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             xmlns:cloud="using:TeachCraft.Core.Cloud"
+             x:DataType="vm:AccountViewModel"
+             x:Class="TeachCraft.App.Views.AccountPanelView">
+    <StackPanel Spacing="0">
+
+        <!-- 面板眉头：与工具／更新面板同构 -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Border Width="18" Height="1" Background="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                        Opacity="0.8" />
+                <TextBlock Text="ACCOUNT" FontFamily="{StaticResource MonoFont}" FontSize="10" LetterSpacing="2.4"
+                           Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="#C9C1AE" />
+                <TextBlock Text="账号" FontSize="10.5" LetterSpacing="0.8"
+                           Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="panel-close" Click="OnClose" VerticalAlignment="Top"
+                    ToolTip.Tip="关闭" AutomationProperties.Name="关闭">
+                <Path Width="11" Height="11" Stretch="Uniform"
+                      Data="M3,3 L11,11 M11,3 L3,11" Stroke="{Binding $parent[Button].Foreground}"
+                      StrokeThickness="1.4" StrokeLineCap="Round" />
+            </Button>
+        </Grid>
+
+        <TextBlock FontFamily="{StaticResource SerifFont}" FontSize="32" LetterSpacing="1"
+                   Foreground="{StaticResource InkBrush}">
+            <Run Text="账号与共享名单" />
+        </TextBlock>
+        <TextBlock Text="{Binding StatusText}" FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
+                   Foreground="{StaticResource AccentDeepBrush}" Margin="0,5,0,6" />
+        <TextBlock Text="{Binding SettingsSaveWarning}" FontSize="10" LineHeight="16" TextWrapping="Wrap"
+                   Foreground="{StaticResource AccentDeepBrush}" IsVisible="{Binding HasSettingsSaveWarning}"
+                   Margin="0,0,0,8" />
+
+        <!-- 01 账号 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <TextBlock Text="01" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="账号" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14" Margin="0,0,0,20">
+            <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="状态" FontSize="10.5"
+                               Foreground="{StaticResource MutedBrush}" Margin="0,0,14,0" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" FontSize="10.5"
+                               TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="账号" FontSize="10.5"
+                               Foreground="{StaticResource MutedBrush}" Margin="0,9,14,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AccountText}" FontSize="10.5"
+                               TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" Margin="0,9,0,0" />
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button Content="登录 SECTL 账号…" Classes="primary" Click="OnSignIn"
+                            IsEnabled="{Binding IsConfigured}"
+                            AutomationProperties.Name="登录 SECTL 账号" />
+                    <Button Content="退出登录" Classes="ghost" Click="OnSignOut"
+                            IsEnabled="{Binding IsSignedIn}"
+                            AutomationProperties.Name="退出登录" />
+                </StackPanel>
+
+                <Border IsVisible="{Binding ShowConsentPrompt}"
+                        Background="{StaticResource AccentWashBrush}"
+                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                        CornerRadius="4" Padding="12,10">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="{x:Static cloud:CloudErrorText.ConsentRequiredDetailed}"
+                                   FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                                   Foreground="{StaticResource InkBrush}" />
+                        <Button Content="查看并同意字段说明" Classes="primary" Click="OnJumpToConsent"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="查看并同意字段说明" />
+                    </StackPanel>
+                </Border>
+
+                <Border Height="1" Background="{StaticResource LineBrush}" />
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Text="开启云同步" FontSize="11.5" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="只在你手动上传或拉取时联网，关闭后不建立连接。"
+                                   FontSize="9.5" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding CloudEnabled}"
+                                  IsEnabled="{Binding IsSignedIn}"
+                                  OnContent="已开启" OffContent="已关闭"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.Name="开启云同步" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 02 共享名单库 -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,10">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <TextBlock Text="02" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="共享名单库" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="刷新" Classes="link" FontSize="10.5" Click="OnRefreshRosters"
+                    IsEnabled="{Binding CanAccessCloud}" VerticalAlignment="Center"
+                    AutomationProperties.Name="刷新共享名单" />
+        </Grid>
+        <Border Classes="card" Padding="16,14" Margin="0,0,0,20">
+            <StackPanel Spacing="9">
+                <ItemsControl ItemsSource="{Binding Rosters}" IsVisible="{Binding HasRosters}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:SharedRosterRow">
+                            <Border Classes="chart-card" Padding="12,10" Margin="0,0,0,8">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <StackPanel Grid.Column="0" Spacing="3">
+                                        <TextBlock Text="{Binding Name}" FontSize="11.5"
+                                                   Foreground="{StaticResource InkBrush}" />
+                                        <TextBlock Text="{Binding FieldsText}" FontSize="9.5"
+                                                   TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                                        <TextBlock Text="{Binding UpdatedText}" FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Version, StringFormat=v{0}}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                                   Foreground="{StaticResource AccentDeepBrush}" />
+                                        <TextBlock Text="{Binding StudentCount, StringFormat={}{0} 人}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                                   Foreground="{StaticResource MutedBrush}" />
+                                        <Button Content="删除" Classes="link" FontSize="10" Click="OnDeleteRoster"
+                                                Tag="{Binding Id}"
+                                                 IsEnabled="{Binding $parent[UserControl].((vm:AccountViewModel)DataContext).CanAccessCloud}"
+                                                AutomationProperties.Name="删除这份共享名单" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="还没有共享名单。到「归位」把当前名单保存到共享库。"
+                           FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}"
+                           IsVisible="{Binding !HasRosters}" />
+                <TextBlock Text="在归位或作业整理中拉取；分晓等其他应用后续接入。"
+                           FontSize="9.5" LineHeight="17" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+        </Border>
+
+        <!-- 03 隐私：字段说明单点维护在 CloudConsentText，这里只引用 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,8,0,10">
+            <TextBlock Text="03" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="隐私" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,13">
+            <StackPanel Spacing="9">
+                <TextBlock Text="共享名单只包含你勾选的字段，上传与拉取都由你手动触发。"
+                           FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}" />
+
+                <Expander x:Name="ConsentExpander" Header="查看共享名单包含哪些字段" FontSize="11"
+                          AutomationProperties.Name="查看共享名单包含哪些字段">
+                    <StackPanel Spacing="7" Margin="0,10,0,2">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <TextBlock Grid.Column="0" Text="必填" Classes="mono-label" FontSize="9.5"
+                                       VerticalAlignment="Top" />
+                            <TextBlock Grid.Column="1" Text="{x:Static cloud:CloudConsentText.RequiredFields}"
+                                       FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                                       Foreground="{StaticResource InkSoftBrush}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <TextBlock Grid.Column="0" Text="可选" Classes="mono-label" FontSize="9.5"
+                                       VerticalAlignment="Top" />
+                            <TextBlock Grid.Column="1" FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                                       Foreground="{StaticResource InkSoftBrush}">
+                                <Run Text="{x:Static cloud:CloudConsentText.OptionalFields}" />
+                                <Run Text="（默认全部关闭，由你逐项勾选）" Foreground="{StaticResource MutedBrush}" />
+                            </TextBlock>
+                        </Grid>
+                        <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,3,0,1" />
+                        <TextBlock Text="{x:Static cloud:CloudConsentText.UncheckedFieldsNotWritten}"
+                                   TextWrapping="Wrap" FontSize="10" LineHeight="16"
+                                   Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Text="{x:Static cloud:CloudConsentText.NoRawFiles}"
+                                   TextWrapping="Wrap" FontSize="10" LineHeight="16"
+                                   Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Text="{x:Static cloud:CloudConsentText.NoAutoUpload}"
+                                   TextWrapping="Wrap" FontSize="10" LineHeight="16"
+                                   Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Text="{x:Static cloud:CloudConsentText.UserDecides}"
+                                   TextWrapping="Wrap" FontSize="10" LineHeight="16"
+                                   Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Text="{x:Static cloud:CloudConsentText.CheckSchoolPolicy}"
+                                   TextWrapping="Wrap" FontSize="10" LineHeight="16"
+                                   Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                </Expander>
+
+                <Border IsVisible="{Binding !ConsentAccepted}"
+                        Background="{StaticResource WashBrush}"
+                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="10,8">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="请先阅读并同意字段说明，再登录。"
+                                   FontSize="10" LineHeight="16" TextWrapping="Wrap"
+                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="我已了解，同意上述字段说明" Classes="primary"
+                                Click="OnAcceptConsent" IsEnabled="{Binding IsConfigured}"
+                                Padding="11,6" FontSize="11" VerticalAlignment="Center"
+                                AutomationProperties.Name="同意共享名单字段说明" />
+                    </Grid>
+                </Border>
+
+                <Border IsVisible="{Binding ConsentAccepted}"
+                        Background="{StaticResource WashBrush}"
+                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="10,8">
+                    <TextBlock Text="✓ 已记录你的同意。" FontSize="10.5"
+                               Foreground="{StaticResource MossBrush}" />
+                </Border>
+            </StackPanel>
+        </Border>
+
+    </StackPanel>
+</UserControl>

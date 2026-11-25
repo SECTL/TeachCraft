@@ -1,0 +1,259 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             x:Class="TeachCraft.App.Views.CertificateBatchPanelView"
+             x:DataType="vm:ToolItemViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.field-label">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{StaticResource InkSoftBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBlock.helper">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="LineHeight" Value="18" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.certificate-pick Border.dropzone-inner">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+        </Style>
+        <Style Selector="Button.certificate-pick:focus-visible Border.dropzone-inner">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentDeepBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Border.position-handle">
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Border.position-handle:pointerover, Border.position-handle:focus-visible">
+            <Setter Property="BorderBrush" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="TextBlock.preview-status.error">
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+    </UserControl.Styles>
+    <Grid x:Name="PanelLayout" RowDefinitions="Auto,*,Auto" ColumnDefinitions="352,*" ColumnSpacing="18" Margin="28,24,28,28">
+        <Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Border Width="18" Height="1" Background="{StaticResource AccentBrush}" />
+                <TextBlock Text="IMAGE / PDF" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                           LetterSpacing="1.8" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="9" Foreground="{StaticResource LineStrongBrush}" />
+                <TextBlock Text="奖状生成" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="panel-close" Click="OnClose" ToolTip.Tip="关闭"
+                    AutomationProperties.Name="关闭">
+                <Path Width="11" Height="11" Stretch="Uniform" Data="M3,3 L11,11 M11,3 L3,11"
+                      Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.4" StrokeLineCap="Round" />
+            </Button>
+        </Grid>
+
+        <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12" Margin="0,0,8,0" IsEnabled="{Binding !IsBusy}">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="奖状批量生成" FontFamily="{StaticResource SerifFont}" FontSize="25"
+                               Foreground="{StaticResource InkBrush}" />
+                    <TextBlock Text="每位获奖者一页 · PDF" FontSize="11" Foreground="{StaticResource MutedBrush}" />
+                </StackPanel>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="field-label" Text="奖状底图" />
+                    <Button Classes="dropzone certificate-pick" Click="OnPickTemplate" AutomationProperties.Name="选择奖状底图">
+                        <Border Classes="dropzone-inner"><StackPanel Spacing="5" Margin="12,10">
+                            <TextBlock Text="{Binding Certificate.TemplatePath, TargetNullValue='尚未选择底图'}"
+                                       FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource InkBrush}" />
+                            <TextBlock Text="选择底图文件" Classes="helper" />
+                        </StackPanel></Border>
+                    </Button>
+                    <Button Classes="link" Content="清除底图" Click="OnClearTemplate"
+                            IsVisible="{Binding Certificate.HasTemplate}" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="field-label" Text="获奖名单" />
+                    <Button Classes="dropzone certificate-pick" Click="OnPickRoster" AutomationProperties.Name="选择获奖名单">
+                        <Border Classes="dropzone-inner"><StackPanel Spacing="5" Margin="12,10">
+                            <TextBlock Text="{Binding Certificate.RosterPath, TargetNullValue='尚未选择名单'}"
+                                       FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource InkBrush}" />
+                            <TextBlock Text="选择 Excel 工作簿" Classes="helper" />
+                        </StackPanel></Border>
+                    </Button>
+                    <Button Classes="link" Content="清除名单" Click="OnClearRoster"
+                            IsVisible="{Binding Certificate.HasRoster}" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="field-label" Text="名单范围与字段" />
+                    <TextBlock Classes="helper" Text="工作表和列由你选择，软件不会猜姓名或奖项字段。" />
+                    <TextBlock Classes="field-label" Text="工作表" />
+                    <ComboBox x:Name="WorksheetPicker" Classes="field" ItemsSource="{Binding Certificate.WorksheetNameList}"
+                              SelectedItem="{Binding Certificate.SelectedWorksheetName, Mode=TwoWay}"
+                              IsEnabled="{Binding Certificate.CanSelectWorksheet}" PlaceholderText="请选择名单所在工作表"
+                              AutomationProperties.Name="工作表" />
+                    <TextBlock Classes="field-label" Text="表头行（从 1 开始）" />
+                    <NumericUpDown Classes="field" Minimum="1" Maximum="{Binding Certificate.HeaderRowMaximum}"
+                                   IsEnabled="{Binding Certificate.CanSelectHeaderRow}"
+                                   Value="{Binding Certificate.HeaderRow, Mode=TwoWay}"
+                                   AutomationProperties.Name="表头行" />
+                    <TextBlock Classes="field-label" Text="姓名列" />
+                    <ComboBox x:Name="NameColumnPicker" Classes="field" ItemsSource="{Binding Certificate.NameColumnList}"
+                              SelectedItem="{Binding Certificate.SelectedNameColumn, Mode=TwoWay}"
+                              IsEnabled="{Binding Certificate.CanSelectColumns}" PlaceholderText="请选择姓名列"
+                              AutomationProperties.Name="姓名列" />
+                    <TextBlock Classes="field-label" Text="奖项列" />
+                    <ComboBox x:Name="AwardColumnPicker" Classes="field" ItemsSource="{Binding Certificate.AwardColumnList}"
+                              SelectedItem="{Binding Certificate.SelectedAwardColumn, Mode=TwoWay}"
+                              IsEnabled="{Binding Certificate.CanSelectColumns}" PlaceholderText="请选择奖项列或「不印奖项」"
+                              AutomationProperties.Name="奖项列" />
+                    <TextBlock Classes="helper" Text="如不需要印奖项，在奖项列中明确选择“（不印奖项）”。" />
+                </StackPanel>
+
+                <Border Background="{StaticResource WashBrush}" BorderBrush="{StaticResource LineBrush}"
+                        BorderThickness="1" CornerRadius="7" Padding="11">
+                    <StackPanel Spacing="7">
+                        <TextBlock Text="文字位置（底图百分比）" FontFamily="{StaticResource SerifFont}"
+                                   FontSize="12" Foreground="{StaticResource InkBrush}" />
+                        <StackPanel x:Name="NamePlacementGroup" Spacing="6" IsEnabled="{Binding Certificate.CanPositionName}">
+                            <TextBlock Text="姓名" Classes="field-label" FontWeight="SemiBold" />
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="横向位置 %" Classes="helper" />
+                                    <NumericUpDown Classes="field" Minimum="0" Maximum="100" Increment="0.1" FormatString="0.0" Value="{Binding Certificate.NameX, Mode=TwoWay}" AutomationProperties.Name="姓名横向位置百分比" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="纵向位置 %" Classes="helper" />
+                                    <NumericUpDown Classes="field" Minimum="0" Maximum="100" Increment="0.1" FormatString="0.0" Value="{Binding Certificate.NameY, Mode=TwoWay}" AutomationProperties.Name="姓名纵向位置百分比" />
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <TextBlock Text="字号比例 %" Classes="helper" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Classes="field" Minimum="1" Maximum="40" Increment="0.5" FormatString="0.0" Value="{Binding Certificate.NameFontScale, Mode=TwoWay}" AutomationProperties.Name="姓名字号比例" />
+                            </Grid>
+                        </StackPanel>
+                        <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,4" />
+                        <StackPanel x:Name="AwardPlacementGroup" Spacing="6" IsEnabled="{Binding Certificate.CanPositionAward}">
+                            <TextBlock Text="奖项" Classes="field-label" FontWeight="SemiBold" />
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="横向位置 %" Classes="helper" />
+                                    <NumericUpDown Classes="field" Minimum="0" Maximum="100" Increment="0.1" FormatString="0.0" Value="{Binding Certificate.AwardX, Mode=TwoWay}" AutomationProperties.Name="奖项横向位置百分比" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="纵向位置 %" Classes="helper" />
+                                    <NumericUpDown Classes="field" Minimum="0" Maximum="100" Increment="0.1" FormatString="0.0" Value="{Binding Certificate.AwardY, Mode=TwoWay}" AutomationProperties.Name="奖项纵向位置百分比" />
+                                </StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <TextBlock Text="字号比例 %" Classes="helper" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1" Classes="field" Minimum="1" Maximum="40" Increment="0.5" FormatString="0.0" Value="{Binding Certificate.AwardFontScale, Mode=TwoWay}" AutomationProperties.Name="奖项字号比例" />
+                            </Grid>
+                        </StackPanel>
+                        <TextBlock Classes="helper" Text="位置从底图左上角计算；字号相对于底图高度。选「不印奖项」时，奖项设置停用。" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource PaperDeepBrush}" CornerRadius="7" Padding="10">
+                    <TextBlock Text="{Binding Certificate.StatusText}" FontSize="10.5" LineHeight="16"
+                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border x:Name="PreviewPane" Grid.Row="1" Grid.Column="1" Background="{StaticResource PaperDeepBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8" Padding="14">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,2,10">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="奖状预览" FontFamily="{StaticResource SerifFont}" FontSize="15"
+                                   Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="{Binding CertificatePreviewCaption}" FontSize="11.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource InkSoftBrush}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="PREVIEW" FontFamily="{StaticResource MonoFont}"
+                               FontSize="9" LetterSpacing="1.6" Foreground="{StaticResource MutedBrush}"
+                               VerticalAlignment="Center" />
+                </Grid>
+                <Border Grid.Row="1" Background="{StaticResource CardBrush}"
+                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <Panel x:Name="PreviewSurface" ClipToBounds="True">
+                        <Image IsVisible="{Binding HasCertificatePreview}"
+                                Source="{Binding CertificatePreviewImage}" Stretch="Uniform"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                AutomationProperties.Name="奖状预览" />
+                        <Canvas IsEnabled="{Binding !IsBusy}" IsVisible="{Binding #ShowPositionHandles.IsChecked}">
+                            <Border x:Name="NameHandle" Classes="position-handle" Width="24" Height="18" IsVisible="False"
+                                    Background="Transparent" Cursor="SizeAll" Focusable="True"
+                                    ToolTip.Tip="拖动姓名中心；方向键微调，Shift 加速" AutomationProperties.Name="拖动姓名位置"
+                                    GotFocus="OnHandleFocused"
+                                    PointerPressed="OnHandlePressed" PointerMoved="OnHandleMoved" PointerReleased="OnHandleReleased"
+                                    PointerCaptureLost="OnHandleCaptureLost" KeyDown="OnHandleKeyDown">
+                                <Border BorderBrush="{StaticResource InkBrush}" BorderThickness="1" CornerRadius="2"
+                                        Background="Transparent" IsHitTestVisible="False" />
+                            </Border>
+                            <Border x:Name="AwardHandle" Classes="position-handle" Width="24" Height="18" IsVisible="False"
+                                    Background="Transparent" Cursor="SizeAll" Focusable="True"
+                                    ToolTip.Tip="拖动奖项中心；方向键微调，Shift 加速" AutomationProperties.Name="拖动奖项位置"
+                                    GotFocus="OnHandleFocused"
+                                    PointerPressed="OnHandlePressed" PointerMoved="OnHandleMoved" PointerReleased="OnHandleReleased"
+                                    PointerCaptureLost="OnHandleCaptureLost" KeyDown="OnHandleKeyDown">
+                                <Border BorderBrush="{StaticResource MutedBrush}" BorderThickness="1" CornerRadius="2"
+                                        Background="Transparent" IsHitTestVisible="False" />
+                            </Border>
+                        </Canvas>
+                        <TextBlock Text="{Binding CertificatePreviewStatus}"
+                                     IsVisible="{Binding !HasCertificatePreview}" IsHitTestVisible="False"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" MaxWidth="320" FontSize="11"
+                                   Foreground="{StaticResource MutedBrush}" />
+                    </Panel>
+                </Border>
+                <StackPanel Grid.Row="2" Spacing="4" Margin="2,8,2,0">
+                    <TextBlock x:Name="PreviewStatus" Classes="helper preview-status" Classes.error="{Binding HasCertificatePreviewError}"
+                               Text="{Binding CertificatePreviewStatus}" />
+                    <TextBlock Text="请检查底图后重试，原文件不会被修改。" Classes="helper" IsVisible="{Binding HasCertificatePreviewError}" />
+                    <CheckBox x:Name="ShowPositionHandles" IsChecked="True" Content="显示文字定位点" FontSize="11" />
+                    <WrapPanel Orientation="Horizontal">
+                        <Button Classes="ghost" Content="定位姓名" Click="OnFocusName" Margin="0,0,8,4"
+                                IsEnabled="{Binding Certificate.CanPositionName}" AutomationProperties.Name="聚焦姓名定位点" />
+                        <Button Classes="ghost" Content="定位奖项" Click="OnFocusAward" Margin="0,0,0,4"
+                                IsEnabled="{Binding Certificate.CanPositionAward}" AutomationProperties.Name="聚焦奖项定位点" />
+                    </WrapPanel>
+                    <Button Classes="link" Content="重新生成预览" Click="OnRetryPreview" HorizontalAlignment="Left"
+                            IsEnabled="{Binding Certificate.CanPositionName}" />
+                    <TextBlock Classes="helper" Text="拖动定位点；数值同步更新。方向键微调，Shift 加速。取消勾选可查看成品；定位点不会导出。" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid x:Name="ActionArea" Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,12,0,0">
+            <StackPanel Spacing="4" VerticalAlignment="Center">
+                <TextBlock x:Name="MappingHint" Text="{Binding Certificate.MappingHint}" Classes="helper" />
+                <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}" FontSize="10.5"
+                           TextWrapping="Wrap" Foreground="{Binding ResultBrush}" />
+                <ProgressBar Value="{Binding Progress}" IsVisible="{Binding HasProgress}" Height="2" />
+                <TextBlock Text="{Binding CertificateOutputFeedback}" Classes="helper" IsVisible="{Binding HasOutput}" />
+                <Button Classes="link" Content="打开上次成品所在文件夹" Click="OnOpenOutput"
+                        IsVisible="{Binding HasOutput}" HorizontalAlignment="Left" ToolTip.Tip="{Binding LastOutputPath}"
+                        AutomationProperties.Name="打开上次奖状成品所在文件夹" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsBusy}">
+                    <TextBlock Classes="helper" Text="正在生成奖状；取消后将停止后续页面，不保留本次输出。" />
+                    <Button Grid.Column="1" Classes="link" Content="取消" Click="OnCancelTool" IsVisible="{Binding !CancelRequested}" />
+                </Grid>
+            </StackPanel>
+            <Button Grid.Column="1" Classes="primary" Content="生成奖状 PDF" Click="OnRun"
+                    IsEnabled="{Binding CanRun}" Height="40" Padding="16,0"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    AutomationProperties.Name="生成奖状 PDF" />
+        </Grid>
+    </Grid>
+</UserControl>

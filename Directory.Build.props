@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>1.36.0</Version>
+    <Version>1.45.0</Version>
     <Product>知微 · TeachCraft</Product>
     <Company>Evan0148</Company>
     <Authors>Evan0148</Authors>
@@ -17,11 +17,16 @@
   </PropertyGroup>
 
   <!-- 共享 UI 工具：以链接文件编入各 App 项目（internal 类型，各程序集独立，不产生跨程序集冲突） -->
-  <ItemGroup Condition="'$(MSBuildProjectName)' == 'TeachCraft.App' Or '$(MSBuildProjectName)' == 'SeatGrid.App' Or '$(MSBuildProjectName)' == 'ClassBlock.App' Or '$(MSBuildProjectName)' == 'GradeWeave.App' Or '$(MSBuildProjectName)' == 'GradeStrip.App' Or '$(MSBuildProjectName)' == 'MeetRoster.App'">
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'TeachCraft.App' Or '$(MSBuildProjectName)' == 'SeatGrid.App' Or '$(MSBuildProjectName)' == 'ClassBlock.App' Or '$(MSBuildProjectName)' == 'GradeWeave.App' Or '$(MSBuildProjectName)' == 'GradeStrip.App' Or '$(MSBuildProjectName)' == 'MeetRoster.App' Or '$(MSBuildProjectName)' == 'Homework.App'">
     <Compile Include="$(MSBuildThisFileDirectory)src/Shared/WindowFit.cs" Link="Shared/WindowFit.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)src/Shared/ErrorText.cs" Link="Shared/ErrorText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)src/Shared/ConfirmDialog.cs" Link="Shared/ConfirmDialog.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)src/Shared/DragPhysics.cs" Link="Shared/DragPhysics.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)src/Shared/MotionPreference.cs" Link="Shared/MotionPreference.cs" />
+  </ItemGroup>
+
+  <!-- Core 内嵌一份 ErrorText，供 CloudErrorText.DescribeForUi 单测入口调用（ErrorText 是 internal，测试程序集不可见）。 -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'TeachCraft.Core'">
+    <Compile Include="$(MSBuildThisFileDirectory)src/Shared/ErrorText.cs" Link="Shared/ErrorText.cs" />
   </ItemGroup>
 </Project>

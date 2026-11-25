@@ -9,190 +9,157 @@
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource PaperBrush}">
     <Window.Styles>
-        <Style Selector="TextBlock.field-label">
-            <Setter Property="FontSize" Value="10.5" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="LetterSpacing" Value="0.4" />
-        </Style>
-        <Style Selector="TextBlock.helper">
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="LineHeight" Value="16" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
-        <Style Selector="ComboBox.field">
-            <Setter Property="Background" Value="{StaticResource WashBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="8,0" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-        </Style>
-        <Style Selector="TextBox.field">
-            <Setter Property="Background" Value="{StaticResource WashBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="MinHeight" Value="34" />
-        </Style>
         <Style Selector="CheckBox.sheet">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="11.5" />
             <Setter Property="MinHeight" Value="26" />
-        </Style>
-        <Style Selector="Border.preview-frame">
-            <Setter Property="Background" Value="{StaticResource PaperDeepBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
         </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
-        <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="20,14">
-            <StackPanel Spacing="3">
-                <TextBlock Text="导出课表" FontFamily="{StaticResource SerifFont}"
-                           FontSize="19" Foreground="{StaticResource InkBrush}" />
-                <TextBlock Text="{Binding ProjectTitle}" FontSize="11" Foreground="{StaticResource MutedBrush}" />
-                <TextBlock Text="{Binding Summary}" FontSize="10" Foreground="{StaticResource MutedBrush}" />
-            </StackPanel>
+        <Border Grid.Row="0" Classes="dialog-header">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="导出课表" Classes="section-title" FontSize="18" />
+                    <TextBlock Text="{Binding ProjectTitle}" Classes="helper" FontSize="11" />
+                    <TextBlock Text="{Binding Summary}" Classes="helper" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="EXPORT" Classes="eyebrow" />
+            </Grid>
         </Border>
 
         <!-- 左：设置　右：预览 -->
-        <Grid Grid.Row="1" ColumnDefinitions="420,*" ColumnSpacing="14" Margin="20,14">
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
-                <StackPanel Spacing="13" Margin="0,0,4,0">
-                    <StackPanel Spacing="5">
-                        <TextBlock Classes="field-label" Text="导出格式" />
-                        <ComboBox Classes="field" ItemsSource="{Binding Formats}"
-                                  SelectedItem="{Binding SelectedFormat, Mode=TwoWay}"
-                                  AutomationProperties.Name="导出格式">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="app:ExportFormatOption">
-                                    <StackPanel Spacing="1" Margin="0,4">
-                                        <TextBlock Text="{Binding Label}" FontSize="12"
-                                                   Foreground="{StaticResource InkBrush}" />
-                                        <TextBlock Text="{Binding Hint}" FontSize="10"
-                                                   Foreground="{StaticResource MutedBrush}"
-                                                   TextTrimming="CharacterEllipsis" />
+        <Grid Grid.Row="1" ColumnDefinitions="420,*" ColumnSpacing="14" Margin="16,14">
+            <Border Grid.Column="0" Classes="workspace-panel">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="导出选项" Classes="section-title" />
+                                    <TextBlock Grid.Column="1" Text="OPTIONS" Classes="eyebrow" />
+                                </Grid>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="导出格式" />
+                                    <ComboBox Classes="field" ItemsSource="{Binding Formats}"
+                                              SelectedItem="{Binding SelectedFormat, Mode=TwoWay}"
+                                              AutomationProperties.Name="导出格式">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="app:ExportFormatOption">
+                                                <StackPanel Spacing="1" Margin="0,2">
+                                                    <TextBlock Text="{Binding Label}" FontSize="11.5"
+                                                               Foreground="{StaticResource InkBrush}" />
+                                                    <TextBlock Text="{Binding Hint}" FontSize="10"
+                                                               Foreground="{StaticResource MutedBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Spacing="6" IsVisible="{Binding IsExcel}">
+                                    <TextBlock Classes="field-label" Text="Excel 样式" />
+                                    <ComboBox Classes="field" ItemsSource="{Binding Styles}"
+                                              SelectedItem="{Binding SelectedStyle, Mode=TwoWay}"
+                                              AutomationProperties.Name="Excel 样式">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="app:ExportStyleOption">
+                                                <StackPanel Spacing="1" Margin="0,2">
+                                                    <TextBlock Text="{Binding Label}" FontSize="11.5"
+                                                               Foreground="{StaticResource InkBrush}" />
+                                                    <TextBlock Text="{Binding Hint}" FontSize="10"
+                                                               Foreground="{StaticResource MutedBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <TextBlock Classes="helper" Text="{Binding StyleHint}" />
+
+                                    <StackPanel Spacing="4" IsVisible="{Binding ShowReferenceName}">
+                                        <TextBlock Classes="field-label" Text="本机样式名称" />
+                                        <TextBox Classes="field" Text="{Binding ReferenceStyleName, Mode=TwoWay}"
+                                                 PlaceholderText="例如：软件自带样式2" />
+                                        <TextBlock Classes="helper"
+                                                   Text="名称只保存在本机，不写入导出文件、工程或仓库。" />
                                     </StackPanel>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                    </StackPanel>
+                                </StackPanel>
 
-                    <StackPanel Spacing="5" IsVisible="{Binding IsExcel}">
-                        <TextBlock Classes="field-label" Text="Excel 样式" />
-                        <ComboBox Classes="field" ItemsSource="{Binding Styles}"
-                                  SelectedItem="{Binding SelectedStyle, Mode=TwoWay}"
-                                  AutomationProperties.Name="Excel 样式">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="app:ExportStyleOption">
-                                    <StackPanel Spacing="1" Margin="0,4">
-                                        <TextBlock Text="{Binding Label}" FontSize="12"
-                                                   Foreground="{StaticResource InkBrush}" />
-                                        <TextBlock Text="{Binding Hint}" FontSize="10"
-                                                   Foreground="{StaticResource MutedBrush}"
-                                                   TextTrimming="CharacterEllipsis" />
+                                <Border Classes="chart-card" IsVisible="{Binding ShowSheetChoices}">
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Text="包含分页" Classes="subhead" />
+                                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="2">
+                                            <CheckBox Classes="sheet" Content="课程表总表"
+                                                      IsChecked="{Binding IncludeMaster, Mode=TwoWay}" />
+                                            <CheckBox Grid.Column="1" Classes="sheet" Content="教师分工表"
+                                                      IsChecked="{Binding IncludeAssignment, Mode=TwoWay}" />
+                                            <CheckBox Grid.Row="1" Classes="sheet" Content="教师职位安排表"
+                                                      IsChecked="{Binding IncludeTeacherPosition, Mode=TwoWay}" />
+                                            <CheckBox Grid.Row="1" Grid.Column="1" Classes="sheet" Content="班级课表"
+                                                      IsChecked="{Binding IncludeClassSheets, Mode=TwoWay}" />
+                                            <CheckBox Grid.Row="2" Classes="sheet" Content="教师课表"
+                                                      IsChecked="{Binding IncludeTeacherSheets, Mode=TwoWay}" />
+                                            <CheckBox Grid.Row="2" Grid.Column="1" Classes="sheet" Content="冲突页"
+                                                      IsChecked="{Binding IncludeConflict, Mode=TwoWay}" />
+                                        </Grid>
+                                        <TextBlock Classes="helper"
+                                                   Text="软件自带样式2按参考工作簿生成表一分工表、表二横向课程总表和表三教师职位表；软件自带样式沿用纸墨版式。" />
                                     </StackPanel>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <TextBlock Classes="helper" Text="{Binding StyleHint}" />
+                                </Border>
 
-                        <StackPanel Spacing="4" IsVisible="{Binding ShowReferenceName}">
-                            <TextBlock Classes="field-label" Text="本机样式名称" />
-                            <TextBox Classes="field" Text="{Binding ReferenceStyleName, Mode=TwoWay}"
-                                     PlaceholderText="例如：参考校样式" />
-                            <TextBlock Classes="helper"
-                                       Text="名称只保存在本机，不写入导出文件、工程或仓库。" />
-                        </StackPanel>
+                                <!-- 希沃预设：只有一张表，分页勾选不生效，说明清楚为什么 -->
+                                <Border Classes="chart-card"
+                                        BorderBrush="{StaticResource AccentBrush}"
+                                        Background="{StaticResource WashHoverBrush}"
+                                        IsVisible="{Binding IsSeewoStyle}">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="希沃预设" Classes="subhead" />
+                                        <TextBlock Classes="helper"
+                                                   Text="希沃模板只有一张「班级课表计划」表，所以这里没有分页可选。导出的文件保留了模板自带的标题、填写须知、表头批注与合并单元格，只把示例行换成你的课表——可以直接上传希沃平台。" />
+                                        <TextBlock Classes="helper"
+                                                   Text="课节按工程的作息时间表编号（第 1 节…第 N 节）；课后服务与晚修不进希沃模板。" />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Spacing="6" IsVisible="{Binding IsImageOrPdf}">
+                                    <TextBlock Classes="field-label" Text="导出对象" />
+                                    <ComboBox Classes="field"
+                                              ItemsSource="{Binding ClassTargets}"
+                                              SelectedItem="{Binding SelectedClassTarget, Mode=TwoWay}"
+                                              AutomationProperties.Name="选择导出班级" />
+                                    <ComboBox Classes="field"
+                                              ItemsSource="{Binding TeacherTargets}"
+                                              SelectedItem="{Binding SelectedTeacherTarget, Mode=TwoWay}"
+                                              AutomationProperties.Name="选择导出教师" />
+                                    <TextBlock Classes="helper" Text="{Binding TargetHint}" />
+                                </StackPanel>
+
+                                <Border IsVisible="{Binding HasError}" Background="{StaticResource AccentWashBrush}"
+                                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                                        CornerRadius="6" Padding="10,8">
+                                    <TextBlock Text="{Binding Error}" FontSize="10.5" TextWrapping="Wrap"
+                                               Foreground="{StaticResource AccentDeepBrush}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-
-                    <Border Background="{StaticResource WashBrush}" BorderBrush="{StaticResource LineBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="12"
-                            IsVisible="{Binding ShowSheetChoices}">
-                        <StackPanel Spacing="7">
-                            <TextBlock Text="包含分页" FontFamily="{StaticResource SerifFont}"
-                                       FontSize="13" Foreground="{StaticResource InkBrush}" />
-                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="2">
-                                <CheckBox Classes="sheet" Content="课程表总表"
-                                          IsChecked="{Binding IncludeMaster, Mode=TwoWay}" />
-                                <CheckBox Grid.Column="1" Classes="sheet" Content="教师分工表"
-                                          IsChecked="{Binding IncludeAssignment, Mode=TwoWay}" />
-                                <CheckBox Grid.Row="1" Classes="sheet" Content="教师职位安排表"
-                                          IsChecked="{Binding IncludeTeacherPosition, Mode=TwoWay}" />
-                                <CheckBox Grid.Row="1" Grid.Column="1" Classes="sheet" Content="班级课表"
-                                          IsChecked="{Binding IncludeClassSheets, Mode=TwoWay}" />
-                                <CheckBox Grid.Row="2" Classes="sheet" Content="教师课表"
-                                          IsChecked="{Binding IncludeTeacherSheets, Mode=TwoWay}" />
-                                <CheckBox Grid.Row="2" Grid.Column="1" Classes="sheet" Content="冲突页"
-                                          IsChecked="{Binding IncludeConflict, Mode=TwoWay}" />
-                            </Grid>
-                            <TextBlock Classes="helper"
-                                       Text="参考校样式按参考工作簿生成表一分工表、表二横向课程总表和表三教师职位表；软件自带样式沿用纸墨版式。" />
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 希沃预设：只有一张表，分页勾选不生效，说明清楚为什么 -->
-                    <Border Background="{StaticResource AccentWashBrush}" BorderBrush="{StaticResource AccentBrush}"
-                            BorderThickness="1" CornerRadius="8" Padding="12"
-                            IsVisible="{Binding IsSeewoStyle}">
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="希沃预设" FontFamily="{StaticResource SerifFont}"
-                                       FontSize="13" Foreground="{StaticResource InkBrush}" />
-                            <TextBlock Classes="helper"
-                                       Text="希沃模板只有一张「班级课表计划」表，所以这里没有分页可选。导出的文件保留了模板自带的标题、填写须知、表头批注与合并单元格，只把示例行换成你的课表——可以直接上传希沃平台。" />
-                            <TextBlock Classes="helper"
-                                       Text="课节按工程的作息时间表编号（第 1 节…第 N 节）；课后服务与晚修不进希沃模板。" />
-                        </StackPanel>
-                    </Border>
-
-                    <StackPanel Spacing="8" IsVisible="{Binding IsImageOrPdf}">
-                        <TextBlock Classes="field-label" Text="导出对象" />
-                        <!-- 直接在弹窗里选，不用关弹窗回主窗口挑（审计 P2-18）：
-                             主窗口当前选择只作初始值。 -->
-                        <ComboBox Classes="field" HorizontalAlignment="Stretch"
-                                  ItemsSource="{Binding ClassTargets}"
-                                  SelectedItem="{Binding SelectedClassTarget, Mode=TwoWay}"
-                                  AutomationProperties.Name="选择导出班级" />
-                        <ComboBox Classes="field" HorizontalAlignment="Stretch"
-                                  ItemsSource="{Binding TeacherTargets}"
-                                  SelectedItem="{Binding SelectedTeacherTarget, Mode=TwoWay}"
-                                  AutomationProperties.Name="选择导出教师" />
-                        <TextBlock Classes="helper" Text="{Binding TargetHint}" />
-                    </StackPanel>
-
-                    <Border IsVisible="{Binding HasError}" Background="{StaticResource AccentWashBrush}"
-                            BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
-                            CornerRadius="6" Padding="10,8">
-                        <TextBlock Text="{Binding Error}" FontSize="10.5" TextWrapping="Wrap"
-                                   Foreground="{StaticResource AccentDeepBrush}" />
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
+                </ScrollViewer>
+            </Border>
 
             <!-- 预览 -->
-            <Border Grid.Column="1" Classes="preview-frame" Padding="12">
+            <Border Grid.Column="1" Classes="workspace-panel" Padding="16">
                 <Grid RowDefinitions="Auto,*,Auto">
-                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,2,8">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
                         <StackPanel Spacing="2">
-                            <TextBlock Text="导出预览" FontFamily="{StaticResource SerifFont}"
-                                       FontSize="15" Foreground="{StaticResource InkBrush}" />
-                            <TextBlock Text="{Binding PreviewCaption}" FontSize="10"
-                                       Foreground="{StaticResource MutedBrush}"
+                            <TextBlock Text="导出预览" Classes="section-title" />
+                            <TextBlock Text="{Binding PreviewCaption}" Classes="helper"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Text="PREVIEW" FontFamily="{StaticResource MonoFont}"
-                                   FontSize="9" LetterSpacing="1.6"
-                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="PREVIEW" Classes="eyebrow" />
                     </Grid>
 
-                    <Border Grid.Row="1" Background="{StaticResource CardBrush}"
-                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6"
+                    <Border Grid.Row="1" Background="{StaticResource PaperBrush}"
+                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8"
                             Padding="8">
                         <Panel>
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -205,9 +172,8 @@
 
                             <StackPanel IsVisible="{Binding ShowPreviewEmpty}" Spacing="6"
                                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding PreviewEmptyText}" FontSize="10.5"
-                                           Foreground="{StaticResource MutedBrush}"
-                                           TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280" />
+                                <TextBlock Text="{Binding PreviewEmptyText}" Classes="helper" FontSize="11"
+                                           TextAlignment="Center" MaxWidth="280" />
                             </StackPanel>
 
                             <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsPreviewBusy}"
@@ -215,23 +181,21 @@
                         </Panel>
                     </Border>
 
-                    <TextBlock Grid.Row="2" Text="{Binding PreviewDetail}" FontSize="10"
-                               LineHeight="16" Foreground="{StaticResource MutedBrush}"
-                               TextWrapping="Wrap" Margin="2,8,2,0" />
+                    <TextBlock Grid.Row="2" Text="{Binding PreviewDetail}" Classes="helper"
+                               Margin="0,8,0,0" />
                 </Grid>
             </Border>
         </Grid>
 
-        <Border Grid.Row="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="20,12">
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
-                <TextBlock Text="{Binding ExportSummary}" FontSize="10"
-                           Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" />
-                <Button Grid.Column="1" Classes="primary" Content="选择位置并导出" Click="OnExport"
-                        IsDefault="True" FontSize="11.5" Padding="16,7"
+        <Border Grid.Row="2" Classes="dialog-footer">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Text="{Binding ExportSummary}" Classes="helper"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Classes="primary top" Content="选择位置并导出" Click="OnExport"
+                        IsDefault="True" Padding="16,7"
                         AutomationProperties.Name="导出" />
-                <Button Grid.Column="2" Classes="ghost" Content="取消" Click="OnCancel"
-                        FontSize="11.5" Padding="14,7" IsCancel="True"
+                <Button Grid.Column="2" Classes="ghost top" Content="取消" Click="OnCancel"
+                        Padding="14,7" IsCancel="True"
                         AutomationProperties.Name="取消导出" />
             </Grid>
         </Border>

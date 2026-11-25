@@ -60,19 +60,18 @@ public sealed class QuickSwapWindow : Window
 
         _search = new TextBox
         {
-            MinHeight = 34, FontSize = 12,
+            Classes = { "field" },
             PlaceholderText = "输入姓名或拼音首字母，如 ZS",
-            Background = Wash, BorderBrush = Line, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(5), Padding = new Thickness(9, 6),
         };
         _results = new ListBox
         {
-            Height = 168, Background = Brushes.Transparent, BorderThickness = new Thickness(0),
-            Padding = new Thickness(0),
+            Classes = { "sg-list" },
+            Height = 168,
         };
         _hint = new TextBlock
         {
-            Text = "回车对调 · Esc 取消", FontSize = 10, Foreground = Muted,
+            Classes = { "helper" },
+            Text = "回车对调 · Esc 取消",
         };
 
         _search.TextChanged += (_, _) => RefreshResults();
@@ -93,15 +92,22 @@ public sealed class QuickSwapWindow : Window
 
         root.Children.Add(new TextBlock
         {
-            Text = $"换人 · {_source.PositionLabel}", FontSize = 15, FontWeight = FontWeight.SemiBold, Foreground = Ink,
+            Classes = { "section-title" },
+            Text = $"换人 · {_source.PositionLabel}",
+            FontSize = 17,
         });
         root.Children.Add(new TextBlock
         {
+            Classes = { "helper" },
             Text = _source.IsEmpty ? "这个座位是空的。" : $"当前：{_source.DisplayName}",
-            FontSize = 11, Foreground = Muted,
         });
         root.Children.Add(_search);
-        root.Children.Add(_results);
+        root.Children.Add(new Border
+        {
+            Classes = { "workspace-panel" },
+            Padding = new Thickness(4),
+            Child = _results,
+        });
         root.Children.Add(_hint);
 
         var buttons = new StackPanel
@@ -110,14 +116,12 @@ public sealed class QuickSwapWindow : Window
         };
         var cancel = new Button
         {
-            Content = "取消", IsCancel = true, FontSize = 11.5, Padding = new Thickness(14, 7),
-            Background = Card, Foreground = InkSoft, BorderBrush = Line, BorderThickness = new Thickness(1),
+            Classes = { "ghost" }, Content = "取消", IsCancel = true, FontSize = 11.5, Padding = new Thickness(14, 7),
         };
         cancel.Click += (_, _) => Close();
         var apply = new Button
         {
-            Content = "对调", IsDefault = true, FontSize = 11.5, Padding = new Thickness(16, 7),
-            Background = Ink, Foreground = Paper, BorderThickness = new Thickness(0),
+            Classes = { "primary" }, Content = "对调", IsDefault = true, FontSize = 11.5, Padding = new Thickness(16, 7),
         };
         apply.Click += (_, _) => Apply();
         buttons.Children.Add(cancel);

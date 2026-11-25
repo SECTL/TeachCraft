@@ -8,10 +8,16 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using TeachCraft.App.Cloud;
 using TeachCraft.App.ViewModels;
 using TeachCraft.App.Views;
+using TeachCraft.Core.Cloud;
 using TeachCraft.Core.Oobe;
 using TeachCraft.Core.Updating;
+using Homework.App.Cloud;
+using Homework.Core.Roster;
+using SeatGrid.App.Cloud;
+using SeatGrid.Core.Cloud;
 
 namespace TeachCraft.App;
 
@@ -112,7 +118,10 @@ public partial class App : Application
             //   强制通道（--oobe / --oobe-shot 等）→ showOobe（此处为 true）：取证界面本身；
             //   正常启动 → null：由 OobeStateStore 的状态决定，只弹一次，结束过就不再打扰。
             var oobeOverride = readsRealState ? (bool?)null : (isWalkthrough ? showOobe : (bool?)null);
-            var viewModel = new MainViewModel(oobeStateStore: oobeStore, showOobe: oobeOverride);
+            var cloudRuntime = CloudWiring.Create(
+                isWalkthrough, SectlPlatformDefaults.ClientId, SectlPlatformDefaults.RedirectUri, handler: null);
+            var viewModel = new MainViewModel(
+                oobeStateStore: oobeStore, showOobe: oobeOverride, cloudRuntime: cloudRuntime);
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
 
@@ -147,6 +156,8 @@ public partial class App : Application
                 !CaptureGradeWeaveConflictIfRequested(desktop) &&
                 !CaptureGradeWeaveExportIfRequested(desktop) &&
                 !CaptureMeetRosterIfRequested(desktop) &&
+                !CaptureSeatGridCloudIfRequested(desktop) &&
+                !CaptureHomeworkRosterIfRequested(desktop) &&
                 !RunSliderBenchIfRequested(desktop) &&
                 !RunPerfBenchIfRequested(desktop) &&
                 !ShowGradeWeaveDemoIfRequested(desktop) &&
@@ -1019,6 +1030,92 @@ public partial class App : Application
         return true;
     }
 
+    /// <summary>
+    /// 设计走查：--seatgrid-cloud-shot &lt;png&gt;。用内存假桥打开归位云端存档窗的共享名单页，
+    /// 列出三份合成名单并选中其中一份后截图；不联网、不读真实凭据、不装配 CloudRuntime。
+    /// </summary>
+    private static bool CaptureSeatGridCloudIfRequested(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var args = desktop.Args ?? Array.Empty<string>();
+        var index = Array.IndexOf(args, "--seatgrid-cloud-shot");
+        if (index < 0 || index + 1 >= args.Length) return false;
+
+        var target = Path.GetFullPath(args[index + 1]);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            var exitCode = 0;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                var bridge = new CaptureSeatGridCloudBridge();
+                var cloudWindow = SeatGridCloudWindow.CreateForCapture(bridge);
+                cloudWindow.Show();
+                await Task.Delay(300);
+                // WindowFit.Clamp 在 Opened 时跑过一次；这里再定尺寸，确保截图尺寸就是预期值。
+                cloudWindow.Width = 820;
+                cloudWindow.Height = 740;
+                await Task.Delay(400);
+                cloudWindow.SelectRosterForCapture("高一(3)班");
+                await Task.Delay(200);
+                CaptureWindowTo(cloudWindow, target);
+                File.WriteAllText(target + ".state.txt",
+                    $"rosters={bridge.Rosters.Count}; selected=高一(3)班; window={cloudWindow.Bounds.Size}");
+                cloudWindow.Close();
+            }
+            catch (Exception ex)
+            {
+                exitCode = 1;
+                File.WriteAllText(target + ".error.txt", ex.ToString());
+            }
+            finally { desktop.Shutdown(exitCode); }
+        });
+        return true;
+    }
+
+    /// <summary>
+    /// 设计走查：--homework-roster-shot &lt;png&gt;。用内存假桥打开作业整理共享名单拉取窗，
+    /// 列出三份合成名单并选中两份后截图；不联网、不读真实凭据、不装配 CloudRuntime。
+    /// </summary>
+    private static bool CaptureHomeworkRosterIfRequested(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var args = desktop.Args ?? Array.Empty<string>();
+        var index = Array.IndexOf(args, "--homework-roster-shot");
+        if (index < 0 || index + 1 >= args.Length) return false;
+
+        var target = Path.GetFullPath(args[index + 1]);
+        Dispatcher.UIThread.Post(async () =>
+        {
+            var exitCode = 0;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                var bridge = new CaptureHomeworkRosterBridge();
+                var pickerViewModel = new HomeworkRosterPickerViewModel(bridge);
+                await pickerViewModel.RefreshAsync(CancellationToken.None);
+                pickerViewModel.Rows[0].IsSelected = true;
+                pickerViewModel.Rows[1].IsSelected = true;
+                var pickerWindow = new SharedRosterPickerWindow(pickerViewModel);
+                pickerWindow.Show();
+                await Task.Delay(300);
+                // WindowFit.Clamp 在 Opened 时跑过一次；这里再定尺寸，确保截图尺寸就是预期值。
+                pickerWindow.Width = 760;
+                pickerWindow.Height = 620;
+                await Task.Delay(400);
+                CaptureWindowTo(pickerWindow, target);
+                File.WriteAllText(target + ".state.txt",
+                    $"rosters={bridge.Entries.Count}; selected={pickerViewModel.SelectedCount}; window={pickerWindow.Bounds.Size}");
+                pickerWindow.Close();
+            }
+            catch (Exception ex)
+            {
+                exitCode = 1;
+                File.WriteAllText(target + ".error.txt", ex.ToString());
+            }
+            finally { desktop.Shutdown(exitCode); }
+        });
+        return true;
+    }
+
     /// <summary>设计走查：只打开「分晓」窗口并截图，确认它能在工具箱里正常渲染。</summary>
     private static bool CaptureGradeStripIfRequested(IClassicDesktopStyleApplicationLifetime desktop)
     {
@@ -1660,6 +1757,451 @@ public partial class App : Application
     {
         var args = desktop.Args ?? Array.Empty<string>();
 
+        // 账号页走查：只用假账号与内存偏好，绝不装配真实服务、绝不发请求。
+        var accountShotIndex = Array.IndexOf(args, "--account-shot");
+        if (accountShotIndex >= 0 && accountShotIndex + 1 < args.Length)
+        {
+            var accountTarget = Path.GetFullPath(args[accountShotIndex + 1]);
+            var state = accountShotIndex + 2 < args.Length ? args[accountShotIndex + 2] : "signedout";
+            Dispatcher.UIThread.Post(async () =>
+            {
+                var exitCode = 0;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(accountTarget)!);
+                    var fakeAccount = new CaptureAccountService();
+                    if (string.Equals(state, "signedin", StringComparison.OrdinalIgnoreCase))
+                        fakeAccount.SetSignedIn("示例教师");
+                    var settings = new CaptureSettingsStore();
+                    var runtime = new CloudRuntime(true, fakeAccount, null, null, settings, settings.Load());
+                    var accountViewModel = new AccountViewModel(runtime);
+                    accountViewModel.ApplyCaptureState(state);
+
+                    var dialog = AccountWindow.OpenForCapture(accountViewModel, window);
+                    await Task.Delay(600);
+                    dialog.UpdateLayout();
+                    CaptureWindowTo(dialog, accountTarget);
+                    dialog.Close();
+                }
+                catch (Exception ex)
+                {
+                    exitCode = 1;
+                    File.WriteAllText(accountTarget + ".error.txt", ex.ToString());
+                }
+                finally { desktop.Shutdown(exitCode); }
+            });
+            return;
+        }
+
+        var homeworkShotIndex = Array.IndexOf(args, "--homework-shot");
+        if (homeworkShotIndex >= 0 && homeworkShotIndex + 1 < args.Length)
+        {
+            var homeworkTarget = Path.GetFullPath(args[homeworkShotIndex + 1]);
+            var homeworkWidthIndex = Array.IndexOf(args, "--width");
+            var homeworkWidth = homeworkWidthIndex >= 0 && homeworkWidthIndex + 1 < args.Length
+                && double.TryParse(args[homeworkWidthIndex + 1], out var parsedHomeworkWidth)
+                ? parsedHomeworkWidth : 1440;
+            Dispatcher.UIThread.Post(async () =>
+            {
+                var exitCode = 0;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(homeworkTarget)!);
+                    var homeworkWindow = new Homework.App.HomeworkWindow { Width = homeworkWidth };
+                    homeworkWindow.Show();
+                    await Task.Delay(500);
+                    var viewModel = (Homework.App.HomeworkViewModel)homeworkWindow.DataContext!;
+                    viewModel.BeginNewBatch();
+                    await Task.Delay(500);
+                    var workspace = viewModel.Workspace!;
+                    using var homeworkCache = new Homework.Core.Pages.PageThumbnailCache();
+                    if (args.Contains("--homework-demo"))
+                    {
+                        var (demoImages, demoPdf) = CreateHomeworkDemoInputs(
+                            args.Contains("--homework-stress") ? 40 : 2);
+                        workspace.ApplyPaste(Homework.Core.Roster.RosterPasteParser.Parse(
+                            "八年级1班,01,苏晚晴\n八年级1班,02,陈屿\n八年级2班,01,许砚", "八年级1班"));
+                        workspace.ImportImages(demoImages, homeworkCache, null, CancellationToken.None);
+                        workspace.ImportPdf(demoPdf, homeworkCache, 150, null, CancellationToken.None);
+                        if (workspace.VisiblePages.Count > 0)
+                        {
+                            workspace.SelectPage(workspace.VisiblePages[0]);
+                            if (workspace.Students.Count > 0) workspace.MatchStudent(workspace.Students[0]);
+                        }
+                        workspace.ShowOnlyMatchedStudents = true;
+                        workspace.SelectedStudent = workspace.Students.FirstOrDefault();
+                        await Task.Delay(800);
+                        if (args.Contains("--homework-dialogs"))
+                        {
+                            var optionsViewModel = new Homework.App.ExportOptionsViewModel
+                            {
+                                OutputDirectory = Path.GetTempPath(),
+                            };
+                            optionsViewModel.UpdatePreview(workspace.Batch, new Homework.App.FileProbe());
+                            var exportDialog = new Homework.App.ExportOptionsWindow(optionsViewModel);
+                            exportDialog.Show();
+                            await Task.Delay(500);
+                            CaptureWindowTo(exportDialog, homeworkTarget + ".export.png");
+                            exportDialog.Close(null);
+
+                            var rosterDialog = new Homework.App.RosterImportWindow();
+                            rosterDialog.Show();
+                            var rosterPath = Path.Combine(Path.GetDirectoryName(homeworkTarget)!, "homework-roster.csv");
+                            File.WriteAllText(rosterPath,
+                                "班级,学号,姓名\n八年级1班,01,苏晚晴\n八年级1班,02,陈屿\n八年级2班,01,许砚\n",
+                                new System.Text.UTF8Encoding(true));
+                            rosterDialog.LoadForCapture(rosterPath);
+                            await Task.Delay(500);
+                            File.WriteAllText(homeworkTarget + ".roster.state.txt",
+                                rosterDialog.DescribeSelectionsForCapture());
+                            CaptureWindowTo(rosterDialog, homeworkTarget + ".roster.png");
+                            rosterDialog.Close(false);
+                        }
+                    }
+                    homeworkWindow.CaptureTo(homeworkTarget);
+                    File.WriteAllText(homeworkTarget + ".state.txt",
+                    $"batch={workspace.Batch.Name}; pages={workspace.Batch.Pages.Count}; " +
+                    $"students={workspace.Batch.Students.Count}; pending={workspace.PendingCount}; " +
+                    $"incomplete={workspace.IncompleteStudentsCount}; " +
+                    $"matched={workspace.Batch.Students.Count - workspace.IncompleteStudentsCount}; " +
+                    $"canCommit={workspace.CanCommit}; window={homeworkWindow.Bounds.Size}");
+                }
+                catch (Exception ex)
+                {
+                    exitCode = 1;
+                    File.WriteAllText(homeworkTarget + ".error.txt", ex.ToString());
+                }
+                finally { desktop.Shutdown(exitCode); }
+            });
+            return;
+        }
+
+        // 填涂识别走查：合成 3 名学号 001/002/003 的学生与 3 张已知数字的填涂页，
+        // 框选数字格区域、列数 3，运行识别后截主窗口，并生成模板 PNG/PDF 校验几何。
+        // 与 --width 组合；--homework-fillin-demo 为显式演示开关（本分支默认即演示）。
+        var homeworkFillInShotIndex = Array.IndexOf(args, "--homework-fillin-shot");
+        if (homeworkFillInShotIndex >= 0 && homeworkFillInShotIndex + 1 < args.Length)
+        {
+            var fillInTarget = Path.GetFullPath(args[homeworkFillInShotIndex + 1]);
+            var fillInWidthIndex = Array.IndexOf(args, "--width");
+            var fillInWidth = fillInWidthIndex >= 0 && fillInWidthIndex + 1 < args.Length
+                && double.TryParse(args[fillInWidthIndex + 1], out var parsedFillInWidth)
+                ? parsedFillInWidth : 1440;
+            Dispatcher.UIThread.Post(async () =>
+            {
+                var exitCode = 0;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(fillInTarget)!);
+                    var fillInWindow = new Homework.App.HomeworkWindow { Width = fillInWidth };
+                    fillInWindow.Show();
+                    await Task.Delay(500);
+                    var viewModel = (Homework.App.HomeworkViewModel)fillInWindow.DataContext!;
+                    viewModel.BeginNewBatch();
+                    await Task.Delay(300);
+                    var workspace = viewModel.Workspace!;
+                    var batch = workspace.Batch;
+
+                    var classId = Guid.NewGuid();
+                    var syntheticClass = new Homework.Core.Models.HomeworkClass(classId, "八年级1班");
+                    var syntheticStudents = new[]
+                    {
+                        new Homework.Core.Models.HomeworkStudent(Guid.NewGuid(), classId, "001", "苏晚晴"),
+                        new Homework.Core.Models.HomeworkStudent(Guid.NewGuid(), classId, "002", "陈屿"),
+                        new Homework.Core.Models.HomeworkStudent(Guid.NewGuid(), classId, "003", "许砚"),
+                    };
+                    batch.LoadRoster(new[] { syntheticClass }, syntheticStudents);
+
+                    var pageDir = Path.Combine(Path.GetTempPath(), "TeachCraft", "homework-fillin-shot",
+                        Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(pageDir);
+                    using var fillInCache = new Homework.Core.Pages.PageThumbnailCache();
+                    var pagePaths = new List<string>();
+                    foreach (var number in new[] { "001", "002", "003" })
+                        pagePaths.Add(CreateFillInDemoPage(number, pageDir));
+                    // 走生产导入路径：PageThumbnailCache 生成缩略图，预览才有内容。
+                    // 走查 lambda 已在 UI 线程，UI 绑定的集合不能切到 Task.Run。
+                    workspace.ImportImages(pagePaths, fillInCache, null, CancellationToken.None);
+
+                    var region = new Homework.Core.Recognition.NormalizedRect(
+                        100 / 900.0, 100 / 1200.0, 600 / 900.0, 1000 / 1200.0);
+                    batch.SetFillInRegion(region);
+                    batch.SetFillInColumns(3);
+
+                    // 经 VM 公开 API 应用区域：内部写回批次并触发 Refresh，让页/名单进入界面集合。
+                    workspace.DraftFillInRegion = region;
+                    workspace.ApplyFillInRegion(false);
+                    if (workspace.VisiblePages.Count > 0)
+                        workspace.SelectPage(workspace.VisiblePages[0]);
+
+                    await workspace.RunFillInRecognitionAsync();
+                    await Task.Delay(300);
+
+                    var templateDir = Path.Combine(Path.GetTempPath(), "TeachCraft", "homework-fillin-shot",
+                        Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(templateDir);
+                    var templateOptions = new Homework.Core.Recognition.FillInTemplateOptions(
+                        "作业填涂卡", "八年级1班", 3);
+                    var pngBytes = Homework.Core.Recognition.FillInTemplateRenderer.RenderPng(templateOptions);
+                    var templatePngPath = Path.Combine(templateDir, "template.png");
+                    File.WriteAllBytes(templatePngPath, pngBytes);
+                    int templatePngWidth, templatePngHeight;
+                    using (var decoded = SkiaSharp.SKBitmap.Decode(pngBytes))
+                    {
+                        templatePngWidth = decoded.Width;
+                        templatePngHeight = decoded.Height;
+                    }
+                    var pdfBytes = Homework.Core.Recognition.FillInTemplateRenderer.RenderPdf(templateOptions);
+                    var templatePdfPath = Path.Combine(templateDir, "template.pdf");
+                    File.WriteAllBytes(templatePdfPath, pdfBytes);
+                    int templatePdfPages;
+                    using (var pdf = PdfSharp.Pdf.IO.PdfReader.Open(
+                               templatePdfPath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import))
+                        templatePdfPages = pdf.PageCount;
+
+                    fillInWindow.CaptureTo(fillInTarget);
+                    var recognized = batch.Pages.Count(p => p.Recognition is not null);
+                    var matched = batch.Pages.Count(p => p.StudentId is not null);
+                    File.WriteAllText(fillInTarget + ".state.txt",
+                        $"pages={batch.Pages.Count}; recognized={recognized}; matched={matched}; " +
+                        $"pending={workspace.PendingCount}; columns={workspace.FillInColumns}; " +
+                        $"templatePng={templatePngWidth}x{templatePngHeight}; " +
+                        $"templatePdfPages={templatePdfPages}; window={fillInWindow.Bounds.Size}");
+                }
+                catch (Exception ex)
+                {
+                    exitCode = 1;
+                    File.WriteAllText(fillInTarget + ".error.txt", ex.ToString());
+                }
+                finally { desktop.Shutdown(exitCode); }
+            });
+            return;
+        }
+
+        var homeworkScanShotIndex = Array.IndexOf(args, "--homework-scan-shot");
+        if (homeworkScanShotIndex >= 0 && homeworkScanShotIndex + 1 < args.Length)
+        {
+            var scanTarget = Path.GetFullPath(args[homeworkScanShotIndex + 1]);
+            Dispatcher.UIThread.Post(async () =>
+            {
+                var exitCode = 0;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(scanTarget)!);
+                    var demoRoot = Path.Combine(Path.GetTempPath(), "TeachCraft", "homework-scan-shot",
+                        Guid.NewGuid().ToString("N"));
+                    var inbox = Path.Combine(demoRoot, "扫描收件");
+                    Directory.CreateDirectory(inbox);
+
+                    var preferences = new Homework.Core.Scanning.ScanTaskPreferences
+                    {
+                        InboxFolder = inbox,
+                        Source = Homework.Core.Scanning.ScanSource.FeederDuplex,
+                        PageSize = Homework.Core.Scanning.ScanPageSize.A4,
+                        ResolutionDpi = 300,
+                        ColorMode = Homework.Core.Scanning.ScanColorMode.BlackWhite,
+                        PageLimit = Homework.Core.Scanning.ScanPageLimit.All,
+                        ImportToCurrent = true,
+                    };
+                    var viewModel = new Homework.App.Scanning.ScanTaskViewModel(
+                        new ScanDemoScannerService(),
+                        new ScanDemoImportSink(),
+                        preferences);
+                    var window = new Homework.App.ScanTaskWindow(
+                        viewModel,
+                        new Homework.Core.Scanning.ScanTaskPreferencesStore(
+                            Path.Combine(demoRoot, "scan-task.json")))
+                    {
+                        Width = 820,
+                        Height = 740,
+                    };
+                    window.Show();
+                    await Task.Delay(500);
+                    await viewModel.RefreshScannersAsync();
+                    await viewModel.ImportIncomingAsync("扫描件-001.pdf");
+                    await viewModel.ImportIncomingAsync("扫描件-002.pdf");
+                    viewModel.AddIncomingFailure(
+                        "扫描件-003.jpg",
+                        "文件仍在写入或无法读取，稍后可点「导入现有文件」重试。");
+                    await Task.Delay(300);
+
+                    CaptureWindowTo(window, scanTarget);
+                    var capabilities = viewModel.Capabilities;
+                    var capabilityText = capabilities is null
+                        ? "capabilities=unknown"
+                        : $"sources={string.Join("/", capabilities.Sources)}; " +
+                          $"pages={string.Join("/", capabilities.PageSizes)}; " +
+                          $"resolutions={string.Join("/", capabilities.Resolutions)}; " +
+                          $"colors={string.Join("/", capabilities.ColorModes)}";
+                    File.WriteAllText(scanTarget + ".state.txt",
+                        $"scanners={viewModel.Scanners.Count}; selected={viewModel.SelectedScanner?.Name}; " +
+                        $"direct={viewModel.IsDirectMode}; received={viewModel.ReceivedFiles.Count}; " +
+                        $"{capabilityText}; window={window.Bounds.Size}");
+
+                    viewModel.SwitchToInbox();
+                    viewModel.SetWatching(true);
+                    await Task.Delay(300);
+                    CaptureWindowTo(window, scanTarget + ".inbox.png");
+                    File.WriteAllText(scanTarget + ".inbox.state.txt",
+                        $"inbox={viewModel.InboxFolder}; watching={viewModel.IsWatching}; " +
+                        $"received={viewModel.ReceivedFiles.Count}; window={window.Bounds.Size}");
+                    window.Close();
+                }
+                catch (Exception ex)
+                {
+                    exitCode = 1;
+                    File.WriteAllText(scanTarget + ".error.txt", ex.ToString());
+                }
+                finally { desktop.Shutdown(exitCode); }
+            });
+            return;
+        }
+
+        var scanCapsIndex = Array.IndexOf(args, "--homework-scan-caps");
+        if (scanCapsIndex >= 0 && scanCapsIndex + 1 < args.Length)
+        {
+            var capsTarget = Path.GetFullPath(args[scanCapsIndex + 1]);
+            Dispatcher.UIThread.Post(() =>
+            {
+                var exitCode = 0;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(capsTarget)!);
+                    var service = Homework.App.Scanning.ScannerServiceFactory.Create();
+                    var scanners = service.GetScannersAsync(CancellationToken.None)
+                        .GetAwaiter().GetResult();
+                    if (scanners.Count == 0)
+                    {
+                        File.WriteAllText(capsTarget, "未找到扫描仪。请确认 WIA 驱动已安装。");
+                    }
+                    else
+                    {
+                        var scannerIdIndex = Array.IndexOf(args, "--scanner-id");
+                        var wantedId = scannerIdIndex >= 0 && scannerIdIndex + 1 < args.Length
+                            ? args[scannerIdIndex + 1]
+                            : null;
+                        var selected = wantedId is null
+                            ? scanners[0]
+                            : scanners.FirstOrDefault(scanner =>
+                                string.Equals(scanner.Id, wantedId, StringComparison.OrdinalIgnoreCase))
+                              ?? scanners[0];
+                        var caps = service.GetCapabilitiesAsync(selected, CancellationToken.None)
+                            .GetAwaiter().GetResult();
+                        File.WriteAllText(
+                            capsTarget,
+                            string.IsNullOrWhiteSpace(caps.RawDump)
+                                ? $"scanner: {selected.Name}\nparsed: {caps.Summary()}\nreported: {caps.IsReported}\n未读到驱动属性原文（连接失败或驱动未暴露 WIA 属性）。"
+                                : caps.RawDump);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    exitCode = 1;
+                    File.WriteAllText(capsTarget, ex.ToString());
+                }
+                finally
+                {
+                    desktop.Shutdown(exitCode);
+                }
+            });
+            return;
+        }
+
+        var certificateShotIndex = Array.IndexOf(args, "--certificate-shot");
+        if (certificateShotIndex >= 0 && certificateShotIndex + 1 < args.Length)
+        {
+            var certificateTarget = Path.GetFullPath(args[certificateShotIndex + 1]);
+            var certificateWidthIndex = Array.IndexOf(args, "--width");
+            var certificateWidth = certificateWidthIndex >= 0 && certificateWidthIndex + 1 < args.Length
+                && double.TryParse(args[certificateWidthIndex + 1], out var certificateParsedWidth) ? certificateParsedWidth : 1440;
+            var portrait = args.Contains("--certificate-portrait");
+            Dispatcher.UIThread.Post(async () =>
+            {
+                var exitCode = 0;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(certificateTarget)!);
+                    window.Width = certificateWidth;
+                    var heightIndex = Array.IndexOf(args, "--certificate-height");
+                    if (heightIndex >= 0 && heightIndex + 1 < args.Length
+                        && double.TryParse(args[heightIndex + 1], out var certificateHeight))
+                        window.Height = certificateHeight;
+                    await window.ShowForShotAsync("certificate-batch");
+                    var tool = ((MainViewModel)window.DataContext!).FindTool("certificate-batch")!;
+                    var draft = tool.Certificate!;
+
+                    async Task CaptureCertificateAsync(string state)
+                    {
+                        await Task.Delay(500);
+                        if (args.Contains("--certificate-scroll-bottom"))
+                        {
+                            window.ScrollCertificateSettingsToEnd();
+                            await Task.Delay(50);
+                        }
+                        window.CaptureTo(certificateTarget);
+                        File.WriteAllText(certificateTarget + ".layout.json",
+                            System.Text.Json.JsonSerializer.Serialize(window.CaptureCertificateLayoutMetrics()));
+                        File.WriteAllText(certificateTarget + ".state.txt", state);
+                    }
+
+                    if (args.Contains("--certificate-empty"))
+                    {
+                        await CaptureCertificateAsync(
+                            $"tool={tool.Id}; state=empty; canRun={tool.CanRun}; " +
+                            $"preview={tool.HasCertificatePreview}; showEmpty={tool.ShowCertificatePreviewEmpty}; window={window.Bounds.Size}");
+                        return;
+                    }
+                    var inputs = await Task.Run(() => CreateCertificateShotInputs(portrait));
+                    var (applied, error) = await draft.AssignPathsAsync(new[] { inputs.Template, inputs.Roster });
+                    if (!applied) throw new InvalidOperationException(error ?? draft.StatusText);
+                    draft.SelectedWorksheetName = draft.WorksheetNames[0];
+                    draft.SelectedNameColumn = draft.NameColumnChoices[0];
+                    draft.SelectedAwardColumn = args.Contains("--certificate-no-award")
+                        ? CertificateColumnOption.NoAward : draft.AwardColumnChoices[1];
+                    draft.NameX = 48;
+                    draft.NameY = 48;
+                    draft.AwardY = 65;
+                    if (args.Contains("--certificate-preview-error"))
+                    {
+                        var missingTemplate = Path.Combine(Path.GetDirectoryName(inputs.Template)!, "missing-template.png");
+                        draft.AssignTemplate(missingTemplate);
+                        for (var attempt = 0; attempt < 100 && !tool.HasCertificatePreviewError; attempt++)
+                            await Task.Delay(100);
+                        if (!tool.HasCertificatePreviewError || tool.ShowCertificatePreviewEmpty || tool.HasCertificatePreview)
+                            throw new InvalidOperationException("缺失底图未进入预览失败状态：" + tool.CertificatePreviewStatus);
+                        await CaptureCertificateAsync(
+                            $"tool={tool.Id}; state=preview-error; previewError={tool.HasCertificatePreviewError}; " +
+                            $"preview={tool.HasCertificatePreview}; showEmpty={tool.ShowCertificatePreviewEmpty}; " +
+                            $"records={draft.Records.Count}; canRun={tool.CanRun}; window={window.Bounds.Size}");
+                        return;
+                    }
+
+                    for (var attempt = 0; attempt < 100 && !tool.HasCertificatePreview; attempt++)
+                        await Task.Delay(100);
+                    if (!tool.HasCertificatePreview) throw new InvalidOperationException(draft.StatusText);
+                    var exportIndex = Array.IndexOf(args, "--certificate-export");
+                    var exportPath = exportIndex >= 0 && exportIndex + 1 < args.Length
+                        ? Path.GetFullPath(args[exportIndex + 1]) : null;
+                    var alternate = args.Contains("--certificate-interact")
+                        ? await Task.Run(() => CreateCertificateShotInputs(!portrait)) : inputs;
+                    var evidence = await window.ProbeCertificateAsync(alternate.Template, exportPath,
+                        args.Contains("--certificate-interact"));
+                    await CaptureCertificateAsync(
+                        $"tool={tool.Id}; records={draft.Records.Count}; canRun={tool.CanRun}; " +
+                        $"name={draft.NameX},{draft.NameY}; award={draft.AwardX},{draft.AwardY}; " +
+                        $"preview={tool.CertificatePreviewImage!.PixelSize}; template={inputs.Template}; roster={inputs.Roster}" +
+                        Environment.NewLine + evidence);
+                }
+                catch (Exception ex)
+                {
+                    exitCode = 1;
+                    File.WriteAllText(certificateTarget + ".error.txt", ex.ToString());
+                }
+                finally { desktop.Shutdown(exitCode); }
+            });
+            return;
+        }
+
         if (CaptureOobeIfRequested(desktop, window, args)) return;
 
         var selfTestIndex = Array.IndexOf(args, "--selftest");
@@ -1697,6 +2239,7 @@ public partial class App : Application
         var target = args[shotIndex + 1];
         var panelIndex = Array.IndexOf(args, "--panel");
         var panel = panelIndex >= 0 && panelIndex + 1 < args.Length ? args[panelIndex + 1] : null;
+        if (args.Contains("--account-panel")) panel = "account";
         var expandIndex = Array.IndexOf(args, "--expand");
         var expand = expandIndex >= 0 && expandIndex + 1 < args.Length ? args[expandIndex + 1] : null;
         var scrollIndex = Array.IndexOf(args, "--scroll");
@@ -1879,6 +2422,228 @@ public partial class App : Application
         });
     }
 
+    /// <summary>走查专用归位云端假桥：三份合成名单，全部内存数据，不联网、不读凭据。</summary>
+    private sealed class CaptureSeatGridCloudBridge : ISeatGridCloudBridge
+    {
+        public IReadOnlyList<SeatGridRosterEntry> Rosters { get; } = new[]
+        {
+            new SeatGridRosterEntry("demo-1", "高一(1)班", 1,
+                new DateTimeOffset(2026, 11, 24, 9, 0, 0, TimeSpan.Zero), 42, SeatGridRosterFields.None),
+            new SeatGridRosterEntry("demo-2", "高一(2)班", 2,
+                new DateTimeOffset(2026, 11, 24, 9, 5, 0, TimeSpan.Zero), 40, SeatGridRosterFields.None),
+            new SeatGridRosterEntry("demo-3", "高一(3)班", 3,
+                new DateTimeOffset(2026, 11, 24, 9, 10, 0, TimeSpan.Zero), 45, SeatGridRosterFields.None),
+        };
+
+        public bool IsAvailable => true;
+        public bool IsSignedIn => true;
+        public string StatusText => "已登录（演示数据 · 不联网）";
+        public string RosterConsentText => "共享名单默认只含姓名、性别、学号（演示）";
+        public bool IsAutoSyncEnabled => false;
+        public void SetAutoSyncEnabled(bool value) { }
+        public SeatGridRosterFields LastRosterFields => SeatGridRosterFields.None;
+        public void RememberRosterFields(SeatGridRosterFields fields) { }
+
+        public string BuildSeatConsentText(string rosterName, int rosterVersion, string fieldsSummary)
+            => $"{rosterName} v{rosterVersion} {fieldsSummary}";
+
+        public event EventHandler? StateChanged { add { } remove { } }
+
+        public Task<bool> EnsureSignedInAsync(Window owner) => Task.FromResult(true);
+        public void OpenAccountSettings(Window owner) { }
+
+        public Task<IReadOnlyList<SeatGridRosterEntry>> ListRostersAsync(CancellationToken ct)
+            => Task.FromResult(Rosters);
+        public Task<SeatGridRosterPick?> DownloadRosterAsync(string rosterId, CancellationToken ct)
+            => Task.FromResult<SeatGridRosterPick?>(null);
+        public Task<SeatGridRosterEntry> UploadRosterAsync(
+            string name, IReadOnlyList<SeatGridRosterStudent> projectedStudents, SeatGridRosterFields fields,
+            string? existingId, int expectedVersion, CancellationToken ct)
+            => Task.FromResult(new SeatGridRosterEntry(
+                existingId ?? "demo-new", name, expectedVersion + 1, DateTimeOffset.UtcNow,
+                projectedStudents.Count, fields));
+        public Task DeleteRosterAsync(string rosterId, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<SeatGridCloudEntry>> ListDocumentsAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SeatGridCloudEntry>>(Array.Empty<SeatGridCloudEntry>());
+        public Task<SeatGridCloudPull?> DownloadDocumentAsync(string documentId, CancellationToken ct)
+            => Task.FromResult<SeatGridCloudPull?>(null);
+        public Task<SeatGridCloudSaveResult> UploadDocumentAsync(
+            SeatGridCloudDocument document, string? replacingId, int expectedRevision, CancellationToken ct)
+            => Task.FromResult(new SeatGridCloudSaveResult(
+                new SeatGridCloudEntry(replacingId ?? "demo-new", document.Name, DateTimeOffset.UtcNow, 100, 1),
+                expectedRevision > 0));
+        public Task DeleteDocumentAsync(string documentId, CancellationToken ct) => Task.CompletedTask;
+        public void RememberDocument(string? id, int revision) { }
+    }
+
+    /// <summary>走查专用作业整理共享名单假桥：三份合成名单，只读、不联网、不读凭据。</summary>
+    private sealed class CaptureHomeworkRosterBridge : IHomeworkRosterBridge
+    {
+        public IReadOnlyList<HomeworkRosterEntry> Entries { get; } = new[]
+        {
+            new HomeworkRosterEntry("demo-1", "高一(1)班", 1,
+                new DateTimeOffset(2026, 11, 24, 9, 0, 0, TimeSpan.Zero), 42, "姓名、性别、学号"),
+            new HomeworkRosterEntry("demo-2", "高一(2)班", 2,
+                new DateTimeOffset(2026, 11, 24, 9, 5, 0, TimeSpan.Zero), 40, "姓名、性别、学号"),
+            new HomeworkRosterEntry("demo-3", "高一(3)班", 3,
+                new DateTimeOffset(2026, 11, 24, 9, 10, 0, TimeSpan.Zero), 45, "姓名、性别、学号"),
+        };
+
+        public bool IsAvailable => true;
+        public event EventHandler? StateChanged { add { } remove { } }
+
+        public Task<bool> EnsureSignedInAsync(Window owner) => Task.FromResult(true);
+        public Task<IReadOnlyList<HomeworkRosterEntry>> ListRostersAsync(CancellationToken ct)
+            => Task.FromResult(Entries);
+        public Task<RosterImportResult> DownloadAsync(IReadOnlyList<string> rosterIds, CancellationToken ct)
+            => Task.FromResult(new RosterImportResult([], [], [], 0));
+        public void OpenAccountSettings(Window owner) { }
+    }
+
+    private static void CaptureWindowTo(Window target, string path)
+    {
+        var size = new PixelSize((int)target.Bounds.Width, (int)target.Bounds.Height);
+        using var bitmap = new RenderTargetBitmap(size, new Vector(96, 96));
+        bitmap.Render(target);
+        using var stream = File.Create(path);
+        bitmap.Save(stream, new PngBitmapEncoderOptions());
+    }
+
+    private static (string[] Images, string Pdf) CreateHomeworkDemoInputs(int imageCount = 2)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "TeachCraft", "homework-shot", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var images = new List<string>();
+        for (var index = 1; index <= Math.Max(1, imageCount); index++)
+        {
+            var path = Path.Combine(directory, $"scan_{index}.png");
+            using var bitmap = new SkiaSharp.SKBitmap(800, 1100);
+            using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+            {
+                canvas.Clear(SkiaSharp.SKColor.Parse("#FBF7EE"));
+                using var line = new SkiaSharp.SKPaint
+                {
+                    Color = SkiaSharp.SKColor.Parse("#D97757"),
+                    StrokeWidth = 3,
+                    IsAntialias = true,
+                };
+                canvas.DrawRect(new SkiaSharp.SKRect(40, 40, 760, 1060), line);
+            }
+            using var stream = File.Create(path);
+            bitmap.Encode(stream, SkiaSharp.SKEncodedImageFormat.Png, 100);
+            images.Add(path);
+        }
+
+        var pdf = Path.Combine(directory, "scan.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            for (var index = 0; index < 2; index++)
+            {
+                var page = document.AddPage();
+                page.Size = PdfSharp.PageSize.A4;
+                using var graphics = PdfSharp.Drawing.XGraphics.FromPdfPage(page);
+                graphics.DrawRectangle(PdfSharp.Drawing.XBrushes.LightGray, 40, 40, 160, 80);
+            }
+            document.Save(pdf);
+        }
+        return (images.ToArray(), pdf);
+    }
+
+    private static string CreateFillInDemoPage(string number, string directory)
+    {
+        const int gridX = 100, gridY = 100, gridWidth = 600, gridHeight = 1000;
+        const int columns = 3, rows = 10;
+        const double fillRatio = 0.60;
+
+        var path = Path.Combine(directory, $"fillin-{number}.png");
+        using var bitmap = new SkiaSharp.SKBitmap(900, 1200);
+        using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+        {
+            canvas.Clear(SkiaSharp.SKColors.White);
+            using var grid = new SkiaSharp.SKPaint
+            {
+                Color = SkiaSharp.SKColors.Black,
+                Style = SkiaSharp.SKPaintStyle.Stroke,
+                StrokeWidth = 1,
+                IsAntialias = false,
+            };
+            var cellWidth = gridWidth / columns;
+            var cellHeight = gridHeight / rows;
+            for (var c = 0; c <= columns; c++)
+            {
+                var x = gridX + c * cellWidth;
+                canvas.DrawLine(x, gridY, x, gridY + gridHeight, grid);
+            }
+            for (var r = 0; r <= rows; r++)
+            {
+                var y = gridY + r * cellHeight;
+                canvas.DrawLine(gridX, y, gridX + gridWidth, y, grid);
+            }
+
+            using var ink = new SkiaSharp.SKPaint
+            {
+                Color = SkiaSharp.SKColors.Black,
+                Style = SkiaSharp.SKPaintStyle.Fill,
+                IsAntialias = false,
+            };
+            for (var c = 0; c < number.Length && c < columns; c++)
+            {
+                var digit = number[c] - '0';
+                if (digit is < 0 or > 9) continue;
+                var cellX = gridX + c * cellWidth;
+                var cellY = gridY + digit * cellHeight;
+                var fillWidth = cellWidth * fillRatio;
+                var fillHeight = cellHeight * fillRatio;
+                var fillX = cellX + (cellWidth - fillWidth) / 2;
+                var fillY = cellY + (cellHeight - fillHeight) / 2;
+                canvas.DrawRect(new SkiaSharp.SKRect(
+                    (float)fillX, (float)fillY,
+                    (float)(fillX + fillWidth), (float)(fillY + fillHeight)), ink);
+            }
+        }
+        using var stream = File.Create(path);
+        bitmap.Encode(stream, SkiaSharp.SKEncodedImageFormat.Png, 100);
+        return path;
+    }
+
+    private static (string Template, string Roster) CreateCertificateShotInputs(bool portrait)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "TeachCraft", "certificate-shot", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var template = Path.Combine(directory, "synthetic-template.png");
+        var roster = Path.Combine(directory, "synthetic-roster.xlsx");
+        using (var bitmap = new SkiaSharp.SKBitmap(portrait ? 800 : 1400, portrait ? 1200 : 800))
+        using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+        using (var line = new SkiaSharp.SKPaint { Color = SkiaSharp.SKColor.Parse("#D97757"),
+                   Style = SkiaSharp.SKPaintStyle.Stroke, StrokeWidth = 4, IsAntialias = true })
+        using (var font = new SkiaSharp.SKFont(SkiaSharp.SKTypeface.Default, 56))
+        using (var ink = new SkiaSharp.SKPaint { Color = SkiaSharp.SKColor.Parse("#141413"), IsAntialias = true })
+        {
+            canvas.Clear(SkiaSharp.SKColor.Parse("#FAF9F5"));
+            canvas.DrawRect(new SkiaSharp.SKRect(32, 32, bitmap.Width - 32, bitmap.Height - 32), line);
+            canvas.DrawText("CERTIFICATE", bitmap.Width / 2f, bitmap.Height * 0.25f, SkiaSharp.SKTextAlign.Center, font, ink);
+            using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            using var stream = File.Create(template);
+            data.SaveTo(stream);
+        }
+        using (var workbook = new ClosedXML.Excel.XLWorkbook())
+        {
+            var sheet = workbook.Worksheets.Add("合成名单");
+            sheet.Cell(1, 1).Value = "姓名";
+            sheet.Cell(1, 2).Value = "奖项";
+            sheet.Cell(2, 1).Value = "示例甲";
+            sheet.Cell(2, 2).Value = "学习进步奖";
+            sheet.Cell(3, 1).Value = "示例乙";
+            sheet.Cell(3, 2).Value = "阅读之星";
+            sheet.Cell(4, 1).Value = "示例甲";
+            sheet.Cell(4, 2).Value = "积极参与奖";
+            workbook.SaveAs(roster);
+        }
+        return (template, roster);
+    }
+
     /// <summary>
     /// 首次引导的走查通道：
     ///   --oobe-shot &lt;png&gt;      截图（配合 --oobe-step 指定页）
@@ -1981,5 +2746,105 @@ public partial class App : Application
         });
 
         return true;
+    }
+
+    private sealed class ScanDemoScannerService : Homework.App.Scanning.IScannerService
+    {
+        public bool IsSupported => true;
+
+        public Task<IReadOnlyList<Homework.App.Scanning.ScannerInfo>> GetScannersAsync(
+            CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<Homework.App.Scanning.ScannerInfo>>(
+                new[]
+                {
+                    new Homework.App.Scanning.ScannerInfo("canon-c5560i", "Canon iR-ADV C5560i"),
+                    new Homework.App.Scanning.ScannerInfo("canon-lide-400", "Canon LiDE 400"),
+                });
+
+        public Task<Homework.Core.Scanning.ScannerCapabilities> GetCapabilitiesAsync(
+            Homework.App.Scanning.ScannerInfo scanner,
+            CancellationToken token) =>
+            Task.FromResult(scanner.Id == "canon-c5560i"
+                ? new Homework.Core.Scanning.ScannerCapabilities(
+                    [
+                        Homework.Core.Scanning.ScanSource.FeederSingle,
+                        Homework.Core.Scanning.ScanSource.FeederDuplex,
+                    ],
+                    [
+                        Homework.Core.Scanning.ScanPageSize.A4,
+                        Homework.Core.Scanning.ScanPageSize.A3,
+                    ],
+                    [200, 300, 600],
+                    [
+                        Homework.Core.Scanning.ScanColorMode.BlackWhite,
+                        Homework.Core.Scanning.ScanColorMode.Grayscale,
+                    ],
+                    100,
+                    true)
+                : Homework.Core.Scanning.ScannerCapabilities.All);
+
+        public Task<Homework.App.Scanning.ScanOutput> AcquireWithDriverUiAsync(
+            CancellationToken token) =>
+            Task.FromResult(new Homework.App.Scanning.ScanOutput(
+                ["driver-ui-demo.png"], string.Empty));
+
+        public Task<Homework.App.Scanning.ScanOutput> ScanAsync(
+            Homework.App.Scanning.ScannerInfo scanner,
+            Homework.Core.Scanning.ScanSettings settings,
+            IProgress<int>? progress,
+            CancellationToken token) =>
+            Task.FromResult(new Homework.App.Scanning.ScanOutput(
+                Array.Empty<string>(), string.Empty));
+    }
+
+    private sealed class ScanDemoImportSink : Homework.App.Scanning.IScanImportSink
+    {
+        public bool HasCurrentBatch => true;
+
+        public Task<Homework.App.Scanning.ScanImportOutcome> ImportAsync(
+            IReadOnlyList<string> paths,
+            bool createNewBatch,
+            CancellationToken token) =>
+            Task.FromResult(Homework.App.Scanning.ScanImportOutcome.Ok(3, "批次1"));
+    }
+
+    private sealed class CaptureAccountService : ICloudAccountService
+    {
+        public bool IsSignedIn => Current is not null;
+        public CloudAccount? Current { get; private set; }
+        public event EventHandler? StateChanged;
+
+        public void SetSignedIn(string displayName)
+        {
+            Current = new CloudAccount("capture-user", displayName, Array.Empty<string>(),
+                SectlPlatformDefaults.ClientId, DateTimeOffset.UtcNow);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public CloudSignInRequest CreateSignInRequest() => new(
+            new Uri("https://example.invalid/oauth/authorize"), "capture-state", "capture-verifier",
+            SectlPlatformDefaults.RedirectUri, DateTimeOffset.UtcNow);
+
+        public Task<CloudAccount> CompleteSignInAsync(
+            CloudSignInRequest request, string code, string state, CancellationToken cancellationToken)
+            => throw new NotSupportedException("走查不执行登录。");
+
+        public Task<string> GetValidAccessTokenAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException("走查不取令牌。");
+
+        public Task SignOutAsync(CancellationToken cancellationToken)
+        {
+            Current = null;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CaptureSettingsStore : ICloudSyncSettingsStore
+    {
+        private CloudSyncSettings _settings = CloudSyncSettings.Default;
+        public CloudSyncSettings Load() => _settings;
+        public void Save(CloudSyncSettings settings) => _settings = settings;
+        public string Path => "";
     }
 }

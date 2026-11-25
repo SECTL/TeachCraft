@@ -345,7 +345,7 @@ public static class WeaveExportPreviewRenderer
         var labelWidth = 68f;
         var dayWidth = (width - labelWidth) / days;
 
-        canvas.DrawText(style == WeaveExportStyle.Reference ? "参考校样式 · 预览" : "课表工作簿 · 预览",
+        canvas.DrawText(style == WeaveExportStyle.Reference ? "软件自带样式2 · 预览" : "课表工作簿 · 预览",
             left, 26f, SKTextAlign.Left, bold, inkPaint);
 
         const float top = 44f;
@@ -393,7 +393,7 @@ public static class WeaveExportPreviewRenderer
         {
             Png = Encode(bitmap),
             Caption = style == WeaveExportStyle.Reference
-                ? $"参考校样式 · {project.Classes.Count} 个班 · {periods.Count} 节"
+                ? $"软件自带样式2 · {project.Classes.Count} 个班 · {periods.Count} 节"
                 : $"软件自带样式 · {project.Classes.Count} 个班 · {periods.Count} 节",
             Detail = "预览是工作簿首页的样式示意；完整内容（总表 / 分工表 / 班级与教师课表）以导出文件为准。",
             Width = ThumbnailWidth,

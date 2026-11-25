@@ -5,7 +5,7 @@ namespace TeachCraft.Tests;
 
 /// <summary>
 /// 工具箱「点开卡片看说明」的数据层回归：
-/// 说明文案必须覆盖全部 10 件工具与 5 件常备应用，且 ID 与 .memory/03 的工具契约一致。
+/// 说明文案必须覆盖所有工具与常备应用，且 ID 与工具契约一致。
 /// </summary>
 public sealed class ToolDescriptionTests
 {
@@ -22,6 +22,10 @@ public sealed class ToolDescriptionTests
         "pdf-images",
         "pdf-merge",
         "pdf-split",
+        "roster-compare",
+        "excel-class-split",
+        "exam-paper-layout",
+        "certificate-batch",
     };
 
     private static readonly string[] ExpectedAppKeys =
@@ -31,6 +35,7 @@ public sealed class ToolDescriptionTests
         "classblock",
         "gradeweave",
         "meetroster",
+        "homework",
     };
 
     [Fact]
@@ -40,6 +45,83 @@ public sealed class ToolDescriptionTests
 
         foreach (var id in ExpectedToolIds)
             Assert.NotNull(ToolDescriptionCatalog.ForTool(id));
+    }
+
+    [Fact]
+    public void Toolbox_RegistersToolsInCatalogOrder()
+    {
+        var viewModel = new MainViewModel(showOobe: false);
+        Assert.Equal(ExpectedToolIds, viewModel.VisibleImageTools
+            .Concat(viewModel.VisibleFileTools)
+            .Concat(viewModel.VisibleTeachTools)
+            .Select(tool => tool.Id));
+        Assert.Equal("14 件工具 · 6 件常备", viewModel.ToolboxCountLabel);
+    }
+
+    [Fact]
+    public void Toolbox_SplitsToolsIntoThreeCategoriesWithDynamicCounts()
+    {
+        var viewModel = new MainViewModel(showOobe: false);
+        Assert.Equal(new[] { "image-convert", "image-resize", "image-compress", "image-watermark" },
+            viewModel.VisibleImageTools.Select(tool => tool.Id));
+        Assert.Equal(new[] { "pdf-word", "word-pdf", "images-pdf", "pdf-images", "pdf-merge", "pdf-split" },
+            viewModel.VisibleFileTools.Select(tool => tool.Id));
+        Assert.Equal(new[] { "roster-compare", "excel-class-split", "exam-paper-layout", "certificate-batch" },
+            viewModel.VisibleTeachTools.Select(tool => tool.Id));
+
+        Assert.Equal("04", viewModel.ImageCountLabel);
+        Assert.Equal("06", viewModel.FileCountLabel);
+        Assert.Equal("04", viewModel.TeachCountLabel);
+        Assert.Equal("14", viewModel.AllCountLabel);
+    }
+
+    [Fact]
+    public void TeachCategory_NavigationAndLabelsAreWired()
+    {
+        var viewModel = new MainViewModel(showOobe: false);
+        var teachTool = viewModel.FindTool("certificate-batch")!;
+        Assert.Equal("teach", teachTool.Category);
+        Assert.Equal("教学工具", teachTool.CategoryLabel);
+        Assert.Equal("TEACH / CLASS", teachTool.CategoryEn);
+
+        viewModel.SetSection("teach");
+        Assert.True(viewModel.IsTeachActive);
+        Assert.False(viewModel.IsAllActive);
+        Assert.False(viewModel.IsImageActive);
+        Assert.False(viewModel.IsFileActive);
+
+        viewModel.SetSection("all");
+        Assert.True(viewModel.IsAllActive);
+        Assert.False(viewModel.IsTeachActive);
+    }
+
+    [Theory]
+    [InlineData(1200, 968)]
+    [InlineData(1440, 1208)]
+    public void MainViewModel_ExamPaperPanelFillsContentArea(double windowWidth, double expectedWidth)
+    {
+        var viewModel = new MainViewModel();
+        viewModel.UpdatePanelWidth(windowWidth);
+        var tool = viewModel.FindTool("exam-paper-layout")!;
+        viewModel.OpenTool(tool);
+
+        Assert.Equal(expectedWidth, viewModel.PanelWidth);
+        Assert.True(viewModel.IsExamPaperLayoutPanelOpen);
+    }
+
+    [Fact]
+    public void MainViewModel_ExamPanelVisibilityTracksToolSelectionAndClose()
+    {
+        var viewModel = new MainViewModel();
+        viewModel.OpenTool(viewModel.FindTool("exam-paper-layout")!);
+        Assert.True(viewModel.IsExamPaperLayoutPanelOpen);
+
+        viewModel.OpenTool(viewModel.FindTool("pdf-split")!);
+        Assert.False(viewModel.IsExamPaperLayoutPanelOpen);
+
+        viewModel.OpenTool(viewModel.FindTool("exam-paper-layout")!);
+        viewModel.ClosePanels();
+        Assert.False(viewModel.IsExamPaperLayoutPanelOpen);
     }
 
     [Fact]

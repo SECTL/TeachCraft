@@ -13,7 +13,9 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using SeatGrid.App.Cloud;
 using SeatGrid.Core;
+using SeatGrid.Core.Cloud;
 using SeatGrid.Core.Exam;
 using SeatGrid.Core.Export;
 using SeatGrid.Core.Models;
@@ -23,9 +25,21 @@ using TeachCraft.Shared;
 
 namespace SeatGrid.App;
 
+/// <summary>
+/// 宿主桥接的可选能力：读取上次上传的云端座位表身份。归位侧只依赖这个窄接口，
+/// 不引用宿主实现；未接入时窗口保持内存态即可。
+/// </summary>
+public interface ISeatGridLastDocumentSource
+{
+    (string? Id, int Revision) GetLastDocument();
+}
+
 public partial class SeatGridWindow : Window
 {
     private string? _rosterPath;
+    private readonly ISeatGridCloudBridge? _cloud;
+    private string? _lastDocumentId;
+    private int _lastDocumentRevision;
 
     // ----------------------------- 座位 / 行列拖拽 -----------------------------
     private enum DragMode { None, Seat, Row, Column }
@@ -62,10 +76,25 @@ public partial class SeatGridWindow : Window
     {
     }
 
-    public SeatGridWindow(SeatGridViewModel viewModel)
+    public SeatGridWindow(ISeatGridCloudBridge? cloudBridge)
+        : this(new SeatGridViewModel(), cloudBridge)
+    {
+    }
+
+    public SeatGridWindow(SeatGridViewModel viewModel, ISeatGridCloudBridge? cloudBridge = null)
     {
         InitializeComponent();
         DataContext = viewModel;
+        _cloud = cloudBridge;
+        viewModel.AttachCloud(cloudBridge);
+
+        // 上次上传的座位表身份落在宿主设置里，重启后据此继续更新同一份，避免静默新建副本。
+        if (cloudBridge is ISeatGridLastDocumentSource lastDocument)
+        {
+            var (id, revision) = lastDocument.GetLastDocument();
+            _lastDocumentId = id;
+            _lastDocumentRevision = revision;
+        }
 
         // 座位是 Button，Avalonia 的 Button 会把 PointerPressed / PointerReleased 标记为已处理，
         // XAML 里默认挂的指针处理器收不到这两个事件，拖拽会永远停在按下状态。
@@ -109,7 +138,7 @@ public partial class SeatGridWindow : Window
             {
                 if (await ConfirmDialog.ShowAsync(
                         this, "关闭归位？",
-                        $"当前 {ViewModel.StudentCount} 人名单与排座只保存在内存中，关闭后不会保留。可先用「导出配置」留档。",
+                         ViewModel.CloseWarning,
                         "放弃并关闭", "继续编辑", danger: true))
                 {
                     _closeConfirmed = true;
@@ -315,6 +344,7 @@ public partial class SeatGridWindow : Window
             var (restored, roster) = await Task.Run(() => ReadRosterFile(path));
             if (restored is not null) ViewModel.ApplyConfig(restored, Path.GetFileName(path));
             else ViewModel.LoadRoster(roster!);
+            ClearLastDocument();
             _rosterPath = path;
         }
         catch (Exception ex)
@@ -391,23 +421,20 @@ public partial class SeatGridWindow : Window
 
         var result = ArrangeGenderChoice.Cancel;
 
-        Button MakeButton(string text, ArrangeGenderChoice value,
-            IBrush background, IBrush foreground, IBrush? border,
+        Button MakeButton(string text, ArrangeGenderChoice value, string styleClass,
             bool isDefault = false, bool isCancel = false)
         {
             var button = new Button
             {
                 Content = text,
-                Padding = new Thickness(16, 8),
+                Padding = new Thickness(14, 8),
+                FontSize = 11.5,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
-                Background = background,
-                Foreground = foreground,
-                BorderBrush = border,
-                BorderThickness = border is null ? new Thickness(0) : new Thickness(1),
                 IsDefault = isDefault,
                 IsCancel = isCancel,
             };
+            button.Classes.Add(styleClass);
             button.Click += (_, _) =>
             {
                 result = value;
@@ -416,38 +443,35 @@ public partial class SeatGridWindow : Window
             return button;
         }
 
-        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 12 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = "自动排座",
-            FontSize = 17,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = DialogInk,
-        });
+        var heading = new TextBlock { Text = "自动排座", FontSize = 18 };
+        heading.Classes.Add("section-title");
+
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 10 };
+        panel.Children.Add(heading);
         panel.Children.Add(new TextBlock
         {
             Text = "同桌之间按哪种性别方式安排？重新排座会覆盖现有座位安排。",
-            FontSize = 12.5,
-            Foreground = DialogMuted,
+            FontSize = 12,
+            Foreground = DialogInkSoft,
             TextWrapping = TextWrapping.Wrap,
-            LineHeight = 20,
+            LineHeight = 19,
         });
 
         var options = new StackPanel { Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
         options.Children.Add(MakeButton(
-            "异性同桌 · 男女交替", ArrangeGenderChoice.Opposite, DialogInk, DialogPaper, null, isDefault: true));
+            "异性同桌 · 男女交替", ArrangeGenderChoice.Opposite, "primary", isDefault: true));
         options.Children.Add(MakeButton(
-            "同性同桌 · 男男 / 女女成对", ArrangeGenderChoice.Same, DialogCard, DialogTerracotta, DialogTerracotta));
+            "同性同桌 · 男男 / 女女成对", ArrangeGenderChoice.Same, "accent-outline"));
 
         if (ViewModel.ArrangeModeIndex is not (GenderAlternateIndex or GenderPairIndex))
         {
             options.Children.Add(MakeButton(
                 $"按当前方式「{ViewModel.ArrangeModes[ViewModel.ArrangeModeIndex]}」排座",
-                ArrangeGenderChoice.KeepCurrent, DialogPaper, DialogMuted, DialogLine));
+                ArrangeGenderChoice.KeepCurrent, "ghost"));
         }
 
         options.Children.Add(MakeButton(
-            "取消", ArrangeGenderChoice.Cancel, DialogCard, DialogInkSoft, DialogLine, isCancel: true));
+            "取消", ArrangeGenderChoice.Cancel, "ghost", isCancel: true));
         panel.Children.Add(options);
         dialog.Content = panel;
 
@@ -1223,18 +1247,15 @@ public partial class SeatGridWindow : Window
         var picker = new ComboBox
         {
             ItemsSource = ViewModel.AllStudents.Select(s => s.Name).ToList(),
-            FontSize = 11.5,
-            MinHeight = 30,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
+        picker.Classes.Add("field");
 
         var search = new TextBox
         {
-            FontSize = 11,
-            MinHeight = 28,
             PlaceholderText = "输入姓名或拼音首字母筛选，如 ZS",
             Margin = new Thickness(0, 0, 0, 4),
         };
+        search.Classes.Add("field");
 
         search.TextChanged += (_, _) =>
         {
@@ -1285,20 +1306,17 @@ public partial class SeatGridWindow : Window
             Content = "添加",
             IsDefault = true,
             Padding = new Thickness(16, 7),
-            Background = DialogInk,
-            Foreground = DialogPaper,
-            BorderThickness = new Thickness(0),
+            FontSize = 11.5,
         };
+        confirm.Classes.Add("primary");
         var cancel = new Button
         {
             Content = "取消",
             IsCancel = true,
-            Padding = new Thickness(16, 7),
-            Background = DialogCard,
-            Foreground = DialogInkSoft,
-            BorderBrush = DialogLine,
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(14, 7),
+            FontSize = 11.5,
         };
+        cancel.Classes.Add("ghost");
 
         confirm.Click += (_, _) =>
         {
@@ -1330,27 +1348,22 @@ public partial class SeatGridWindow : Window
         };
         cancel.Click += (_, _) => dialog.Close();
 
-        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 12 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = "添加排座规则",
-            FontSize = 17,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = DialogInk,
-        });
-        panel.Children.Add(new TextBlock
-        {
-            Text = "配对规则会在自动排座时生效；与锁定冲突时以锁定为准。",
-            FontSize = 12,
-            Foreground = DialogMuted,
-            TextWrapping = TextWrapping.Wrap,
-            LineHeight = 19,
-        });
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 10 };
+        var pairHeading = new TextBlock { Text = "添加排座规则", FontSize = 18 };
+        pairHeading.Classes.Add("section-title");
+        panel.Children.Add(pairHeading);
+        var pairSub = new TextBlock { Text = "配对规则会在自动排座时生效；与锁定冲突时以锁定为准。" };
+        pairSub.Classes.Add("helper");
+        panel.Children.Add(pairSub);
 
-        panel.Children.Add(new TextBlock { Text = "第一位学生", FontSize = 10.5, Foreground = DialogMuted });
+        var firstLbl = new TextBlock { Text = "第一位学生" };
+        firstLbl.Classes.Add("field-label");
+        panel.Children.Add(firstLbl);
         panel.Children.Add(firstSearch);
         panel.Children.Add(first);
-        panel.Children.Add(new TextBlock { Text = "第二位学生", FontSize = 10.5, Foreground = DialogMuted });
+        var secondLbl = new TextBlock { Text = "第二位学生" };
+        secondLbl.Classes.Add("field-label");
+        panel.Children.Add(secondLbl);
         panel.Children.Add(secondSearch);
         panel.Children.Add(second);
         panel.Children.Add(mutex);
@@ -1410,28 +1423,26 @@ public partial class SeatGridWindow : Window
         var byColumn = new RadioButton { Content = "座号按列（从上到下）", FontSize = 11.5 };
         var maxColumns = new NumericUpDown
         {
-            Minimum = 4, Maximum = 12, Value = 8, Increment = 1, FontSize = 11.5, MinHeight = 32,
+            Minimum = 4, Maximum = 12, Value = 8, Increment = 1,
         };
+        maxColumns.Classes.Add("field");
 
         var confirm = new Button
         {
             Content = "进入考场",
             IsDefault = true,
             Padding = new Thickness(16, 7),
-            Background = DialogInk,
-            Foreground = DialogPaper,
-            BorderThickness = new Thickness(0),
+            FontSize = 11.5,
         };
+        confirm.Classes.Add("primary");
         var cancel = new Button
         {
             Content = "取消",
             IsCancel = true,
-            Padding = new Thickness(16, 7),
-            Background = DialogCard,
-            Foreground = DialogInkSoft,
-            BorderBrush = DialogLine,
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(14, 7),
+            FontSize = 11.5,
         };
+        cancel.Classes.Add("ghost");
 
         confirm.Click += (_, _) =>
         {
@@ -1442,28 +1453,31 @@ public partial class SeatGridWindow : Window
         };
         cancel.Click += (_, _) => dialog.Close();
 
-        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 12 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = "进入考场模式", FontSize = 17, FontWeight = FontWeight.SemiBold, Foreground = DialogInk,
-        });
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 10 };
+        var examHeading = new TextBlock { Text = "进入考场模式", FontSize = 18 };
+        examHeading.Classes.Add("section-title");
+        panel.Children.Add(examHeading);
         panel.Children.Add(new TextBlock
         {
             Text = "会把当前座位换成单人桌标准考场：按人数自动算列数，座号依次编排。"
                    + "日常座位完整保留，点「返回日常座位」可一键还原。",
-            FontSize = 12, Foreground = DialogMuted, TextWrapping = TextWrapping.Wrap, LineHeight = 19,
+            FontSize = 12, Foreground = DialogInkSoft, TextWrapping = TextWrapping.Wrap, LineHeight = 19,
         });
         panel.Children.Add(new TextBlock
         {
             Text = "考场模式下锁定、互斥、结对与区域限制不生效。",
-            FontSize = 11, Foreground = DialogTerracotta, TextWrapping = TextWrapping.Wrap,
+            FontSize = 10.5, Foreground = DialogTerracotta, TextWrapping = TextWrapping.Wrap,
         });
 
-        panel.Children.Add(new TextBlock { Text = "座号顺序", FontSize = 10.5, Foreground = DialogMuted });
+        var orderLbl = new TextBlock { Text = "座号顺序" };
+        orderLbl.Classes.Add("field-label");
+        panel.Children.Add(orderLbl);
         panel.Children.Add(serpentine);
         panel.Children.Add(byColumn);
 
-        panel.Children.Add(new TextBlock { Text = "最多列数", FontSize = 10.5, Foreground = DialogMuted });
+        var colLbl = new TextBlock { Text = "最多列数" };
+        colLbl.Classes.Add("field-label");
+        panel.Children.Add(colLbl);
         panel.Children.Add(maxColumns);
 
         // 桌椅搬运量：只给静态指引，不做路径动画。
@@ -1813,11 +1827,9 @@ public partial class SeatGridWindow : Window
         ViewModel.BeginBusy("正在导出配置…", "保存当前名单与座位设置，便于以后导回。");
         try
         {
-            var settings = ViewModel.ToSettings();
-            var assignments = ViewModel.GetCoreAssignments();
-            var students = ViewModel.GetModels();
-            var constraints = ViewModel.GetCoreConstraints();
-            await Task.Run(() => SeatGridConfigIO.Export(path, settings, students, assignments, constraints));
+            var snapshot = ViewModel.BuildConfigSnapshot();
+            await Task.Run(() => SeatGridConfigIO.Export(
+                path, snapshot.Settings, snapshot.Students, snapshot.Assignments, snapshot.Constraints));
             ViewModel.SetStatus($"已导出配置：{Path.GetFileName(path)}");
         }
         catch (Exception ex)
@@ -1849,6 +1861,7 @@ public partial class SeatGridWindow : Window
         {
             var config = await Task.Run(() => SeatGridConfigIO.Import(path));
             ViewModel.ApplyConfig(config);
+            ClearLastDocument();
 
             // 导入的配置文件也是「已导入的来源」：导出不得覆盖它（与「导入名单」入口对齐，
             // 四条 IsSamePath 守卫都读这个字段）。
@@ -1861,6 +1874,176 @@ public partial class SeatGridWindow : Window
         finally
         {
             ViewModel.EndBusy();
+        }
+    }
+
+    // ----------------------------- 云端存档 -----------------------------
+
+    private void OnCloudRoster(object? sender, RoutedEventArgs e)
+    {
+        if (_cloud is null || !ViewModel.CanUseCloud) return;
+        var fields = ViewModel.LinkedFields;
+        var suggested = SeatGridRosterName.Suggest(ViewModel.ImportSource, ViewModel.Title);
+        // 这里不能按已关联字段预投影：勾选框在 RosterFieldSelectionWindow 里才最终决定，
+        // 提前置空会让后来勾选的字段再也恢复不回来。传全字段，由 SaveAsync 唯一投影。
+        var allFields = new SeatGridRosterFields(true, true, true, true, true);
+        var initialDocument = ViewModel.HasLinkedRoster && !ViewModel.IsExamMode
+            ? TryBuildCloudDocumentOrNull()
+            : null;
+        SeatGridCloudWindow.OpenRosters(
+            _cloud, this,
+            SeatGridRosterProjection.FromStudents(ViewModel.GetModels(), allFields),
+            fields, suggested,
+            OnRosterUploaded,
+            pick => _ = ApplyPickedRosterAsync(pick),
+            initialDocument,
+            TryBuildCloudDocumentOrNull,
+            _lastDocumentId,
+            _lastDocumentRevision,
+            OnDocumentSaved,
+            pull => _ = ApplyPickedDocumentAsync(pull),
+            OnCloudDocumentDeleted,
+            ViewModel.LinkedRosterId,
+            OnCloudRosterDeleted);
+    }
+
+    private async void OnCloudDocument(object? sender, RoutedEventArgs e)
+    {
+        if (_cloud is null || !ViewModel.CanUseCloud) return;
+        if (ViewModel.IsExamMode)
+        {
+            await ConfirmDialog.ShowAsync(
+                this, "考场快照不能上传云端", SeatGridCloudWindow.ExamSnapshotBlockedMessage,
+                "知道了", "关闭", danger: false);
+            return;
+        }
+        try
+        {
+            // 未关联名单时允许打开「座位表」页签拉取云端座位表；考场态已在上面提前拦下。
+            var document = ViewModel.HasLinkedRoster
+                ? ViewModel.BuildCloudDocument(ViewModel.Title)
+                : null;
+            var allFields = new SeatGridRosterFields(true, true, true, true, true);
+            var students = ViewModel.StudentCount > 0
+                ? SeatGridRosterProjection.FromStudents(ViewModel.GetModels(), allFields)
+                : null;
+            var suggested = SeatGridRosterName.Suggest(ViewModel.ImportSource, ViewModel.Title);
+            SeatGridCloudWindow.OpenDocuments(
+                _cloud, this, document, _lastDocumentId, _lastDocumentRevision,
+                OnDocumentSaved,
+                pull => _ = ApplyPickedDocumentAsync(pull),
+                students,
+                ViewModel.LinkedFields,
+                suggested,
+                OnRosterUploaded,
+                pick => _ = ApplyPickedRosterAsync(pick),
+                TryBuildCloudDocumentOrNull,
+                OnCloudDocumentDeleted,
+                ViewModel.LinkedRosterId,
+                OnCloudRosterDeleted);
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "准备云端座位表失败");
+            // 状态栏那一行太不起眼，前置条件不满足时用户会以为按钮没反应；补一个模态弹窗说明原因。
+            await ConfirmDialog.ShowAsync(this, "准备云端座位表失败", ex.Message, "知道了", "关闭", danger: false);
+        }
+    }
+
+    private SeatGridCloudDocument? TryBuildCloudDocumentOrNull()
+    {
+        if (ViewModel.IsExamMode || !ViewModel.HasLinkedRoster) return null;
+        try
+        {
+            return ViewModel.BuildCloudDocument(ViewModel.Title);
+        }
+        catch (SeatGridException)
+        {
+            return null;
+        }
+    }
+
+    private void OnRosterUploaded(SeatGridRosterEntry entry)
+    {
+        // 上传当前名单后立即建立共享关联（不清空排座）；若切换了关联名单 ID 则清掉旧文档身份防误覆盖。
+        if (!string.IsNullOrEmpty(ViewModel.LinkedRosterId)
+            && !string.Equals(ViewModel.LinkedRosterId, entry.RosterId, StringComparison.Ordinal))
+        {
+            ClearLastDocument();
+        }
+
+        ViewModel.LinkSharedRoster(entry.RosterId, entry.Name, entry.Version, entry.Fields);
+        ViewModel.SetStatus($"已上传并关联共享名单「{entry.Name}」v{entry.Version}。");
+    }
+
+    private void OnDocumentSaved(SeatGridCloudSaveResult result)
+    {
+        _lastDocumentId = result.Entry.Id;
+        _lastDocumentRevision = result.Entry.Revision;
+        ViewModel.SetStatus($"已上传座位表「{result.Entry.Name}」v{result.Entry.Revision}。");
+    }
+
+    private void OnCloudDocumentDeleted(string deletedId)
+    {
+        if (string.Equals(_lastDocumentId, deletedId, StringComparison.Ordinal))
+            ClearLastDocument();
+    }
+
+    private void OnCloudRosterDeleted(string deletedId)
+    {
+        if (!SeatGridCloudWindow.ShouldClearRosterLink(deletedId, ViewModel.LinkedRosterId)) return;
+        ViewModel.ClearRosterLink();
+        ViewModel.SetStatus(SeatGridCloudWindow.RosterDeletedLinkClearedMessage);
+    }
+
+    private void ClearLastDocument()
+    {
+        _lastDocumentId = null;
+        _lastDocumentRevision = 0;
+    }
+
+    private void OnOpenCloudAccount(object? sender, RoutedEventArgs e) => _cloud?.OpenAccountSettings(this);
+
+    private async Task ApplyPickedRosterAsync(SeatGridRosterPick pick)
+    {
+        try
+        {
+            if (ViewModel.StudentCount > 0 && !await ConfirmDialog.ShowAsync(
+                    this, "拉取共享名单会替换当前名单",
+                    $"当前 {ViewModel.StudentCount} 人名单与排座将被「{pick.Name}」整体覆盖，且无法撤销。",
+                    "拉取并替换", "取消", danger: true))
+                return;
+
+            ClearLastDocument();
+            ViewModel.ApplySharedRoster(pick);
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "应用共享名单失败");
+            await ConfirmDialog.ShowAsync(this, "应用共享名单失败", ex.Message, "知道了", "关闭", danger: false);
+        }
+    }
+
+    private async Task ApplyPickedDocumentAsync(SeatGridCloudPull pull)
+    {
+        try
+        {
+            if (ViewModel.StudentCount > 0 && !await ConfirmDialog.ShowAsync(
+                    this, "拉取云端座位表会替换当前排座",
+                    $"当前 {ViewModel.StudentCount} 人名单与排座将被「{pull.Document.Name}」整体覆盖，且无法撤销。",
+                    "拉取并替换", "取消", danger: true))
+                return;
+
+            ViewModel.ApplyCloudDocument(
+                pull.Document, pull.LatestRoster ?? pull.SnapshotRoster, pull.LatestRoster is null, pull.Warnings);
+            _lastDocumentId = pull.DocumentId;
+            _lastDocumentRevision = pull.Revision;
+            _cloud?.RememberDocument(pull.DocumentId, pull.Revision);
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "还原云端座位表失败");
+            await ConfirmDialog.ShowAsync(this, "还原云端座位表失败", ex.Message, "知道了", "关闭", danger: false);
         }
     }
 

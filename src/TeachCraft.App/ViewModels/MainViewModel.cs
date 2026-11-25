@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
+using TeachCraft.App.Cloud;
 using TeachCraft.Core.Oobe;
 using TeachCraft.Core.Tools;
 using TeachCraft.Core.Updating;
@@ -24,8 +25,9 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private static readonly IBrush UpdateAccent = new ImmutableSolidColorBrush(Color.Parse("#D97757"));
 
-    private readonly List<ToolItemViewModel> _imageTools;
-    private readonly List<ToolItemViewModel> _fileTools;
+private readonly List<ToolItemViewModel> _imageTools;
+private readonly List<ToolItemViewModel> _fileTools;
+private readonly List<ToolItemViewModel> _teachTools;
     private readonly BuildIdentity _identity;
     private readonly IUpdateCheckService? _checkService;
     private readonly InstallKind _installKind;
@@ -50,13 +52,14 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public string VersionText { get; }
 
-    public string VersionLine => $"{VersionText} · 10 TOOLS · 5 APPS";
+    public string VersionLine => $"{VersionText} · {ToolDescriptionCatalog.ToolIds.Count} TOOLS · {ToolDescriptionCatalog.AppKeys.Count} APPS";
 
     /// <summary>首次引导的遮罩状态。挂在 MainViewModel 上，因为 MainWindow 的绑定都解析到这里。</summary>
     public OobeViewModel Oobe { get; }
 
     public ObservableCollection<ToolItemViewModel> VisibleImageTools { get; } = new();
     public ObservableCollection<ToolItemViewModel> VisibleFileTools { get; } = new();
+    public ObservableCollection<ToolItemViewModel> VisibleTeachTools { get; } = new();
 
     /// <summary>
     /// 案头常备卡：状态（展开与否）与检索文本。顺序固定为分晓 / 归位 / 时序 / 织序 / 竞名，
@@ -80,6 +83,8 @@ public partial class MainViewModel : ObservableObject
             ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.GradeWeaveKey)!),
         new(ToolDescriptionCatalog.MeetRosterKey, "竞名",
             ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.MeetRosterKey)!),
+        new(ToolDescriptionCatalog.HomeworkKey, "作业整理",
+            ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.HomeworkKey)!),
     };
 
     public AppCardViewModel GradeStripCard => _appCards[0];
@@ -87,12 +92,14 @@ public partial class MainViewModel : ObservableObject
     public AppCardViewModel ClassBlockCard => _appCards[2];
     public AppCardViewModel GradeWeaveCard => _appCards[3];
     public AppCardViewModel MeetRosterCard => _appCards[4];
+    public AppCardViewModel HomeworkCard => _appCards[5];
 
     public bool IsGradeStripVisible { get; private set; } = true;
     public bool IsSeatGridVisible { get; private set; } = true;
     public bool IsClassBlockVisible { get; private set; } = true;
     public bool IsGradeWeaveVisible { get; private set; } = true;
     public bool IsMeetRosterVisible { get; private set; } = true;
+    public bool IsHomeworkVisible { get; private set; } = true;
     public bool HasPinnedResults { get; private set; } = true;
 
     public MainViewModel()
@@ -113,7 +120,8 @@ public partial class MainViewModel : ObservableObject
         Func<UpdateDownloader>? downloaderFactory = null,
         Func<UpdateSource, IUpdateCheckService>? checkServiceFactory = null,
         IOobeStateStore? oobeStateStore = null,
-        bool? showOobe = null)
+        bool? showOobe = null,
+        CloudRuntime? cloudRuntime = null)
     {
         _identity = identity ?? BuildIdentity.Current(typeof(MainViewModel));
         _checkService = checkService;
@@ -135,6 +143,16 @@ public partial class MainViewModel : ObservableObject
         // 引导状态：默认走真实存储；测试与走查通过参数注入替身，
         // 否则每个用例都会去读写开发者本机的 %LOCALAPPDATA%。
         Oobe = new OobeViewModel(oobeStateStore ?? new OobeStateStore());
+
+        // 账号页默认拿到 Disabled：空存储、无服务，构造期不碰账号目录也不联网。
+        Cloud = cloudRuntime ?? CloudRuntime.Disabled;
+        // 只有装配出真实账号服务时才给账号页接登录编排；Disabled 的 Account 为 null，
+        // 这里保持 signIn 为 null，构造期不建浏览器、不绑回环端口、不发请求。
+        // 三个部件都只存引用，new 本身没有任何 IO——走查路径因此仍然安全。
+        var signIn = Cloud.Account is { } account
+            ? new DesktopAccountSignInFlow(account, new ShellBrowserLauncher(), new LoopbackOAuthReceiver())
+            : null;
+        Account = new AccountViewModel(Cloud, signIn);
 
         // showOobe：null = 按状态自行判断（默认）；true = 强制打开；false = 强制不打开。
         // 判定本身是只读的——不管打开与否都算一遍，这样 --oobe-metrics 能如实反映「该不该弹」。
@@ -191,6 +209,22 @@ public partial class MainViewModel : ObservableObject
                 "PDF 文档", "指定页范围的新 PDF"),
         };
 
+        _teachTools = new List<ToolItemViewModel>
+        {
+            new(ToolKind.RosterCompare, "11", "roster-compare", "名单核对",
+                "核对应交与已交名单，列出未交、重复和名单外姓名。", "teach", "教",
+                "两份 TXT / XLSX / XLS 名单", "UTF-8 文本核对报告"),
+            new(ToolKind.ExcelClassSplit, "12", "excel-class-split", "Excel按班拆表",
+                "将一份 Excel 总表按班级分别导出。", "teach", "教",
+                "一份 XLSX / XLS 工作簿", "每班一份 XLSX 文件"),
+            new(ToolKind.ExamPaperLayout, "13", "exam-paper-layout", "试卷排版",
+                "把 PDF 试卷排成 2 合 1 或小册子版式。", "teach", "教",
+                "PDF 试卷", "排版后的 PDF"),
+            new(ToolKind.CertificateBatch, "14", "certificate-batch", "奖状生成",
+                "用奖状底图和获奖名单批量生成 PDF，一人一页。", "teach", "教",
+                "奖状底图 + XLSX / XLS 名单", "批量奖状 PDF"),
+        };
+
         ApplyFilter();
     }
 
@@ -201,6 +235,15 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>更新面板是否展开。与工具／项目面板互斥，共用同一个抽屉。</summary>
     [ObservableProperty] private bool _isUpdatePanelOpen;
+
+    /// <summary>账号面板是否展开。与其余面板互斥，共用同一个抽屉。</summary>
+    [ObservableProperty] private bool _isAccountPanelOpen;
+
+    /// <summary>本进程唯一的云端装配结果。宿主窗口据此给各应用构造只读桥。</summary>
+    public CloudRuntime Cloud { get; }
+
+    /// <summary>账号页状态机。由构造时注入的 CloudRuntime 决定是真实能力还是未接入。</summary>
+    public AccountViewModel Account { get; }
 
     /// <summary>更新面板里显示的当前构建身份（含预览序号与部署形态）。</summary>
     [ObservableProperty] private string _installDescription = "";
@@ -271,7 +314,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private IBrush _statusBrush = Moss;
 
     /// <summary>状态栏默认/复位文案。默认文案与复位文案必须是同一个常量，否则用完面板后旧口径会复活。</summary>
-    public const string DefaultStatusText = "本机处理 · 联网仅限更新与集控";
+    public const string DefaultStatusText = "本机处理 · 联网仅限更新、账号与集控";
 
     /// <summary>是否有可用新版本。与 StatusText 分开，提示条是独立的一块视觉。</summary>
     [ObservableProperty] private bool _isUpdateAvailable;
@@ -303,41 +346,71 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isAllActive = true;
     [ObservableProperty] private bool _isImageActive;
     [ObservableProperty] private bool _isFileActive;
+    [ObservableProperty] private bool _isTeachActive;
     [ObservableProperty] private bool _isProjectActive;
 
-    public bool IsPanelOpen => IsToolPanelOpen || IsProjectPanelOpen || IsUpdatePanelOpen;
+    public bool IsPanelOpen => IsToolPanelOpen || IsProjectPanelOpen || IsUpdatePanelOpen || IsAccountPanelOpen;
+    public double PanelWidth { get; private set; } = 452;
+    private double _windowWidth = 1200;
+    public bool IsExamPaperLayoutPanelOpen => IsToolPanelOpen && SelectedTool?.Kind == ToolKind.ExamPaperLayout;
+    public bool IsCertificateBatchPanelOpen => IsToolPanelOpen && SelectedTool?.Kind == ToolKind.CertificateBatch;
+    public bool IsStandardToolPanelOpen => !IsExamPaperLayoutPanelOpen && !IsCertificateBatchPanelOpen;
 
+    public string AllCountLabel => (_imageTools.Count + _fileTools.Count + _teachTools.Count).ToString("00");
     public string ImageCountLabel => VisibleImageTools.Count.ToString("00");
     public string FileCountLabel => VisibleFileTools.Count.ToString("00");
+    public string TeachCountLabel => VisibleTeachTools.Count.ToString("00");
+    public string ToolboxCountLabel => $"{_imageTools.Count + _fileTools.Count + _teachTools.Count} 件工具 · {_appCards.Length} 件常备";
 
-    public int MatchCount => VisibleImageTools.Count + VisibleFileTools.Count + _visibleAppCardCount;
+    public int MatchCount => VisibleImageTools.Count + VisibleFileTools.Count + VisibleTeachTools.Count + _visibleAppCardCount;
 
     public string PinnedCountLabel => _visibleAppCardCount.ToString("00");
 
     public string SearchSummary =>
         string.IsNullOrWhiteSpace(SearchText)
-            ? "ALL TOOLS · 10"
+            ? $"ALL TOOLS · {ToolDescriptionCatalog.ToolIds.Count}"
             : $"MATCH · {MatchCount}";
 
     public bool IsEmptyVisible => MatchCount == 0;
     public bool HasImageResults => VisibleImageTools.Count > 0;
     public bool HasFileResults => VisibleFileTools.Count > 0;
+    public bool HasTeachResults => VisibleTeachTools.Count > 0;
 
     public void OpenTool(ToolItemViewModel tool)
     {
         SelectedTool = tool;
-        tool.HasResult = false;
-        tool.ResultText = string.Empty;
+        UpdatePanelWidth(_windowWidth);
+        if (!tool.IsCertificateBatch)
+        {
+            tool.HasResult = false;
+            tool.ResultText = string.Empty;
+        }
         IsProjectPanelOpen = false;
+        IsAccountPanelOpen = false;
         IsProjectActive = false;
         IsToolPanelOpen = true;
+        OnPropertyChanged(nameof(IsExamPaperLayoutPanelOpen));
+        OnPropertyChanged(nameof(IsCertificateBatchPanelOpen));
+        OnPropertyChanged(nameof(IsStandardToolPanelOpen));
         SetStatus("正在查看 " + tool.Name);
         NotifyPanelChanged();
+    }
+
+    public void UpdatePanelWidth(double windowWidth)
+    {
+        _windowWidth = windowWidth;
+        var width = SelectedTool?.Kind is ToolKind.ExamPaperLayout or ToolKind.CertificateBatch
+            ? Math.Max(452, windowWidth - 232)
+            : 452;
+        if (Math.Abs(PanelWidth - width) < 0.5) return;
+        PanelWidth = width;
+        OnPropertyChanged(nameof(PanelWidth));
     }
 
     public void OpenProject()
     {
         IsToolPanelOpen = false;
+        IsAccountPanelOpen = false;
         IsProjectPanelOpen = true;
         IsProjectActive = true;
         SetStatus("正在查看 分晓 · GradeStrip");
@@ -349,9 +422,25 @@ public partial class MainViewModel : ObservableObject
         IsToolPanelOpen = false;
         IsProjectPanelOpen = false;
         IsUpdatePanelOpen = false;
+        IsAccountPanelOpen = false;
         IsProjectActive = false;
         SetStatus(DefaultStatusText);
         NotifyPanelChanged();
+    }
+
+    public static bool ShouldKeepCertificatePanelOpen(bool isToolPanelOpen, bool isCertificateBatch, bool isBusy) =>
+        isToolPanelOpen && isCertificateBatch && isBusy;
+
+    public bool CanDismissPanel()
+    {
+        if (ShouldKeepCertificatePanelOpen(IsToolPanelOpen,
+                SelectedTool?.IsCertificateBatch == true, SelectedTool?.IsBusy == true))
+        {
+            SetStatus("奖状正在生成，请等待完成；如需停止，请先点「取消」，待处理结束后再关闭面板。");
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -362,6 +451,7 @@ public partial class MainViewModel : ObservableObject
     {
         IsToolPanelOpen = false;
         IsProjectPanelOpen = false;
+        IsAccountPanelOpen = false;
         IsProjectActive = false;
         IsUpdatePanelOpen = true;
 
@@ -374,6 +464,23 @@ public partial class MainViewModel : ObservableObject
             UpdateStateText = "还没有检查过";
 
         SetStatus("正在查看 检查更新");
+        NotifyPanelChanged();
+    }
+
+    /// <summary>
+    /// 打开账号页。只摆出本机已知状态：不打开浏览器、不登录、不列共享名单。
+    /// 那三件事都要用户在页内再点一次。
+    /// </summary>
+    public void OpenAccountPanel()
+    {
+        Account.Refresh();
+        IsToolPanelOpen = false;
+        IsProjectPanelOpen = false;
+        IsUpdatePanelOpen = false;
+        IsProjectActive = false;
+        IsAccountPanelOpen = true;
+
+        SetStatus("正在查看 账号与共享名单");
         NotifyPanelChanged();
     }
 
@@ -827,16 +934,24 @@ public partial class MainViewModel : ObservableObject
         IsAllActive = section == "all";
         IsImageActive = section == "image";
         IsFileActive = section == "file";
+        IsTeachActive = section == "teach";
         IsProjectActive = false;
     }
 
     public ToolItemViewModel? FindTool(string id) =>
-        _imageTools.Concat(_fileTools).FirstOrDefault(tool => tool.Id == id);
+        _imageTools.Concat(_fileTools).Concat(_teachTools).FirstOrDefault(tool => tool.Id == id);
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();
 
-    partial void OnIsToolPanelOpenChanged(bool value) => OnPropertyChanged(nameof(IsPanelOpen));
+    partial void OnIsToolPanelOpenChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsPanelOpen));
+        OnPropertyChanged(nameof(IsExamPaperLayoutPanelOpen));
+        OnPropertyChanged(nameof(IsCertificateBatchPanelOpen));
+        OnPropertyChanged(nameof(IsStandardToolPanelOpen));
+    }
     partial void OnIsProjectPanelOpenChanged(bool value) => OnPropertyChanged(nameof(IsPanelOpen));
+    partial void OnIsAccountPanelOpenChanged(bool value) => OnPropertyChanged(nameof(IsPanelOpen));
 
     private void ApplyFilter()
     {
@@ -844,6 +959,7 @@ public partial class MainViewModel : ObservableObject
 
         VisibleImageTools.Clear();
         VisibleFileTools.Clear();
+        VisibleTeachTools.Clear();
 
         foreach (var tool in _imageTools)
             if (Matches(tool, query)) VisibleImageTools.Add(tool);
@@ -851,14 +967,20 @@ public partial class MainViewModel : ObservableObject
         foreach (var tool in _fileTools)
             if (Matches(tool, query)) VisibleFileTools.Add(tool);
 
+        foreach (var tool in _teachTools)
+            if (Matches(tool, query)) VisibleTeachTools.Add(tool);
+
         ApplyCardFilter(query);
 
+        OnPropertyChanged(nameof(AllCountLabel));
         OnPropertyChanged(nameof(ImageCountLabel));
         OnPropertyChanged(nameof(FileCountLabel));
+        OnPropertyChanged(nameof(TeachCountLabel));
         OnPropertyChanged(nameof(SearchSummary));
         OnPropertyChanged(nameof(IsEmptyVisible));
         OnPropertyChanged(nameof(HasImageResults));
         OnPropertyChanged(nameof(HasFileResults));
+        OnPropertyChanged(nameof(HasTeachResults));
     }
 
     private void ApplyCardFilter(string query)
@@ -868,11 +990,13 @@ public partial class MainViewModel : ObservableObject
         IsClassBlockVisible = Matches(ClassBlockCard, query);
         IsGradeWeaveVisible = Matches(GradeWeaveCard, query);
         IsMeetRosterVisible = Matches(MeetRosterCard, query);
+        IsHomeworkVisible = Matches(HomeworkCard, query);
         HasPinnedResults = IsGradeStripVisible || IsSeatGridVisible || IsClassBlockVisible ||
-                           IsGradeWeaveVisible || IsMeetRosterVisible;
+                           IsGradeWeaveVisible || IsMeetRosterVisible || IsHomeworkVisible;
         _visibleAppCardCount = new[]
         {
             IsGradeStripVisible, IsSeatGridVisible, IsClassBlockVisible, IsGradeWeaveVisible, IsMeetRosterVisible,
+            IsHomeworkVisible,
         }.Count(visible => visible);
 
         OnPropertyChanged(nameof(IsGradeStripVisible));
@@ -880,6 +1004,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsClassBlockVisible));
         OnPropertyChanged(nameof(IsGradeWeaveVisible));
         OnPropertyChanged(nameof(IsMeetRosterVisible));
+        OnPropertyChanged(nameof(IsHomeworkVisible));
         OnPropertyChanged(nameof(HasPinnedResults));
         OnPropertyChanged(nameof(PinnedCountLabel));
     }

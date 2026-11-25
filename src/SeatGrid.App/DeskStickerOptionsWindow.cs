@@ -61,15 +61,13 @@ public sealed class DeskStickerOptionsWindow : Window
         Background = Paper;
         Opened += (_, _) => WindowFit.Clamp(this);
 
-        _className = new TextBox { Classes = { "field" }, Text = title, MinHeight = 32, FontSize = 11.5 };
-        _examRoom = new TextBox { Classes = { "field" }, Text = "第 1 考场", MinHeight = 32, FontSize = 11.5 };
+        _className = new TextBox { Classes = { "field" }, Text = title };
+        _examRoom = new TextBox { Classes = { "field" }, Text = "第 1 考场" };
         _layout = new ComboBox
         {
+            Classes = { "field" },
             ItemsSource = new[] { "3 × 4（12 张/页）", "2 × 4（8 张/页）", "3 × 5（15 张/页）" },
             SelectedIndex = 0,
-            MinHeight = 32,
-            FontSize = 11.5,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         _showNumber = new CheckBox { Content = "印考号", IsChecked = true, FontSize = 11.5 };
         _preview = new Image { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center };
@@ -88,48 +86,41 @@ public sealed class DeskStickerOptionsWindow : Window
     {
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
 
-        var header = new Border
-        {
-            BorderBrush = Line, BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(20, 14),
-        };
+        var header = new Border { Classes = { "dialog-header" } };
+        var headerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
         var headerPanel = new StackPanel { Spacing = 3 };
-        headerPanel.Children.Add(new TextBlock
-        {
-            Text = "导出考场桌贴", FontFamily = new FontFamily("Anthropic Serif, SimSun"),
-            FontSize = 19, Foreground = Ink,
-        });
-        headerPanel.Children.Add(new TextBlock
-        {
-            Text = "A4 每页排若干张，含姓名、座号、考号与班级，四周有裁切线。",
-            FontSize = 10.5, Foreground = Muted,
-        });
-        header.Child = headerPanel;
+        headerPanel.Children.Add(new TextBlock { Classes = { "section-title" }, Text = "导出考场桌贴", FontSize = 18 });
+        headerPanel.Children.Add(new TextBlock { Classes = { "helper" }, Text = "A4 每页排若干张，含姓名、座号、考号与班级，四周有裁切线。" });
+        Grid.SetColumn(headerPanel, 0);
+        headerRow.Children.Add(headerPanel);
+        var eyebrow = new TextBlock { Classes = { "eyebrow" }, Text = "STICKERS" };
+        Grid.SetColumn(eyebrow, 1);
+        headerRow.Children.Add(eyebrow);
+        header.Child = headerRow;
         Grid.SetRow(header, 0);
         root.Children.Add(header);
 
         var body = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("360,*"), ColumnSpacing = 14, Margin = new Thickness(20, 14),
+            ColumnDefinitions = new ColumnDefinitions("340,*"), ColumnSpacing = 14, Margin = new Thickness(16, 14),
         };
 
-        var left = new StackPanel { Spacing = 13 };
+        var leftCard = new Border { Classes = { "workspace-panel" }, Padding = new Thickness(16, 14) };
+        var left = new StackPanel { Spacing = 12 };
         left.Children.Add(Field("班级", _className));
         left.Children.Add(Field("考场", _examRoom));
         left.Children.Add(Field("每页张数", _layout));
         left.Children.Add(_showNumber);
         left.Children.Add(new TextBlock
         {
+            Classes = { "helper" },
             Text = "桌贴按座号顺序排列；导出文件名不含学生姓名。",
-            FontSize = 10, LineHeight = 16, Foreground = Muted, TextWrapping = TextWrapping.Wrap,
         });
-        Grid.SetColumn(left, 0);
-        body.Children.Add(left);
+        leftCard.Child = left;
+        Grid.SetColumn(leftCard, 0);
+        body.Children.Add(leftCard);
 
-        var previewFrame = new Border
-        {
-            Background = Card, BorderBrush = Line, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8), Padding = new Thickness(12),
-        };
+        var previewFrame = new Border { Classes = { "workspace-panel" }, Padding = new Thickness(12) };
         var previewPanel = new Panel();
         previewPanel.Children.Add(_preview);
         previewPanel.Children.Add(_previewHint);
@@ -140,24 +131,19 @@ public sealed class DeskStickerOptionsWindow : Window
         Grid.SetRow(body, 1);
         root.Children.Add(body);
 
-        var footer = new Border
-        {
-            BorderBrush = Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(20, 12),
-        };
+        var footer = new Border { Classes = { "dialog-footer" } };
         var footerPanel = new StackPanel
         {
-            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 10,
+            Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8,
         };
         var cancel = new Button
         {
-            Content = "取消", IsCancel = true, FontSize = 11.5, Padding = new Thickness(14, 7),
-            Background = Card, Foreground = InkSoft, BorderBrush = Line, BorderThickness = new Thickness(1),
+            Classes = { "ghost", "top" }, Content = "取消", IsCancel = true, Padding = new Thickness(14, 7),
         };
         cancel.Click += (_, _) => Close(null);
         var confirm = new Button
         {
-            Content = "选择位置并导出", IsDefault = true, FontSize = 11.5, Padding = new Thickness(16, 7),
-            Background = Ink, Foreground = Paper, BorderThickness = new Thickness(0),
+            Classes = { "primary", "top" }, Content = "选择位置并导出", IsDefault = true, Padding = new Thickness(16, 7),
         };
         confirm.Click += (_, _) => Close(new DeskStickerRequest(BuildOptions(), _className.Text ?? string.Empty,
             _examRoom.Text ?? string.Empty));
@@ -177,8 +163,8 @@ public sealed class DeskStickerOptionsWindow : Window
 
     private static Control Field(string label, Control input)
     {
-        var panel = new StackPanel { Spacing = 5 };
-        panel.Children.Add(new TextBlock { Text = label, FontSize = 10.5, Foreground = Muted });
+        var panel = new StackPanel { Spacing = 4 };
+        panel.Children.Add(new TextBlock { Classes = { "field-label" }, Text = label });
         panel.Children.Add(input);
         return panel;
     }

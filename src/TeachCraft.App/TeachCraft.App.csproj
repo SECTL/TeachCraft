@@ -21,12 +21,13 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
-  <ItemGroup>
+      <ItemGroup>
     <ProjectReference Include="..\TeachCraft.Core\TeachCraft.Core.csproj" />
     <ProjectReference Include="..\SeatGrid.App\SeatGrid.App.csproj" />
     <ProjectReference Include="..\ClassBlock.App\ClassBlock.App.csproj" />
     <ProjectReference Include="..\GradeWeave.App\GradeWeave.App.csproj" />
     <ProjectReference Include="..\MeetRoster.App\MeetRoster.App.csproj" />
+    <ProjectReference Include="..\Homework.App\Homework.App.csproj" />
     <ProjectReference Include="..\GradeStrip.App\GradeStrip.App.csproj" />
   </ItemGroup>
 

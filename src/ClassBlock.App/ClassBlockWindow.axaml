@@ -14,60 +14,6 @@
     </Design.DataContext>
 
     <Window.Styles>
-        <Style Selector="Border.panel">
-            <Setter Property="Background" Value="{StaticResource CardBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-        </Style>
-        <Style Selector="Border.settings-card">
-            <Setter Property="Background" Value="{StaticResource CardBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="9" />
-            <Setter Property="Padding" Value="14" />
-        </Style>
-        <Style Selector="Border.chart-card">
-            <Setter Property="Background" Value="{StaticResource CardBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="24" />
-            <Setter Property="ClipToBounds" Value="True" />
-        </Style>
-        <Style Selector="TextBlock.section-title">
-            <Setter Property="FontFamily" Value="{StaticResource SerifFont}" />
-            <Setter Property="FontSize" Value="15" />
-            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-        </Style>
-        <Style Selector="TextBlock.field-label">
-            <Setter Property="FontSize" Value="10.5" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="LetterSpacing" Value="0.4" />
-        </Style>
-        <Style Selector="TextBlock.helper">
-            <Setter Property="FontSize" Value="9.5" />
-            <Setter Property="LineHeight" Value="16" />
-            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
-        <Style Selector="TextBox.field">
-            <Setter Property="Background" Value="#FCFBF7" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="FontSize" Value="11.5" />
-            <Setter Property="MinHeight" Value="30" />
-        </Style>
-        <!-- 本窗口搜索框没有放大镜图标与快捷键徽章，覆盖全局样式恢复对称内边距 -->
-        <Style Selector="TextBox.search">
-            <Setter Property="Padding" Value="9,8" />
-        </Style>
-        <Style Selector="Button.top">
-            <Setter Property="Padding" Value="11,6" />
-            <Setter Property="FontSize" Value="11.5" />
-        </Style>
         <Style Selector="ListBox.classes">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -75,32 +21,32 @@
         </Style>
         <Style Selector="ListBox.classes ListBoxItem">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="8,7" />
+            <Setter Property="Padding" Value="8,6" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Margin" Value="0,1" />
         </Style>
-        <Style Selector="ListBox.classes ListBoxItem:pointerover">
-            <Setter Property="Background" Value="#F7F4EB" />
+        <Style Selector="ListBox.classes ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
         </Style>
-        <Style Selector="ListBox.classes ListBoxItem:selected">
+        <Style Selector="ListBox.classes ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="#F1EEE5" />
         </Style>
         <Style Selector="Border.class-badge">
-            <Setter Property="Background" Value="#F7F4EB" />
+            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="4" />
-            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="Padding" Value="7,2" />
             <Setter Property="MinWidth" Value="38" />
         </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- ==================== 顶栏 ==================== -->
-        <Border Grid.Row="0" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="20,12">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+        <Border Grid.Row="0" Classes="app-topbar">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
-                    <Viewbox Width="38" Height="38">
+                    <Viewbox Width="30" Height="30">
                         <Canvas Width="120" Height="120">
                             <Rectangle Canvas.Left="10" Canvas.Top="10" Width="100" Height="100"
                                        RadiusX="24" RadiusY="24" Fill="#FAF9F5"
@@ -143,74 +89,75 @@
                                      Fill="#D97757"/>
                         </Canvas>
                     </Viewbox>
-                    <StackPanel VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Text="时序" FontFamily="{StaticResource SerifFont}" FontSize="19"
-                                   LetterSpacing="3" Foreground="{StaticResource InkBrush}" />
-                        <TextBlock Text="CLASSBLOCK" FontFamily="{StaticResource MonoFont}" FontSize="8"
-                                   LetterSpacing="2.2" Foreground="{StaticResource MutedBrush}" />
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="时序" FontFamily="{StaticResource SerifFont}" FontSize="15"
+                                   FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="CLASSBLOCK" FontFamily="{StaticResource MonoFont}" FontSize="8.5"
+                                   LetterSpacing="2" Foreground="{StaticResource MutedBrush}" />
                     </StackPanel>
-                    <Border Width="1" Height="30" Background="{StaticResource LineBrush}" Margin="7,0" />
-                    <TextBlock Text="{Binding Title}" FontFamily="{StaticResource SerifFont}" FontSize="22"
+                    <Border Width="1" Height="24" Background="{StaticResource LineBrush}" Margin="5,0" />
+                    <TextBlock Text="{Binding Title}" FontFamily="{StaticResource SerifFont}" FontSize="18"
                                Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"
-                               MaxWidth="300" TextTrimming="CharacterEllipsis" />
-                    <Border Classes="chip" VerticalAlignment="Center">
-                        <TextBlock Text="课堂应用" FontSize="9.5" Foreground="{StaticResource MutedBrush}" />
-                    </Border>
+                               MaxWidth="320" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="课堂应用" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                               VerticalAlignment="Center" Margin="2,0,0,0" />
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                           HorizontalAlignment="Right">
                     <Button Classes="primary top" Content="导入总表" Click="OnImportMaster"
-                            IsEnabled="{Binding IsIdle}" AutomationProperties.Name="导入总表" />
+                            IsEnabled="{Binding IsIdle}" AutomationProperties.Name="导入总表"
+                            Margin="6,2,0,2" />
                     <Button Classes="ghost top" Content="打印" Click="OnPrint"
-                            IsEnabled="{Binding CanExport}" AutomationProperties.Name="打印课程表" />
+                            IsEnabled="{Binding CanExport}" AutomationProperties.Name="打印课程表"
+                            Margin="6,2,0,2" />
                     <Button Classes="ghost top" Content="导出图片" Click="OnExportImage"
-                            IsEnabled="{Binding CanExport}" AutomationProperties.Name="导出课程表图片" />
-                </StackPanel>
+                            IsEnabled="{Binding CanExport}" AutomationProperties.Name="导出课程表图片"
+                            Margin="6,2,0,2" />
+                </WrapPanel>
             </Grid>
         </Border>
 
         <!-- ==================== 主体 ==================== -->
-        <Grid Grid.Row="1" ColumnDefinitions="288,*,330" ColumnSpacing="14" Margin="16,14">
+        <Grid Grid.Row="1" ColumnDefinitions="276,*,344" ColumnSpacing="14" Margin="16,14">
             <!-- 总表与班级 -->
-            <Border Grid.Column="0" Classes="panel" Padding="13">
+            <Border Grid.Column="0" Classes="workspace-panel" Padding="14">
                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="9">
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="总表" FontFamily="{StaticResource SerifFont}" FontSize="17"
-                                       Foreground="{StaticResource InkBrush}" />
-                            <Border Classes="chip" VerticalAlignment="Center">
+                            <TextBlock Classes="section-title" Text="总表" />
+                            <Border Classes="seat-tag">
                                 <TextBlock Text="{Binding ClassCountLabel}" FontFamily="{StaticResource MonoFont}"
                                            FontSize="9.5" Foreground="{StaticResource MutedBrush}" />
                             </Border>
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Text="{Binding SourceName}" FontSize="9"
-                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
-                                   MaxWidth="128" TextTrimming="CharacterEllipsis"
-                                   ToolTip.Tip="{Binding SourceName}" />
+                        <TextBlock Grid.Column="1" Classes="eyebrow" Text="CLASSES" />
                     </Grid>
 
                     <StackPanel Grid.Row="1" Spacing="2">
+                        <TextBlock Text="{Binding SourceName}" FontSize="10"
+                                   Foreground="{StaticResource InkSoftBrush}"
+                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding SourceName}" />
                         <TextBlock Text="{Binding MasterSummary}" FontFamily="{StaticResource MonoFont}"
-                                   FontSize="9.5" LetterSpacing="0.5" Foreground="{StaticResource MutedBrush}" />
-                        <TextBlock Text="选择下面任一班级，课程表会自动生成。" FontSize="9.5"
-                                   Foreground="{StaticResource MutedBrush}" />
+                                   FontSize="9.5" LetterSpacing="0.4" Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Text="选择下面任一班级，课程表会自动生成。" Classes="helper" />
                     </StackPanel>
 
                     <StackPanel Grid.Row="2" Spacing="5">
                         <Border IsVisible="{Binding HasWarnings}" Background="#FDF6F2"
                                 BorderBrush="#E9C4B6" BorderThickness="1" CornerRadius="6" Padding="9,7">
-                            <TextBlock Text="{Binding WarningText}" FontSize="9.5" LineHeight="15"
+                            <TextBlock Text="{Binding WarningText}" FontSize="10" LineHeight="15"
                                        Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
                         </Border>
                         <!-- 模板损坏是老师自己的资产消失，必须持久可见（审计 P3-8）。 -->
                         <Border IsVisible="{Binding HasTemplateWarnings}" Background="#FDF6F2"
                                 BorderBrush="#E9C4B6" BorderThickness="1" CornerRadius="6" Padding="9,7">
-                            <TextBlock Text="{Binding TemplateWarningText}" FontSize="9.5" LineHeight="15"
+                            <TextBlock Text="{Binding TemplateWarningText}" FontSize="10" LineHeight="15"
                                        Foreground="{StaticResource AccentDeepBrush}" TextWrapping="Wrap" />
                         </Border>
                     </StackPanel>
 
-                    <TextBox Grid.Row="3" Classes="search" Text="{Binding SearchText, Mode=TwoWay}"
+                    <TextBox Grid.Row="3" Classes="search compact" Text="{Binding SearchText, Mode=TwoWay}"
                              PlaceholderText="搜索班级 / 班主任"
                              AutomationProperties.Name="搜索班级或班主任" />
 
@@ -266,48 +213,49 @@
             </Border>
 
             <!-- 课程表 -->
-            <Border Grid.Column="1" Classes="chart-card">
+            <Border Grid.Column="1" Classes="workspace-panel" Padding="24" ClipToBounds="True">
                 <Grid>
                     <Image Source="{Binding Preview}" Stretch="Uniform"
                            RenderOptions.BitmapInterpolationMode="HighQuality"
                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
-                    <Border IsVisible="{Binding IsEmptyState}" Background="#F2FAF9F5"
-                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10">
+                    <Border IsVisible="{Binding IsEmptyState}" Classes="chart-card"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32,26">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
-                            <TextBlock Text="还没有总表" FontFamily="{StaticResource SerifFont}" FontSize="26"
+                            <TextBlock Text="TIMETABLE" Classes="eyebrow" HorizontalAlignment="Center" />
+                            <TextBlock Text="还没有总表" FontFamily="{StaticResource SerifFont}" FontSize="24"
                                        Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
                             <TextBlock Text="导入课程总表后，软件会自动识别年级、学期与全部班级。"
-                                       FontSize="11.5" Foreground="{StaticResource MutedBrush}"
-                                       HorizontalAlignment="Center" />
-                            <Button Classes="primary" Content="导入总表" Click="OnImportMaster"
-                                    HorizontalAlignment="Center" />
+                                       Classes="helper" FontSize="11" HorizontalAlignment="Center" />
+                            <Button Classes="primary top" Content="导入总表" Click="OnImportMaster"
+                                    HorizontalAlignment="Center" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
 
-                    <Border IsVisible="{Binding IsSelectPrompt}" Background="#F2FAF9F5"
-                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10">
+                    <Border IsVisible="{Binding IsSelectPrompt}" Classes="chart-card"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32,24">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                            <TextBlock Text="选择一个班级" FontFamily="{StaticResource SerifFont}" FontSize="24"
+                            <TextBlock Text="选择一个班级" FontFamily="{StaticResource SerifFont}" FontSize="22"
                                        Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
                             <TextBlock Text="从左侧班级列表里选中目标班级，课程表会立即出现在这里。"
-                                       FontSize="11" Foreground="{StaticResource MutedBrush}"
-                                       HorizontalAlignment="Center" />
+                                       Classes="helper" FontSize="11" HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </Grid>
             </Border>
 
-            <!-- 设置 -->
-            <Border Grid.Column="2" Classes="panel">
+            <!-- 设置（与归位一致：无卡套卡，section + hairline） -->
+            <Border Grid.Column="2" Classes="workspace-panel">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="14" Spacing="11">
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title" Text="作息模板" />
-                                <ComboBox ItemsSource="{Binding Templates}"
+                    <StackPanel>
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="9">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="作息模板" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="TEMPLATE" />
+                                </Grid>
+                                <ComboBox Classes="field" ItemsSource="{Binding Templates}"
                                           SelectedItem="{Binding SelectedTemplate, Mode=TwoWay}"
-                                          HorizontalAlignment="Stretch"
                                           AutomationProperties.Name="作息模板">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="ct:TimetableTemplate">
@@ -317,48 +265,62 @@
                                 </ComboBox>
                                 <TextBlock Text="模板决定课表的行序与时间，导入总表后按年级自动套用。"
                                            Classes="helper" />
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Button Classes="ghost" Content="编辑模板" Click="OnEditTemplate" FontSize="11"
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                    <Button Grid.Column="0" Classes="ghost tool" Content="编辑模板" Click="OnEditTemplate"
                                             AutomationProperties.Name="编辑作息模板" />
-                                    <Button Classes="ghost" Content="新建模板" Click="OnNewTemplate" FontSize="11"
+                                    <Button Grid.Column="1" Classes="ghost tool" Content="新建模板" Click="OnNewTemplate"
                                             AutomationProperties.Name="新建作息模板" />
-                                </StackPanel>
+                                </Grid>
                             </StackPanel>
                         </Border>
 
-                        <Border Classes="settings-card">
-                            <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title" Text="课程表标题" />
+                        <Border Classes="inspector-divider" />
+
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="9">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="课程表标题" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="TITLE" />
+                                </Grid>
                                 <TextBox Classes="field" Text="{Binding Title, Mode=TwoWay}"
                                          PlaceholderText="例如：九（6）班课程表" />
-                                <TextBlock Text="{Binding Subtitle}" FontSize="9.5"
-                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Subtitle}" Classes="helper" />
                                 <CheckBox IsChecked="{Binding ShowTeachers, Mode=TwoWay}"
-                                          Content="在课程格里显示任课教师" FontSize="11" />
+                                          Content="在课程格里显示任课教师" FontSize="11.5" />
                                 <TextBlock Text="关闭时只显示学科，版式与打印出来的课表一致。"
-                                           Classes="helper" />
+                                           Classes="toggle-note" Margin="26,0,0,0" />
                             </StackPanel>
                         </Border>
 
-                        <Border Classes="settings-card">
+                        <Border Classes="inspector-divider" />
+
+                        <Border Classes="inspector-section">
                             <StackPanel Spacing="7">
-                                <TextBlock Classes="section-title" Text="显示内容" />
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,2">
+                                    <TextBlock Classes="section-title" Text="显示内容" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="DISPLAY" />
+                                </Grid>
                                 <CheckBox IsChecked="{Binding ShowEarlyReading, Mode=TwoWay}"
-                                          Content="早读" FontSize="11" />
+                                          Content="早读" FontSize="11.5" />
                                 <CheckBox IsChecked="{Binding ShowLunchStudy, Mode=TwoWay}"
-                                          Content="午学" FontSize="11" />
+                                          Content="午学" FontSize="11.5" />
                                 <CheckBox IsChecked="{Binding ShowAfterSchool, Mode=TwoWay}"
-                                          Content="课后服务" FontSize="11" />
+                                          Content="课后服务" FontSize="11.5" />
                                 <CheckBox IsChecked="{Binding ShowEveningStudy, Mode=TwoWay}"
-                                          Content="新闻联播与晚修" FontSize="11" />
+                                          Content="新闻联播与晚修" FontSize="11.5" />
                                 <TextBlock Text="大课间、午餐与晚餐是固定休息行，始终保留。"
                                            Classes="helper" />
                             </StackPanel>
                         </Border>
 
-                        <Border Classes="settings-card">
+                        <Border Classes="inspector-divider" />
+
+                        <Border Classes="inspector-section">
                             <StackPanel Spacing="8">
-                                <TextBlock Classes="section-title" Text="识别结果" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="识别结果" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="DETECTED" />
+                                </Grid>
                                 <Grid ColumnDefinitions="76,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                                       RowSpacing="6">
                                     <TextBlock Classes="field-label" Text="年级" />
@@ -380,14 +342,19 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Background="#F8F6F0" BorderBrush="{StaticResource LineBrush}"
-                                BorderThickness="1" CornerRadius="9" Padding="12">
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="总表怎么认" FontFamily="{StaticResource SerifFont}" FontSize="13"
-                                           Foreground="{StaticResource InkBrush}" />
-                                <TextBlock Text="软件会寻找同时包含「星期一…星期五」「1—7 节」和班级行的课程表，并从同一份工作簿里读取班主任、午学、课服与晚修。"
-                                           Classes="helper" />
-                            </StackPanel>
+                        <Border Classes="inspector-divider" />
+
+                        <Border Classes="inspector-section">
+                            <Border Classes="chart-card">
+                                <StackPanel Spacing="5">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="总表怎么认" Classes="subhead" />
+                                        <TextBlock Grid.Column="1" Text="TIPS" Classes="eyebrow" />
+                                    </Grid>
+                                    <TextBlock Text="软件会寻找同时包含「星期一…星期五」「1—7 节」和班级行的课程表，并从同一份工作簿里读取班主任、午学、课服与晚修。"
+                                               Classes="helper" />
+                                </StackPanel>
+                            </Border>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
@@ -395,22 +362,21 @@
         </Grid>
 
         <!-- ==================== 状态栏 ==================== -->
-        <Border Grid.Row="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
-                Padding="18,9">
+        <Border Grid.Row="2" Classes="app-statusbar">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                     <Ellipse Width="5" Height="5" Fill="{Binding StatusBrush}" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding StatusText}" FontSize="10.5"
+                    <TextBlock Text="{Binding StatusText}" FontSize="11"
                                Foreground="{StaticResource MutedBrush}"
                                TextTrimming="CharacterEllipsis" MaxWidth="760"
                                ToolTip.Tip="{Binding StatusText}" />
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="{Binding MasterSummary}"
-                           FontFamily="{StaticResource MonoFont}" FontSize="9"
-                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                           FontSize="10.5" Foreground="{StaticResource MutedBrush}"
+                           HorizontalAlignment="Right" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="2" Text="LOCAL ONLY · 本机处理"
-                           FontFamily="{StaticResource MonoFont}" FontSize="8.5"
-                           LetterSpacing="1.2" Foreground="{StaticResource MossBrush}"
+                           FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                           LetterSpacing="0.8" Foreground="{StaticResource MutedBrush}"
                            VerticalAlignment="Center" />
             </Grid>
         </Border>
@@ -420,10 +386,8 @@
              老师会以为程序卡死并强关（强关会丢掉正在写的文件）。
              400ms 后才亮：小总表瞬间完成，一闪而过的遮罩比不动更晃眼。 -->
         <Border Grid.Row="0" Grid.RowSpan="3" IsVisible="{Binding ShowBusyOverlay}"
-                Background="#B3FAF9F5" ZIndex="60">
-            <Border Background="{StaticResource CardBrush}"
-                    BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
-                    CornerRadius="10" Padding="30,24"
+                Classes="busy-overlay" ZIndex="60">
+            <Border Classes="busy-card"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     MaxWidth="420">
                 <StackPanel Spacing="12">

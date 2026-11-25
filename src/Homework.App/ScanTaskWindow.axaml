@@ -1,0 +1,321 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:scan="using:Homework.App.Scanning"
+        x:Class="Homework.App.ScanTaskWindow"
+        x:DataType="scan:ScanTaskViewModel"
+        Title="扫描任务"
+        Width="820" Height="780"
+        MinWidth="720" MinHeight="640"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PaperBrush}">
+    <Window.Styles>
+        <Style Selector="TextBlock.error">
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+        <Style Selector="Border.notice">
+            <Setter Property="Background" Value="{StaticResource WashHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentWashBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="13,11" />
+        </Style>
+        <Style Selector="Border.received-row">
+            <Setter Property="Background" Value="{StaticResource WashBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="0,0,0,5" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 标题与两种接收方式 -->
+        <Border Grid.Row="0" Classes="dialog-header">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel Spacing="3">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="扫描任务" Classes="section-title" FontSize="18" />
+                        <TextBlock Text="SCAN TASK" Classes="eyebrow" />
+                    </StackPanel>
+                    <TextBlock Text="从复印机直接扫描，或接收发送到这台电脑的扫描件" Classes="helper" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="segmented" Width="216" VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="*,*">
+                        <Button Grid.Column="0" Classes="segment" Classes.active="{Binding IsDirectMode}"
+                                Content="直接扫描" Click="OnSwitchDirect"
+                                AutomationProperties.Name="直接扫描" />
+                        <Button Grid.Column="1" Classes="segment" Classes.active="{Binding IsInboxMode}"
+                                Content="收件文件夹" Click="OnSwitchInbox"
+                                AutomationProperties.Name="收件文件夹" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12" Margin="16,12">
+                <!-- 两种方式共用的落点 + 模式分区，放在统一 workspace-panel 里用细分割线隔开 -->
+                <Border Classes="workspace-panel">
+                    <StackPanel>
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="导入到" Classes="section-title" />
+                                    <TextBlock Grid.Column="1" Text="DESTINATION" Classes="eyebrow" />
+                                </Grid>
+                                <CheckBox Content="导入到当前批次（没有则新建）"
+                                          IsChecked="{Binding ImportToCurrent, Mode=TwoWay}"
+                                          IsEnabled="{Binding HasCurrentBatch}" FontSize="11.5"
+                                          AutomationProperties.Name="导入到当前批次" />
+                                <TextBlock Text="关闭窗口不会停止接收；收件文件夹与扫描设置会保存在本机。"
+                                           Classes="helper" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ==================== 直接扫描 ==================== -->
+                        <StackPanel IsVisible="{Binding IsDirectMode}">
+                            <Border Classes="inspector-divider" />
+                            <Border Classes="inspector-section" IsVisible="{Binding !IsWindows}">
+                                <Border Classes="notice">
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Text="当前平台不支持直接扫描" Classes="section-title" />
+                                        <TextBlock Text="直接扫描使用 Windows 的 WIA 接口。macOS / Linux 请用系统扫描应用把文件保存到收件文件夹，软件会自动接收。"
+                                                   Classes="helper" />
+                                        <Button Classes="ghost top" Content="改用收件文件夹" Click="OnSwitchInbox"
+                                                HorizontalAlignment="Left"
+                                                AutomationProperties.Name="改用收件文件夹" />
+                                    </StackPanel>
+                                </Border>
+                            </Border>
+
+                            <StackPanel IsVisible="{Binding IsWindows}">
+                                <Border Classes="inspector-section">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="扫描仪" Classes="section-title" />
+                                            <TextBlock Grid.Column="1" Text="DEVICE" Classes="eyebrow" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <ComboBox Classes="field" ItemsSource="{Binding Scanners}"
+                                                      SelectedItem="{Binding SelectedScanner, Mode=TwoWay}"
+                                                      PlaceholderText="未选择扫描仪"
+                                                      AutomationProperties.Name="扫描仪" />
+                                            <Button Grid.Column="1" Classes="ghost top" Content="刷新"
+                                                    Click="OnRefreshScanners"
+                                                    IsEnabled="{Binding CanRefreshScanners}"
+                                                    AutomationProperties.Name="刷新扫描仪" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding CapabilityHint}" Classes="helper" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Classes="inspector-divider" />
+
+                                <Border Classes="inspector-section">
+                                    <StackPanel Spacing="10">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="扫描设置" Classes="section-title" />
+                                            <TextBlock Grid.Column="1" Text="OPTIONS" Classes="eyebrow" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto"
+                                              ColumnSpacing="12" RowSpacing="10">
+                                            <StackPanel Spacing="4">
+                                                <TextBlock Text="扫描方式" Classes="field-label" />
+                                                <ComboBox Classes="field" ItemsSource="{Binding SourceOptions}"
+                                                          SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
+                                                          AutomationProperties.Name="扫描方式" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="原稿尺寸" Classes="field-label" />
+                                                <ComboBox Classes="field" ItemsSource="{Binding PageSizeOptions}"
+                                                          SelectedItem="{Binding SelectedPageSize, Mode=TwoWay}"
+                                                          AutomationProperties.Name="原稿尺寸" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="1" Spacing="4">
+                                                <TextBlock Text="分辨率" Classes="field-label" />
+                                                <ComboBox Classes="field" ItemsSource="{Binding ResolutionOptions}"
+                                                          SelectedItem="{Binding SelectedResolution, Mode=TwoWay}"
+                                                          AutomationProperties.Name="分辨率" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                                                <TextBlock Text="色彩" Classes="field-label" />
+                                                <ComboBox Classes="field" ItemsSource="{Binding ColorModeOptions}"
+                                                          SelectedItem="{Binding SelectedColorMode, Mode=TwoWay}"
+                                                          AutomationProperties.Name="色彩" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="4">
+                                                <TextBlock Text="页面" Classes="field-label" />
+                                                <ComboBox Classes="field" ItemsSource="{Binding PageLimitOptions}"
+                                                          SelectedItem="{Binding SelectedPageLimit, Mode=TwoWay}"
+                                                          IsEnabled="{Binding CanChoosePageLimit}"
+                                                          AutomationProperties.Name="页面" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock Text="{Binding PageLimitHint}" Classes="helper" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Classes="inspector-divider" />
+
+                                <Border Classes="inspector-section">
+                                    <StackPanel Spacing="9">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="{Binding ScanStatus}" Classes="helper"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap" />
+                                            <Button Grid.Column="1" Classes="ghost top" Content="取消"
+                                                    Click="OnCancelScan" IsVisible="{Binding IsScanning}"
+                                                    AutomationProperties.Name="取消扫描" />
+                                            <Button Grid.Column="2" Classes="primary top"
+                                                    Content="{Binding ScanButtonText}" Click="OnStartScan"
+                                                    IsEnabled="{Binding CanScan}" Padding="16,7"
+                                                    AutomationProperties.Name="开始扫描" />
+                                        </Grid>
+                                        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsScanning}" Height="3" />
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                            <Button Classes="ghost top"
+                                                    Content="{Binding DriverUiScanButtonText}"
+                                                    Click="OnAcquireWithDriverUi"
+                                                    IsEnabled="{Binding CanDriverUiScan}"
+                                                    AutomationProperties.Name="用驱动界面扫描" />
+                                            <TextBlock Grid.Column="1" Classes="helper" VerticalAlignment="Center"
+                                                       Text="用扫描仪自带界面设置稿台玻璃 / 色彩 / DPI，扫完自动导入批次。" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ==================== 收件文件夹 ==================== -->
+                        <StackPanel IsVisible="{Binding IsInboxMode}">
+                            <Border Classes="inspector-divider" />
+
+                            <Border Classes="inspector-section">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="收件文件夹" Classes="section-title" />
+                                        <TextBlock Grid.Column="1" Text="INBOX" Classes="eyebrow" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                        <TextBox Classes="field" Text="{Binding InboxFolder}" IsReadOnly="True"
+                                                 ToolTip.Tip="{Binding InboxFolder}"
+                                                 AutomationProperties.Name="收件文件夹" />
+                                        <Button Grid.Column="1" Classes="ghost top" Content="选择…"
+                                                Click="OnPickFolder"
+                                                AutomationProperties.Name="选择收件文件夹" />
+                                        <Button Grid.Column="2" Classes="ghost top" Content="打开"
+                                                Click="OnOpenFolder"
+                                                AutomationProperties.Name="打开收件文件夹" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <TextBlock Text="{Binding InboxStatus}" Classes="helper"
+                                                   VerticalAlignment="Center" TextWrapping="Wrap" />
+                                        <Button Grid.Column="1" Classes="primary top"
+                                                Content="{Binding WatchButtonText}" Click="OnToggleWatch"
+                                                IsEnabled="{Binding CanWatch}" Padding="16,7"
+                                                AutomationProperties.Name="开始或停止接收" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Classes="inspector-divider" />
+
+                            <Border Classes="inspector-section">
+                                <StackPanel Spacing="8">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <StackPanel Spacing="2">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="接收记录" Classes="section-title" />
+                                                <TextBlock Text="{Binding ReceivedCountText}" Classes="eyebrow" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Classes="ghost top" Content="导入现有文件"
+                                                Click="OnImportExisting"
+                                                IsEnabled="{Binding !IsImporting}"
+                                                AutomationProperties.Name="导入现有文件" />
+                                    </Grid>
+                                    <TextBlock Text="还没有收到扫描件。开始接收后，新文件会自动出现在这里。"
+                                               Classes="helper" IsVisible="{Binding IsEmptyInbox}" />
+                                    <ScrollViewer MaxHeight="148" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  IsVisible="{Binding HasReceivedFiles}">
+                                        <ItemsControl ItemsSource="{Binding ReceivedFiles}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="scan:ScanInboxItem">
+                                                    <Border Classes="received-row">
+                                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                            <StackPanel Spacing="2">
+                                                                <TextBlock Text="{Binding FileName}" FontSize="11.5"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{StaticResource InkBrush}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding DetailText}" Classes="helper"
+                                                                           Classes.error="{Binding IsError}"
+                                                                           TextWrapping="Wrap" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Spacing="3"
+                                                                        HorizontalAlignment="Right">
+                                                                <TextBlock Text="{Binding TimeText}"
+                                                                           FontFamily="{StaticResource MonoFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource MutedBrush}" />
+                                                                <TextBlock Text="{Binding SizeText}" FontSize="9.5"
+                                                                           Foreground="{StaticResource MutedBrush}"
+                                                                           HorizontalAlignment="Right" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Classes="inspector-divider" />
+
+                            <Border Classes="inspector-section">
+                                <Border Classes="chart-card">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="在复印机上怎么发" Classes="subhead" />
+                                            <TextBlock Grid.Column="1" Text="SMB / FOLDER" Classes="eyebrow" />
+                                        </Grid>
+                                        <TextBlock Text="地址簿新增「文件夹」目标，主机填本机名，共享名填共享文件夹；扫描选 PDF / 300 dpi / 单面 / A4。"
+                                                   Classes="helper" />
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="{Binding InboxFolder}"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                       Foreground="{StaticResource InkSoftBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" />
+                                            <Button Grid.Column="1" Classes="ghost top" Content="复制路径"
+                                                    Click="OnCopyFolder"
+                                                    AutomationProperties.Name="复制收件文件夹路径" />
+                                        </Grid>
+                                        <TextBlock Text="共享文件夹由系统负责；知微只读本地路径。"
+                                                   Classes="helper" />
+                                    </StackPanel>
+                                </Border>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Classes="dialog-footer">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="{Binding StatusText}" FontSize="11"
+                               Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap" />
+                    <TextBlock Text="所有扫描件只写到这台电脑；不会上传。" Classes="helper" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="ghost top" Content="关闭" Click="OnClose"
+                        Padding="14,7" IsCancel="True"
+                        AutomationProperties.Name="关闭" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -17,6 +17,11 @@
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <!-- PDFsharp 6.2.4 仍声明 Pkcs >= 8.0.1；显式钉到已修补版本，避免 NU1902/NU1903。 -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+    <!-- Windows DPAPI：登录凭据按当前用户加密落盘，换机器或换用户都解不开。 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <PackageReference Include="ExcelDataReader" Version="3.9.0" />
+    <PackageReference Include="ExcelDataReader.DataSet" Version="3.9.0" />
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
   </ItemGroup>
 
 </Project>

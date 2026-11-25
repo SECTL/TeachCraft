@@ -56,13 +56,17 @@ public sealed class OobeContentTests
     }
 
     [Fact]
-    public void StepFour_HasThreeClickableActions()
+    public void StepFour_HasFourClickableActions()
     {
         var step = OobeContent.Steps.Single(s => s.Kind == OobeStepKind.TryFirst);
         Assert.NotNull(step.Actions);
-        Assert.Equal(3, step.Actions!.Count);
+        Assert.Equal(4, step.Actions!.Count);
         Assert.Equal(
-            new[] { OobeActionKind.OpenGradeStrip, OobeActionKind.OpenSeatGrid, OobeActionKind.OpenUpdatePanel },
+            new[]
+            {
+                OobeActionKind.OpenGradeStrip, OobeActionKind.OpenSeatGrid,
+                OobeActionKind.OpenUpdatePanel, OobeActionKind.OpenAccountPanel,
+            },
             step.Actions.Select(a => a.Kind));
         Assert.All(step.Actions, a => Assert.False(string.IsNullOrWhiteSpace(a.Label)));
     }
@@ -112,14 +116,18 @@ public sealed class OobeContentTests
     }
 
     [Fact]
-    public void Copy_StatesBothNetworkSurfaces()
+    public void Copy_NamesAllOptInNetworkSurfaces()
     {
-        // 2026-11-16 起联网有两处。引导页必须把「集控默认关闭」讲清楚，
+        // 1.45.0 起联网有三处：更新、账号与共享名单、集控。
+        // 引导页必须把「账号与云同步、集控都默认关闭」讲清楚，
         // 否则老师会以为软件背着他在连网。
         var text = AllText();
         Assert.Contains("检查更新", text, StringComparison.Ordinal);
+        Assert.Contains("账号", text, StringComparison.Ordinal);
+        Assert.Contains("共享名单", text, StringComparison.Ordinal);
         Assert.Contains("集控", text, StringComparison.Ordinal);
         Assert.Contains("默认关闭", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("联网只有两处", text, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -145,6 +153,7 @@ public sealed class OobeContentTests
             (ToolDescriptionCatalog.ClassBlockKey, vm.ClassBlockCard),
             (ToolDescriptionCatalog.GradeWeaveKey, vm.GradeWeaveCard),
             (ToolDescriptionCatalog.MeetRosterKey, vm.MeetRosterCard),
+            (ToolDescriptionCatalog.HomeworkKey, vm.HomeworkCard),
         };
 
         foreach (var (key, card) in cards)

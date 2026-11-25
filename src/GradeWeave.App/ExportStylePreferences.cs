@@ -9,7 +9,7 @@ namespace GradeWeave.App;
 /// </summary>
 internal static class ExportStylePreferences
 {
-    public const string DefaultName = "参考校样式";
+    public const string DefaultName = "软件自带样式2";
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

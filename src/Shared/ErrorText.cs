@@ -6,14 +6,19 @@ namespace TeachCraft.Shared;
 
 /// <summary>
 /// 异常 → 教师能读懂的一句话。
-/// 原则：业务异常（ToolboxException / ClassBlockException 等）由抛出方给出人话，原样透传；
-/// 未预期异常只给「做什么失败了 + 下一步怎么办」，不把 CLR / IO 原文抛到界面上。
+/// 原则：业务异常（带公开 string UserFacingMessage 属性，如 ToolboxException / ClassBlockException / 云端异常）
+/// 由抛出方给出人话，原样透传；未预期异常只给「做什么失败了 + 下一步怎么办」，不把 CLR / IO 原文抛到界面上。
+/// Shared 以链接文件编进每个程序集，接口/基类会在各程序集各持一份，跨程序集类型判断不成立，
+/// 因此这里只按属性名识别（见 TryUserFacingMessage），不定义共享类型。
 /// </summary>
 internal static class ErrorText
 {
-    /// <summary>把未预期异常翻译成一句可执行的提示。action 用动词短语，如「处理」「生成课程表」。</summary>
+    /// <summary>把异常翻译成一句可执行的提示。action 用动词短语，如「处理」「生成课程表」。</summary>
     public static string Describe(Exception ex, string action)
     {
+        // 业务异常原样透传：按属性名识别，不用共享接口（见类注释）。
+        if (TryUserFacingMessage(ex) is string userFacing) return userFacing;
+
         var reason = ex switch
         {
             UnauthorizedAccessException => "没有权限访问这个文件或文件夹，换一个位置再试。",
@@ -30,6 +35,16 @@ internal static class ErrorText
         return reason is not null
             ? $"{action}失败：{reason}"
             : $"{action}失败：请检查文件后重试；若反复出现，请把这份文件和操作步骤反馈给我们。";
+    }
+
+    private static string? TryUserFacingMessage(Exception ex)
+    {
+        var property = ex.GetType().GetProperty("UserFacingMessage",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        return property?.PropertyType == typeof(string)
+            && property.GetValue(ex) is string text && !string.IsNullOrWhiteSpace(text)
+            ? text
+            : null;
     }
 
     private static bool IsFileLocked(IOException ex)

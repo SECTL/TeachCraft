@@ -1,0 +1,681 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Homework.App"
+        xmlns:controls="using:Homework.App.Controls"
+        x:Class="Homework.App.HomeworkWindow"
+        x:DataType="app:HomeworkViewModel"
+        Title="作业整理 · Homework"
+        Icon="avares://TeachCraft/Assets/teachcraft.ico"
+        Width="1440" Height="920"
+        MinWidth="1120" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource PaperBrush}">
+    <Design.DataContext>
+        <app:HomeworkViewModel />
+    </Design.DataContext>
+
+    <Window.Resources>
+        <app:PathToBitmapConverter x:Key="PathToBitmap" />
+        <app:PageIndexConverter x:Key="PageIndex" />
+        <app:InitialsConverter x:Key="Initials" />
+    </Window.Resources>
+
+    <Window.Styles>
+        <!-- 识别徽标：行内小胶囊，对齐归位 seat-tag -->
+        <Style Selector="Border.recognition-badge">
+            <Setter Property="Background" Value="{StaticResource WashHoverBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="5,1" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+        <Style Selector="TextBlock.recognition-badge">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+
+        <Style Selector="Border.batch-card">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.14" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.14" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.batch-card:pointerover">
+            <Setter Property="Background" Value="#FEFCF7" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+        </Style>
+        <Style Selector="Border.batch-card:pressed">
+            <Setter Property="Background" Value="{StaticResource WashHoverBrush}" />
+        </Style>
+
+        <Style Selector="Border.page-row">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.1" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.page-row:pointerover">
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
+        </Style>
+        <Style Selector="Border.page-row.selected">
+            <Setter Property="Background" Value="#F1EEE5" />
+        </Style>
+
+        <Style Selector="Border.student-row">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.1" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.student-row:pointerover">
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
+        </Style>
+        <Style Selector="Border.student-row:pressed">
+            <Setter Property="Background" Value="#EBE6D8" />
+        </Style>
+
+        <Style Selector="Border.badge">
+            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.badge TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <Style Selector="Border.badge.unmatched">
+            <Setter Property="Background" Value="{StaticResource AccentWashBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        </Style>
+        <Style Selector="Border.badge.unmatched TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+        <Style Selector="Border.badge.complete TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MossBrush}" />
+        </Style>
+
+        <Style Selector="Border.thumb">
+            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Border.thumb:pointerover">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <Style Selector="Border.letter">
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.letter TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+    </Window.Styles>
+
+    <!-- 根网格单格：主内容与忙碌遮罩叠放，遮罩声明在后且 ZIndex 更高，覆盖整窗。 -->
+    <Grid>
+        <Grid RowDefinitions="Auto,*,Auto">
+            <!-- ==================== 顶栏（对齐归位） ==================== -->
+            <Border Grid.Row="0" Classes="app-topbar">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+                        <Viewbox Width="30" Height="30">
+                            <Canvas Width="120" Height="120">
+                                <Rectangle Canvas.Left="18" Canvas.Top="12" Width="84" Height="96"
+                                           RadiusX="14" RadiusY="14" Fill="#FAF9F5"
+                                           Stroke="#E7E3D8" StrokeThickness="3" />
+                                <Rectangle Canvas.Left="32" Canvas.Top="34" Width="56" Height="7"
+                                           RadiusX="3" RadiusY="3" Fill="#141413" />
+                                <Rectangle Canvas.Left="32" Canvas.Top="52" Width="42" Height="7"
+                                           RadiusX="3" RadiusY="3" Fill="#6F6A5E" />
+                                <Rectangle Canvas.Left="32" Canvas.Top="70" Width="56" Height="7"
+                                           RadiusX="3" RadiusY="3" Fill="#E7E3D8" />
+                                <Path Data="M 74 90 L 82 98 L 98 80"
+                                      Stroke="#D97757" StrokeThickness="6" StrokeLineCap="Round"
+                                      StrokeJoin="Round" />
+                            </Canvas>
+                        </Viewbox>
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <TextBlock Text="作业整理" FontFamily="{StaticResource SerifFont}" FontSize="15"
+                                       FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                            <TextBlock Text="HOMEWORK" FontFamily="{StaticResource MonoFont}" FontSize="8.5"
+                                       LetterSpacing="2" Foreground="{StaticResource MutedBrush}" />
+                        </StackPanel>
+                        <Border Width="1" Height="24" Background="{StaticResource LineBrush}" Margin="5,0" />
+                        <TextBlock Text="批次列表" IsVisible="{Binding IsHomeVisible}"
+                                   FontFamily="{StaticResource SerifFont}" FontSize="18"
+                                   Foreground="{StaticResource InkBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Workspace.Title}" IsVisible="{Binding IsWorkspaceOpen}"
+                                   FontFamily="{StaticResource SerifFont}" FontSize="18"
+                                   Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"
+                                   MaxWidth="260" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="课堂归档" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                                   VerticalAlignment="Center" Margin="2,0,0,0" />
+                    </StackPanel>
+
+                    <!-- 首页按钮 -->
+                    <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                               HorizontalAlignment="Right" IsVisible="{Binding IsHomeVisible}"
+                               IsEnabled="{Binding !IsBusy}">
+                        <Button Classes="ghost top" Content="扫描任务" Click="OnOpenScanTask"
+                                AutomationProperties.Name="扫描任务" Margin="6,2,0,2" />
+                        <Button Classes="primary top" Content="新建批次" Click="OnNewBatch"
+                                AutomationProperties.Name="新建批次" Margin="6,2,0,2" />
+                    </WrapPanel>
+
+                    <!-- 工作区按钮 -->
+                    <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                               HorizontalAlignment="Right" IsVisible="{Binding IsWorkspaceOpen}"
+                               IsEnabled="{Binding !IsBusy}">
+                        <Button Classes="ghost top back-btn" Content="‹ 返回批次" Click="OnBack"
+                                AutomationProperties.Name="返回批次" Margin="6,2,0,2" />
+                        <Border Width="1" Height="20" Background="{StaticResource LineBrush}" Margin="8,0,2,0"
+                                VerticalAlignment="Center" />
+                        <Button Classes="ghost top" Click="OnUndo" IsEnabled="{Binding Workspace.CanUndo}"
+                                Padding="10,6" AutomationProperties.Name="撤销" Margin="6,2,0,2">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="↶" />
+                                <TextBlock Text="撤销" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="ghost top" Click="OnRedo" IsEnabled="{Binding Workspace.CanRedo}"
+                                Padding="10,6" AutomationProperties.Name="重做" Margin="6,2,0,2">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="↷" />
+                                <TextBlock Text="重做" />
+                            </StackPanel>
+                        </Button>
+                        <Border Width="1" Height="20" Background="{StaticResource LineBrush}" Margin="8,0,2,0"
+                                VerticalAlignment="Center" />
+                        <Button Classes="ghost top" Content="导入作业页" Click="OnImportImages"
+                                AutomationProperties.Name="导入作业页" Margin="6,2,0,2" />
+                        <Button Classes="ghost top" Content="导入 PDF" Click="OnImportPdf"
+                                AutomationProperties.Name="导入 PDF" Margin="6,2,0,2" />
+                        <Button Classes="ghost top" Content="导入名单" Click="OnImportRoster"
+                                AutomationProperties.Name="导入名单" Margin="6,2,0,2" />
+                        <Button Classes="ghost top" Content="共享名单" Click="OnPullSharedRoster"
+                                AutomationProperties.Name="共享名单" Margin="6,2,0,2" />
+                        <Button Classes="ghost top" Content="扫描" Click="OnOpenScanTask"
+                                AutomationProperties.Name="扫描任务" Margin="6,2,0,2" />
+                        <Border Width="1" Height="20" Background="{StaticResource LineBrush}" Margin="8,0,2,0"
+                                VerticalAlignment="Center" />
+                        <Button Classes="primary top" Content="提交本批次" Click="OnCommit"
+                                AutomationProperties.Name="提交本批次" Margin="6,2,0,2" />
+                        <Button Classes="ghost top" Content="放弃本批次" Click="OnAbandon"
+                                AutomationProperties.Name="放弃本批次" Margin="6,2,0,2" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+
+            <!-- ==================== 主体：首页 / 工作区 ==================== -->
+            <Grid Grid.Row="1" Margin="16,14">
+                <!-- 首页 -->
+                <Grid IsVisible="{Binding IsHomeVisible}">
+                    <!-- 空状态 -->
+                    <Border Classes="workspace-panel" IsVisible="{Binding IsHomeEmpty}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Width="460" Padding="34,30">
+                        <StackPanel Spacing="12" HorizontalAlignment="Center">
+                            <TextBlock Text="HOMEWORK" Classes="eyebrow" HorizontalAlignment="Center" />
+                            <TextBlock Text="还没有批次" FontFamily="{StaticResource SerifFont}" FontSize="22"
+                                       Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
+                            <TextBlock Text="新建一个批次，导入扫描的作业页与班级名单，再逐张匹配学生。"
+                                       Classes="helper" FontSize="11" TextAlignment="Center" HorizontalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Center" Margin="0,6,0,0">
+                                <Button Classes="primary top" Content="新建批次" Click="OnNewBatch"
+                                        AutomationProperties.Name="新建批次" />
+                                <Button Classes="ghost top" Content="扫描任务" Click="OnOpenScanTask"
+                                        AutomationProperties.Name="扫描任务" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding StatusText}" Classes="helper"
+                                       Foreground="{StaticResource AccentDeepBrush}"
+                                       TextAlignment="Center" HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 批次列表 -->
+                    <ScrollViewer IsVisible="{Binding !IsHomeEmpty}"
+                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="2,2,10,2">
+                            <Grid ColumnDefinitions="*,Auto" Margin="2,0,2,12">
+                                <TextBlock Text="批次" Classes="section-title" FontSize="18" />
+                                <TextBlock Grid.Column="1" Text="BATCHES" Classes="eyebrow" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Batches}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="app:BatchSummaryViewModel">
+                                        <Border Classes="batch-card" PointerPressed="OnOpenBatch">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
+                                                <StackPanel Spacing="4" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Title}" FontFamily="{StaticResource SerifFont}"
+                                                               FontSize="16" Foreground="{StaticResource InkBrush}" />
+                                                    <TextBlock Text="{Binding Subtitle}" Classes="helper" />
+                                                </StackPanel>
+                                                <Border Classes="badge" Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding StateText}" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- 工作区：外层继承 HomeworkViewModel，内层用 x:DataType 切到 BatchWorkspaceViewModel。 -->
+                <Grid IsVisible="{Binding IsWorkspaceOpen}" x:DataType="app:HomeworkViewModel">
+                    <Border DataContext="{Binding Workspace}">
+                    <Grid x:DataType="app:BatchWorkspaceViewModel" ColumnDefinitions="264,*,328" ColumnSpacing="14">
+                        <!-- ===== 左：作业页列表 ===== -->
+                        <Border Grid.Column="0" Classes="workspace-panel">
+                            <Grid RowDefinitions="Auto,Auto,Auto,*">
+                                <!-- 识别工具条 -->
+                                <Border Grid.Row="0" Classes="inspector-section" Padding="14,12,14,12"
+                                        BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="识别工具" Classes="section-title" />
+                                            <TextBlock Grid.Column="1" Text="RECOGNITION" Classes="eyebrow" />
+                                        </Grid>
+                                        <StackPanel Spacing="6" IsEnabled="{Binding HasPages}">
+                                            <TextBlock Text="框选学号数字区后点击识别填涂；无页时不可用" Classes="helper" />
+                                            <WrapPanel ItemSpacing="6" LineSpacing="6">
+                                                <Button Classes="mode" Content="识别填涂" Click="OnRunFillIn"
+                                                        AutomationProperties.Name="识别填涂" />
+                                                <Button Classes="mode" Content="框选区域" Click="OnStartRegionSelection"
+                                                        AutomationProperties.Name="框选区域" />
+                                                <Button Classes="mode" Content="模板…" Click="OnOpenTemplateDialog"
+                                                        AutomationProperties.Name="生成填涂模板" />
+                                                <Button Classes="mode" Content="清除区域" Click="OnClearRegion"
+                                                        AutomationProperties.Name="清除填涂区域" />
+                                            </WrapPanel>
+                                            <TextBlock Text="{Binding FillInRegionSummary}" Classes="helper"
+                                                       Foreground="{StaticResource InkSoftBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Row="1" Padding="14,10" BorderBrush="{StaticResource LineBrush}"
+                                        BorderThickness="0,0,0,1">
+                                    <StackPanel Spacing="4">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Text="每人应交页数" Classes="field-label" VerticalAlignment="Center" />
+                                            <NumericUpDown Grid.Column="1" Classes="field" Width="112" Minimum="1" Maximum="50"
+                                                           Increment="1" FormatString="0"
+                                                           Value="{Binding ExpectedPagesPerStudent, Mode=TwoWay}"
+                                                           AutomationProperties.Name="每人应交页数" />
+                                        </Grid>
+                                        <TextBlock Text="先导入作业页" Classes="helper"
+                                                   IsVisible="{Binding !HasPages}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Grid.Row="2" Spacing="8" Margin="14,12,14,8">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding LeftHeader}" Classes="section-title" />
+                                        <TextBlock Grid.Column="1" Text="PAGES" Classes="eyebrow" />
+                                    </Grid>
+                                    <Border Classes="segmented">
+                                        <Grid ColumnDefinitions="*,*">
+                                            <Button Grid.Column="0" Classes="segment" Content="待处理" Click="OnShowPending"
+                                                    Classes.active="{Binding !ShowAllPages}"
+                                                    AutomationProperties.Name="待处理页" />
+                                            <Button Grid.Column="1" Classes="segment" Content="全部" Click="OnShowAllPages"
+                                                    Classes.active="{Binding ShowAllPages}"
+                                                    AutomationProperties.Name="全部页" />
+                                        </Grid>
+                                    </Border>
+                                    <TextBlock Text="{Binding Title}" Classes="helper" />
+                                </StackPanel>
+
+                                <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{Binding VisiblePages}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="app:PageItemViewModel">
+                                                <Border Classes="page-row" Classes.selected="{Binding IsSelected}"
+                                                        Tapped="OnSelectPage">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                        <TextBlock Grid.Column="0" Text="✓" FontSize="11.5"
+                                                                   Foreground="{StaticResource AccentDeepBrush}"
+                                                                   VerticalAlignment="Center"
+                                                                   IsVisible="{Binding IsSelected}" />
+                                                        <StackPanel Grid.Column="1" Spacing="2">
+                                                            <TextBlock Text="{Binding Label}" FontSize="12"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource InkBrush}" />
+                                                            <TextBlock Text="{Binding StatusText}" Classes="helper" />
+                                                            <Border Classes="recognition-badge"
+                                                                    IsVisible="{Binding HasRecognition}"
+                                                                    ToolTip.Tip="{Binding RecognitionReason}">
+                                                                <TextBlock Classes="recognition-badge"
+                                                                           Text="{Binding RecognitionBadge}" />
+                                                            </Border>
+                                                            <TextBlock Text="疑似重复" Classes="helper"
+                                                                       Foreground="{StaticResource AccentDeepBrush}"
+                                                                       IsVisible="{Binding IsDuplicateHint}" />
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="2" Text="{Binding PageNumberText}"
+                                                                   FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                                                   Foreground="{StaticResource MutedBrush}"
+                                                                   VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+
+                        <!-- ===== 中：预览 ===== -->
+                        <Border Grid.Column="1" Classes="workspace-panel" ClipToBounds="True">
+                            <Grid>
+                                <!-- 空状态 -->
+                                <Border Classes="chart-card"
+                                        IsVisible="{Binding !HasPages}"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Width="400" Padding="30,26">
+                                    <StackPanel Spacing="10" HorizontalAlignment="Center">
+                                        <TextBlock Text="PREVIEW" Classes="eyebrow" HorizontalAlignment="Center" />
+                                        <TextBlock Text="还没有作业页" FontFamily="{StaticResource SerifFont}"
+                                                   FontSize="22" Foreground="{StaticResource InkBrush}"
+                                                   HorizontalAlignment="Center" />
+                                        <TextBlock Text="导入扫描的作业页或 PDF，也可以直接发起扫描任务。"
+                                                   Classes="helper" FontSize="11" TextAlignment="Center"
+                                                   HorizontalAlignment="Center" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                                    HorizontalAlignment="Center" Margin="0,6,0,0">
+                                            <Button Classes="primary top" Content="导入作业页" Click="OnImportImages"
+                                                    AutomationProperties.Name="导入作业页" />
+                                            <Button Classes="ghost top" Content="导入 PDF" Click="OnImportPdf"
+                                                    AutomationProperties.Name="导入 PDF" />
+                                            <Button Classes="ghost top" Content="扫描任务" Click="OnOpenScanTask"
+                                                    AutomationProperties.Name="扫描任务" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 有页时的预览 -->
+                                <Grid IsVisible="{Binding HasPages}" RowDefinitions="*,Auto">
+                                    <Grid Grid.Row="0" RowDefinitions="*,Auto">
+                                        <ScrollViewer Grid.Row="0" x:Name="PreviewScroll"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Auto"
+                                                      Background="{StaticResource PaperBrush}"
+                                                      SizeChanged="OnPreviewSizeChanged">
+                                            <Panel Width="{Binding PreviewDisplayWidth}"
+                                                   Height="{Binding PreviewDisplayHeight}">
+                                                <Image Source="{Binding PreviewImagePath, Converter={StaticResource PathToBitmap}}"
+                                                       Stretch="Fill" />
+                                                <controls:NormalizedRectSelector
+                                                    IsVisible="{Binding IsSelectingFillInRegion}"
+                                                    IsSelectionEnabled="{Binding IsSelectingFillInRegion}"
+                                                    Rect="{Binding DraftFillInRegion, Mode=TwoWay}" />
+                                            </Panel>
+                                        </ScrollViewer>
+                                        <!-- 框选操作条 -->
+                                        <Border Grid.Row="0" ZIndex="10" IsVisible="{Binding IsSelectingFillInRegion}"
+                                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                                Background="{StaticResource CardBrush}"
+                                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                                CornerRadius="8" Padding="8,6" Margin="0,0,0,12">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <CheckBox Content="仅本页" FontSize="11.5"
+                                                          IsChecked="{Binding ApplyRegionPerPage, Mode=TwoWay}"
+                                                          IsEnabled="{Binding CanApplyPerPage}"
+                                                          VerticalAlignment="Center"
+                                                          AutomationProperties.Name="仅应用到本页" />
+                                                <Button Classes="primary top" Content="应用" Click="OnApplyRegion"
+                                                        Padding="12,5" AutomationProperties.Name="应用填涂区" />
+                                                <Button Classes="ghost top" Content="取消" Click="OnCancelRegion"
+                                                        Padding="12,5" AutomationProperties.Name="取消框选" />
+                                            </StackPanel>
+                                        </Border>
+                                        <!-- 缩放条 -->
+                                        <Border Grid.Row="0" ZIndex="11" HorizontalAlignment="Right"
+                                                VerticalAlignment="Bottom" Margin="0,0,12,12"
+                                                Background="{StaticResource CardBrush}"
+                                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                                CornerRadius="7" Padding="4,3">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <Button Classes="ghost" Content="−" Width="28" FontSize="14"
+                                                        Click="OnZoomOut" Padding="0"
+                                                        HorizontalContentAlignment="Center"
+                                                        AutomationProperties.Name="缩小" />
+                                                <TextBlock Text="{Binding ZoomText}" FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="10.5" Foreground="{StaticResource InkSoftBrush}"
+                                                           VerticalAlignment="Center" MinWidth="38"
+                                                           TextAlignment="Center" />
+                                                <Button Classes="ghost" Content="+" Width="28" FontSize="14"
+                                                        Click="OnZoomIn" Padding="0"
+                                                        HorizontalContentAlignment="Center"
+                                                        AutomationProperties.Name="放大" />
+                                                <Button Classes="ghost" Content="适应" Click="OnZoomFit"
+                                                        Padding="8,4" FontSize="11"
+                                                        AutomationProperties.Name="适应窗口" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Grid.Row="1" Classes="helper"
+                                                   Text="{Binding SelectedPage.RecognitionSummary}"
+                                                   IsVisible="{Binding SelectedPage.HasRecognition}"
+                                                   Margin="12,6,12,6" />
+                                    </Grid>
+                                    <Border Grid.Row="1" BorderBrush="{StaticResource LineBrush}"
+                                            BorderThickness="0,1,0,0" Padding="12,8">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                            <TextBlock Grid.Column="0" Text="{Binding SelectedPage, Converter={StaticResource PageIndex}}"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="10.5"
+                                                       Foreground="{StaticResource InkSoftBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto"
+                                                          VerticalScrollBarVisibility="Disabled">
+                                                <ItemsControl ItemsSource="{Binding VisiblePages}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel Orientation="Horizontal" Spacing="6" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="app:PageItemViewModel">
+                                                            <Border Classes="thumb" Tapped="OnSelectPage">
+                                                                <Image Source="{Binding ThumbnailPath, Converter={StaticResource PathToBitmap}}"
+                                                                       Height="76" Stretch="Uniform" />
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- ===== 右：学生匹配 ===== -->
+                        <Border Grid.Column="2" Classes="workspace-panel">
+                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,14,14,8">
+                                    <TextBlock Text="请匹配学生" Classes="section-title" />
+                                    <TextBlock Grid.Column="1" Text="STUDENTS" Classes="eyebrow" />
+                                </Grid>
+                                <ComboBox Grid.Row="1" Classes="field" Margin="14,0,14,8"
+                                          ItemsSource="{Binding ClassFilters}"
+                                          SelectedItem="{Binding SelectedClassFilter, Mode=TwoWay}"
+                                          DisplayMemberBinding="{Binding DisplayName}"
+                                          AutomationProperties.Name="班级筛选" />
+                                <Border Grid.Row="2" Classes="segmented" Margin="14,0,14,8">
+                                    <Grid ColumnDefinitions="*,*,*">
+                                        <Button Grid.Column="0" Classes="segment" Content="未匹配" Click="OnShowUnmatched"
+                                                Classes.active="{Binding ShowOnlyUnmatchedStudents}"
+                                                AutomationProperties.Name="未匹配学生" />
+                                        <Button Grid.Column="1" Classes="segment" Content="已匹配" Click="OnShowMatched"
+                                                Classes.active="{Binding ShowOnlyMatchedStudents}"
+                                                AutomationProperties.Name="已匹配学生" />
+                                        <Button Grid.Column="2" Classes="segment" Content="全部" Click="OnShowAllStudents"
+                                                Classes.active="{Binding ShowAllStudents}"
+                                                AutomationProperties.Name="全部学生" />
+                                    </Grid>
+                                </Border>
+                                <TextBox Grid.Row="3" Classes="search compact" PlaceholderText="搜索姓名 / 学号"
+                                         Margin="14,0,14,8"
+                                         Text="{Binding SearchText, Mode=TwoWay}"
+                                         AutomationProperties.Name="搜索学生" />
+                                <Grid Grid.Row="4">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled" Margin="0,0,18,0">
+                                        <ItemsControl ItemsSource="{Binding Students}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="app:StudentRowViewModel">
+                                                    <Border Classes="student-row" Tapped="OnMatchStudent">
+                                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Name}" FontSize="12"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{StaticResource InkBrush}" />
+                                                                <TextBlock Text="{Binding Number}" Classes="helper" />
+                                                            </StackPanel>
+                                                            <Border Classes="badge" Grid.Column="1"
+                                                                    Classes.unmatched="{Binding IsUnmatched}"
+                                                                    Classes.complete="{Binding IsComplete}">
+                                                                <TextBlock Text="{Binding BadgeText}" />
+                                                            </Border>
+                                                            <TextBlock Grid.Column="2" Text="重名" FontSize="9.5"
+                                                                       Foreground="{StaticResource AccentDeepBrush}"
+                                                                       VerticalAlignment="Center"
+                                                                       IsVisible="{Binding IsDuplicateName}" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                    <!-- 右侧字母导航 -->
+                                    <ItemsControl ItemsSource="{Binding Students, Converter={StaticResource Initials}}"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                  Margin="0,4,3,0" IsHitTestVisible="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Classes="letter">
+                                                    <TextBlock Text="{Binding}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Grid>
+                                <Border Grid.Row="5" IsVisible="{Binding HasSelectedStudent}"
+                                        Classes="chart-card" Margin="14,6,14,0" Padding="10,8">
+                                    <StackPanel Spacing="5">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <TextBlock Text="{Binding SelectedStudentPagesTitle}" Classes="subhead"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <Button Grid.Column="1" Classes="link" Content="撤回全部"
+                                                    Click="OnUnmatchStudent" FontSize="10.5" Padding="6,2"
+                                                    AutomationProperties.Name="撤回该生全部页" />
+                                        </Grid>
+                                        <ScrollViewer MaxHeight="116" VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding StudentPages}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="app:PageItemViewModel">
+                                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,1">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6"
+                                                                        VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Label}" FontSize="11" />
+                                                                <TextBlock Text="{Binding PageNumberText}" FontSize="9.5"
+                                                                           FontFamily="{StaticResource MonoFont}"
+                                                                           Foreground="{StaticResource MutedBrush}"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1" Classes="link" Content="撤回"
+                                                                    Tag="{Binding}" Click="OnUnmatchPage"
+                                                                    FontSize="10.5" Padding="6,1"
+                                                                    AutomationProperties.Name="撤回该页匹配" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </StackPanel>
+                                </Border>
+                                <Button Grid.Row="6" Classes="ghost tool" Content="删除该张" Click="OnDeletePage"
+                                        Margin="14,10,14,14"
+                                        AutomationProperties.Name="删除该张" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- ==================== 统一底栏（对齐归位） ==================== -->
+            <Border Grid.Row="2" Classes="app-statusbar">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                        <Ellipse Width="5" Height="5" Fill="{StaticResource MossBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding StatusText}" IsVisible="{Binding IsHomeVisible}"
+                                   FontSize="11" Foreground="{StaticResource MutedBrush}"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="720" />
+                        <TextBlock Text="{Binding Workspace.StatusText}" IsVisible="{Binding IsWorkspaceOpen}"
+                                   FontSize="11" Foreground="{StaticResource MutedBrush}"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="720" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding Workspace.CommitBlockedReason}"
+                               IsVisible="{Binding IsWorkspaceOpen}"
+                               FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="LOCAL ONLY · 本机处理"
+                               FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                               LetterSpacing="0.8" Foreground="{StaticResource MutedBrush}"
+                               VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ==================== 忙碌遮罩（覆盖整窗） ==================== -->
+        <Border IsVisible="{Binding IsBusy}" Classes="busy-overlay" ZIndex="100">
+            <Border Classes="busy-card" Width="360" HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel Spacing="14">
+                    <!-- BusyText 的 setter 在 VM 里是私有的；进度百分比由代码直接写这个 TextBlock。 -->
+                    <TextBlock x:Name="BusyMessageText" Text="{Binding BusyText}"
+                               FontFamily="{StaticResource SerifFont}" FontSize="16"
+                               Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" />
+                    <ProgressBar IsIndeterminate="True" />
+                    <Button Classes="ghost top" Content="取消" Click="OnCancelBusy" HorizontalAlignment="Right"
+                            AutomationProperties.Name="取消忙碌任务" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

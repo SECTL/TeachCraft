@@ -15,8 +15,8 @@ public static class ToolDescriptionCatalog
     public const string ClassBlockKey = "classblock";
     public const string GradeWeaveKey = "gradeweave";
     public const string MeetRosterKey = "meetroster";
+    public const string HomeworkKey = "homework";
 
-    /// <summary>顺序与 .memory/03 的工具契约表一致：01–04 图片、05–10 格式工厂。</summary>
     public static IReadOnlyList<string> ToolIds { get; } = new[]
     {
         "image-convert",
@@ -29,9 +29,13 @@ public static class ToolDescriptionCatalog
         "pdf-images",
         "pdf-merge",
         "pdf-split",
+        "roster-compare",
+        "excel-class-split",
+        "exam-paper-layout",
+        "certificate-batch",
     };
 
-    /// <summary>案头常备顺序：分晓 / 归位 / 时序 / 织序 / 竞名。</summary>
+    /// <summary>案头常备顺序：分晓 / 归位 / 时序 / 织序 / 竞名 / 作业整理。</summary>
     public static IReadOnlyList<string> AppKeys { get; } = new[]
     {
         GradeStripKey,
@@ -39,6 +43,7 @@ public static class ToolDescriptionCatalog
         ClassBlockKey,
         GradeWeaveKey,
         MeetRosterKey,
+        HomeworkKey,
     };
 
     private static readonly Dictionary<string, ToolDescription> Tools = new(StringComparer.Ordinal)
@@ -169,6 +174,62 @@ public static class ToolDescriptionCatalog
                 "只想留中间几页时，合并后再用「PDF 拆分提取」。",
             }),
 
+        ["roster-compare"] = new ToolDescription(
+            "名单核对",
+            "把应交名单与已交名单逐行核对，列出未交、重复提交与名单外姓名，并将应交名单重名标为错误。",
+            new[] { "两份名单", "精确匹配", "重复计数", "本机核对" },
+            "两份 .txt / .xlsx / .xls 名单文件",
+            "*-核对报告.txt（UTF-8）",
+            "本机逐行比较与写入文本",
+            new[]
+            {
+                "第 1 份是应交名单，第 2 份是已交名单；可用上下箭头调整顺序。",
+                "TXT 按行读取，Excel 自动寻找「姓名」列；都去掉首尾空白并将内部连续空白合为一个空格。",
+                "报告保留重复行计数；应交名单重名列为错误，已交重名列出次数。",
+            }),
+
+        ["excel-class-split"] = new ToolDescription(
+            "Excel按班拆表",
+            "把 Excel 总表按班级拆成单独的工作簿，导出前先核对工作表、班级列和班级预览。",
+            new[] { "一份总表", "班级预览", "每班一份", "本机处理" },
+            "一份 .xlsx / .xls 工作簿",
+            "在所选文件夹中为每个班级导出一份 .xlsx 文件",
+            "在本机预览并按所选班级列分组",
+            new[]
+            {
+                "从一份 Excel 工作簿中选定要拆分的工作表。",
+                "有多个可能的班级列时，须选定班级列并核对预览后才能拆分。",
+                "按班级分别写入所选输出文件夹，原工作簿不变。",
+            }),
+
+        ["exam-paper-layout"] = new ToolDescription(
+            "试卷排版",
+            "把单页 PDF 试卷重新排成 2 合 1 或小册子版式，可选 300 / 600 / 1200 DPI 最终印刷清晰度。",
+            new[] { "2 合 1", "小册子", "比例不变", "原文件不动" },
+            "一份 PDF 试卷",
+            "排版后的 PDF",
+            "本机 PDFium 300 DPI 渲染后排版",
+            new[]
+            {
+                "2 合 1：两页原试卷放在一张横向 A4 上。",
+                "小册子：按折页顺序重新排列，页数不足四页时自动补白页。",
+                "输出清晰度按最终打印尺寸计算，原页面保持比例并居中；输出不能覆盖原 PDF。",
+            }),
+
+        ["certificate-batch"] = new ToolDescription(
+            "奖状生成",
+            "把一张奖状底图套入获奖名单，生成一人一页的 PDF；工作表和姓名/奖项列均由你明确指定。",
+            new[] { "底图加名单", "列映射明确", "位置可调", "批量 PDF" },
+            "PNG / JPG / WebP / BMP 底图 + XLSX / XLS 名单",
+            "A4 PDF · 每位获奖者一页",
+            "本机 SkiaSharp 绘制；预览与导出共用坐标",
+            new[]
+            {
+                "分别选择底图和名单，并明确指定工作表、表头行、姓名列与奖项列，不自动猜列。",
+                "姓名与奖项的位置、字号可调；预览和导出共享相同坐标。",
+                "按名单逐行生成，重复姓名不会被合并，输出不会覆盖底图或名单。",
+            }),
+
         ["pdf-split"] = new ToolDescription(
             "PDF 拆分提取",
             "填一段页码范围就能抽出想要的那几页，写成 1-3,5 就够；留空表示整份原样另存一份。",
@@ -254,6 +315,21 @@ public static class ToolDescriptionCatalog
                 "秩序册一次读齐名单与赛程，号码布、领队与工作人员都带进来。",
                 "赛程勾「仅显示该班选手」只留本班条目，导出时整行加底色。",
                 "导出分四页 Excel 或纸墨版式 A4 PDF，跨页自动重复表头。",
+            }),
+
+        [HomeworkKey] = new ToolDescription(
+            "作业整理",
+            "把扫描的作业页按学生归档：导入图片或 PDF，或用扫描任务直接接收，逐张匹配，四种导出一次配好。",
+            new[] { "扫描任务", "图片与 PDF 拆页", "名单导入或手填", "逐张匹配", "四种导出" },
+            "作业照片 JPG / PNG、扫描 PDF；Windows 可直接用 WIA 扫描仪，其他平台监听收件文件夹；班级名单 .xlsx / .xls / .csv，也可手动录入",
+            "按学生归档的文件夹、每人一份 PDF，或带 Excel 索引的成品",
+            "本机 SkiaSharp / PdfSharp 处理；扫描任务经 WIA 或本机收件文件夹；原始文件只读不改",
+            new[]
+            {
+                "扫描任务：Windows 按驱动能力显示扫描选项，或监听收件文件夹自动导入当前批次 / 新建批次。",
+                "导入即拆页，缩略图按文件名自然排序，扫描顺序不对可手动调整。",
+                "名单支持 Excel 与粘贴录入，可混多个班级，按班级分文件夹导出。",
+                "四种导出：改名归档、每人合并 PDF、归档加索引、仅分文件夹。",
             }),
     };
 

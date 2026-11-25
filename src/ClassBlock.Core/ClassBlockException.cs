@@ -12,4 +12,6 @@ public sealed class ClassBlockException : Exception
     public ClassBlockException(string message, Exception inner) : base(message, inner)
     {
     }
+
+    public string UserFacingMessage => Message;
 }

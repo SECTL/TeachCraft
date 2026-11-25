@@ -1263,6 +1263,35 @@
                         </Border>
                         <Border Classes="inspector-divider" />
 
+                        <!-- 云端存档：只在点击时联网，未接入时给出账号设置入口 -->
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="云端存档" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="CLOUD" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                    <Button Classes="ghost tool" Content="共享名单…"
+                                            Click="OnCloudRoster" IsEnabled="{Binding CanUseCloud}" />
+                                    <Button Grid.Column="1" Classes="ghost tool" Content="座位表云端…"
+                                            Click="OnCloudDocument" IsEnabled="{Binding CanUseCloud}" />
+                                </Grid>
+                                <TextBlock Classes="helper" Text="{Binding CloudSummary}" TextWrapping="Wrap" />
+                                <CheckBox Content="自动保存座位与约束到云端"
+                                          IsChecked="{Binding IsAutoSyncEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanUseCloud}"
+                                          IsVisible="{Binding CanUseCloud}" />
+                                <TextBlock Classes="helper"
+                                           Text="开启后，改动座位或约束会自动保存到云端（不建立常驻连接）。"
+                                           TextWrapping="Wrap" IsVisible="{Binding CanUseCloud}" />
+                                <TextBlock Classes="helper" Text="只在点击时联网；共享名单默认只含姓名、性别、学号，其他字段由你勾选。"
+                                           TextWrapping="Wrap" />
+                                <Button Content="去账号设置" Classes="ghost tool" HorizontalAlignment="Left"
+                                        Click="OnOpenCloudAccount" IsVisible="{Binding ShowCloudAccountLink}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="inspector-divider" />
+
                         <!-- 配置 -->
                         <Border Classes="inspector-section">
                             <StackPanel Spacing="10">

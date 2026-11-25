@@ -199,7 +199,7 @@ public static class ImageToolbox
         return (w, h);
     }
 
-    private static SKBitmap Load(string path)
+    internal static SKBitmap Load(string path)
     {
         if (!File.Exists(path))
             throw new ToolboxException($"找不到文件：{Path.GetFileName(path)}");

@@ -45,46 +45,56 @@ internal static class ConfirmDialog
             Content = confirmText,
             IsDefault = !danger,
             Padding = new Thickness(16, 7),
-            Background = danger ? Danger : Ink,
-            Foreground = Paper,
-            BorderThickness = new Thickness(0),
+            FontSize = 11.5,
         };
+        if (danger)
+        {
+            confirm.Background = Danger;
+            confirm.Foreground = Paper;
+            confirm.BorderThickness = new Thickness(0);
+        }
+        else
+        {
+            confirm.Classes.Add("primary");
+        }
+
         var cancel = new Button
         {
             Content = cancelText,
             IsCancel = true,
             IsDefault = danger,
-            Padding = new Thickness(16, 7),
-            Background = Card,
-            Foreground = InkSoft,
-            BorderBrush = Line,
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(14, 7),
+            FontSize = 11.5,
         };
+        cancel.Classes.Add("ghost");
 
-        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 12 };
-        panel.Children.Add(new TextBlock
+        var heading = new TextBlock
         {
             Text = title,
-            FontSize = 17,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = Ink,
+            FontSize = 18,
             TextWrapping = TextWrapping.Wrap,
-        });
-        panel.Children.Add(new TextBlock
+        };
+        heading.Classes.Add("section-title");
+
+        var body = new TextBlock
         {
             Text = message,
-            FontSize = 12.5,
-            Foreground = Muted,
+            FontSize = 12,
+            Foreground = InkSoft,
             TextWrapping = TextWrapping.Wrap,
-            LineHeight = 20,
-        });
+            LineHeight = 19,
+        };
+
+        var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20), Spacing = 10 };
+        panel.Children.Add(heading);
+        panel.Children.Add(body);
 
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(0, 6, 0, 0),
         };
         buttons.Children.Add(cancel);
         buttons.Children.Add(confirm);

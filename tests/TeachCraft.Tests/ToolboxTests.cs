@@ -1,6 +1,7 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using ClosedXML.Excel;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
 using TeachCraft.Core.Tools;
@@ -104,6 +105,192 @@ public sealed class ToolboxTests : IDisposable
         PdfToolbox.PdfToImages(pdf, folder, 96, new Progress<int>());
 
         Assert.Equal(2, Directory.GetFiles(folder, "*.png").Length);
+    }
+
+    [Fact]
+    public void ExamPaperLayout_TwoUp_HalvesPageCount()
+    {
+        var input = MakeNumberedPdf("exam.pdf", 5);
+        var output = Path.Combine(_root, "two-up.pdf");
+
+        ExamPaperLayoutToolbox.Layout(input, output, ExamPaperLayoutMode.TwoUp);
+
+        Assert.Equal(3, PageCount(output));
+    }
+
+    [Fact]
+    public void ExamPaperLayout_Booklet_PadsToMultipleOfFour()
+    {
+        var order = ExamPaperLayoutPlanner.BuildSlots(5, ExamPaperLayoutMode.Booklet);
+
+        Assert.Equal(8, order.Count);
+        Assert.Equal(new int?[] { null, 0, 1, null, null, 2, 3, 4 }, order);
+    }
+
+    [Fact]
+    public void ExamPaperLayout_RejectsOverwritingInput()
+    {
+        var input = MakeNumberedPdf("same.pdf", 2);
+
+        Assert.Throws<ToolboxException>(() =>
+            ExamPaperLayoutToolbox.Layout(input, input, ExamPaperLayoutMode.TwoUp));
+    }
+
+    [Theory]
+    [InlineData(300)]
+    [InlineData(600)]
+    [InlineData(1200)]
+    public void ExamPaperLayout_RenderPixelSize_TracksFinalPrintDpi(int dpi)
+    {
+        var page = new PdfSharp.Pdf.PdfPage { Width = PdfSharp.Drawing.XUnit.FromPoint(595.28), Height = PdfSharp.Drawing.XUnit.FromPoint(841.89) };
+        var slot = new PdfSharp.Drawing.XRect(0, 0, 420.945, 595.28);
+
+        var (width, height) = ExamPaperLayoutPlanner.RenderPixelSize(page, slot, dpi);
+
+        Assert.Equal((int)Math.Ceiling(420.945 * dpi / 72), width);
+        Assert.Equal((int)Math.Ceiling(595.28 * dpi / 72), height);
+    }
+
+    [Theory]
+    [InlineData("300 DPI", 300)]
+    [InlineData("600 DPI", 600)]
+    [InlineData("1200 DPI", 1200)]
+    public void ExamPaperLayoutViewModel_CarriesSelectedDpi(string label, int expectedDpi)
+    {
+        var tool = new TeachCraft.App.ViewModels.ToolItemViewModel(
+            ToolKind.ExamPaperLayout, "13", "exam-paper-layout", "试卷排版",
+            "PDF 排版", "file", "档", "PDF", "PDF");
+        tool.SelectedExamPaperDpi = label;
+
+        Assert.Equal(expectedDpi, tool.ToRequest("output.pdf").ExamPaperDpi);
+        Assert.Equal("文件-排版.pdf", tool.SuggestedFileName());
+        Assert.True(tool.ShowPlainNote);
+    }
+
+    [Fact]
+    public void CertificateRosterReader_RequiresExplicitMappingsAndPreservesDuplicateRows()
+    {
+        var roster = MakeCertificateRoster("awards.xlsx");
+        var sheets = CertificateRosterReader.InspectWorkbook(roster);
+        Assert.Equal(new[] { "Cover", "Awards" }, sheets.Worksheets.Select(sheet => sheet.Name));
+
+        var columns = CertificateRosterReader.InspectWorksheet(roster, "Awards", 3);
+        Assert.Equal(new[] { "A · 编号", "B · 姓名", "C · 奖项" }, columns.Columns.Select(column => column.DisplayName));
+
+        var records = CertificateRosterReader.Read(roster, "Awards", 3, 1, 2);
+        Assert.Equal(2, records.Count);
+        Assert.Equal(new CertificateRecord("合成甲", "优秀学生"), records[0]);
+        Assert.Equal(new CertificateRecord("合成甲", "学习进步"), records[1]);
+    }
+
+    [Fact]
+    public void CertificateRenderer_PreviewAndPdfUseTemplateGeometry()
+    {
+        var template = MakeCertificateTemplate("template.png");
+        var preview = CertificateRenderer.RenderPreview(template,
+            new CertificateRecord("合成甲", "优秀学生"), CertificateTextPlacement.Default);
+        Assert.True(preview.Png.Length > 1000);
+        Assert.Equal((1200, 848), (preview.Width, preview.Height));
+
+        var roster = MakeCertificateRoster("awards.xlsx");
+        var output = Path.Combine(_root, "certificates.pdf");
+        var request = new CertificateBatchRequest(template, roster, "Awards", 3, 1, 2,
+            CertificateTextPlacement.Default, output);
+        var summary = CertificateBatchToolbox.Generate(request);
+
+        Assert.Equal(2, PageCount(output));
+        Assert.Contains("2 张奖状", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CertificateRenderer_RejectsOverwritingEitherInput()
+    {
+        var template = MakeCertificateTemplate("template.png");
+        var roster = MakeCertificateRoster("awards.xlsx");
+        var templateOutput = new CertificateBatchRequest(template, roster, "Awards", 3, 1, 2,
+            CertificateTextPlacement.Default, template);
+        var rosterOutput = templateOutput with { OutputPath = roster };
+
+        Assert.Throws<ToolboxException>(() => CertificateBatchToolbox.Generate(templateOutput));
+        Assert.Throws<ToolboxException>(() => CertificateBatchToolbox.Generate(rosterOutput));
+    }
+
+    private string MakeCertificateRoster(string name)
+    {
+        var path = Path.Combine(_root, name);
+        using var workbook = new XLWorkbook();
+        workbook.AddWorksheet("Cover").Cell(1, 1).Value = "名单说明页";
+        var sheet = workbook.AddWorksheet("Awards");
+        sheet.Cell(1, 1).Value = "校级评优名单";
+        sheet.Cell(3, 1).Value = "编号";
+        sheet.Cell(3, 2).Value = "姓名";
+        sheet.Cell(3, 3).Value = "奖项";
+        sheet.Cell(4, 1).Value = "001";
+        sheet.Cell(4, 2).Value = " 合成甲 ";
+        sheet.Cell(4, 3).Value = "优秀学生";
+        sheet.Cell(5, 1).Value = "002";
+        sheet.Cell(5, 2).Value = "合成甲";
+        sheet.Cell(5, 3).Value = "学习进步";
+        workbook.SaveAs(path);
+        return path;
+    }
+
+    private string MakeCertificateTemplate(string name)
+    {
+        var path = Path.Combine(_root, name);
+        using var bitmap = new SKBitmap(900, 600);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(new SKColor(255, 250, 230));
+            using var paint = new SKPaint { Color = new SKColor(170, 80, 40), Style = SKPaintStyle.Stroke, StrokeWidth = 8 };
+            canvas.DrawRect(12, 12, 876, 576, paint);
+        }
+        using var stream = File.Create(path);
+        bitmap.Encode(stream, SKEncodedImageFormat.Png, 100);
+        return path;
+    }
+
+    [Fact]
+    public void ExamPaperLayoutViewModel_RefreshesPrintQualityNote()
+    {
+        var tool = new TeachCraft.App.ViewModels.ToolItemViewModel(
+            ToolKind.ExamPaperLayout, "13", "exam-paper-layout", "试卷排版",
+            "PDF 排版", "file", "档", "PDF", "PDF");
+        var notified = new List<string?>();
+        tool.PropertyChanged += (_, args) => notified.Add(args.PropertyName);
+
+        tool.SelectedExamPaperDpi = "1200 DPI";
+
+        Assert.Contains(nameof(tool.PlainNote), notified);
+        Assert.True(tool.ShowPlainNote);
+    }
+
+    [Fact]
+    public void ExamPaperLayoutPreview_RendersFirstTwoUpSide()
+    {
+        var input = MakeNumberedPdf("preview.pdf", 4);
+
+        var preview = ExamPaperLayoutPreviewRenderer.Render(input, ExamPaperLayoutMode.TwoUp, 600);
+
+        using var bitmap = SKBitmap.Decode(preview.Png);
+        Assert.Equal(1404, bitmap.Width);
+        Assert.Equal(993, bitmap.Height);
+        Assert.Contains("第 1 页", preview.Detail, StringComparison.Ordinal);
+        Assert.Contains("第 2 页", preview.Detail, StringComparison.Ordinal);
+        Assert.Contains("600 DPI", preview.Caption, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExamPaperLayoutPreview_BookletUsesFirstImposedSide()
+    {
+        var input = MakeNumberedPdf("booklet-preview.pdf", 5);
+
+        var preview = ExamPaperLayoutPreviewRenderer.Render(input, ExamPaperLayoutMode.Booklet, 1200);
+
+        Assert.Contains("小册子首面", preview.Caption, StringComparison.Ordinal);
+        Assert.Contains("空白页", preview.Detail, StringComparison.Ordinal);
+        Assert.Contains("第 1 页", preview.Detail, StringComparison.Ordinal);
+        Assert.Contains("1200 DPI", preview.Caption, StringComparison.Ordinal);
     }
 
     // ---- 输出保护：ToolDispatcher 入口的 EnsureOutputDoesNotOverwriteInput ----
@@ -528,6 +715,21 @@ public sealed class ToolboxTests : IDisposable
         using var paint = new SKPaint { Color = new SKColor(0x70, 0xAD, 0x47) };
         canvas.DrawRect(0, 0, width, height / 3f, paint);
         return bitmap;
+    }
+
+    private string MakeNumberedPdf(string name, int pages)
+    {
+        var path = Path.Combine(_root, name);
+        using var document = new PdfSharp.Pdf.PdfDocument();
+        for (var index = 0; index < pages; index++)
+        {
+            var page = document.AddPage();
+            page.Size = PdfSharp.PageSize.A4;
+            using var graphics = PdfSharp.Drawing.XGraphics.FromPdfPage(page);
+            graphics.DrawRectangle(PdfSharp.Drawing.XPens.Black, 20 + index * 3, 20, 100, 100);
+        }
+        document.Save(path);
+        return path;
     }
 
     private static (int Width, int Height) ImageSize(string path)

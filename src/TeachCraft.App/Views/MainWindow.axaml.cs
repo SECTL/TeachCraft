@@ -16,9 +16,12 @@ using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Homework.App.Cloud;
+using TeachCraft.App.Cloud;
 using TeachCraft.App.Controls;
 using TeachCraft.Core.Updating;
 using SeatGrid.App;
+using SeatGrid.App.Cloud;
 using ClassBlock.App;
 using TeachCraft.App.ViewModels;
 using TeachCraft.Core.Tools;
@@ -35,6 +38,7 @@ public partial class MainWindow : Window
     private ClassBlockWindow? _classBlockWindow;
     private GradeWeave.App.GradeWeaveWindow? _gradeWeaveWindow;
     private MeetRoster.App.MeetRosterWindow? _meetRosterWindow;
+    private Homework.App.HomeworkWindow? _homeworkWindow;
     private GradeStrip.App.Views.MainWindow? _gradeStripWindow;
     private bool _runDialogOpen;   // 输出对话框 / 任务运行期间的重入守卫
     private OobeViewModel? _oobeHooked; // 引导关闭焦点归还的订阅目标（随 DataContext 换绑）
@@ -42,10 +46,30 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         SearchBox.KeyDown += OnSearchKeyDown;
+        CertificatePanel.TemplatePickRequested += (_, _) => _ = PickCertificateRoleAsync(template: true);
+        CertificatePanel.RosterPickRequested += (_, _) => _ = PickCertificateRoleAsync(template: false);
+        CertificatePanel.RunRequested += OnRunTool;
+        CertificatePanel.CancelRequested += OnCancelTool;
+        CertificatePanel.CloseRequested += OnClosePanel;
+        CertificatePanel.OpenOutputRequested += OnOpenCertificateOutput;
+
+        AccountPanel.SignInRequested += (_, _) => _ = ViewModel.Account.BeginSignInAsync(this);
+        AccountPanel.SignOutRequested += (_, _) => _ = ViewModel.Account.SignOutAsync();
+        AccountPanel.RefreshRostersRequested += (_, _) => _ = ViewModel.Account.RefreshRostersAsync();
+        AccountPanel.DeleteRosterRequested += (_, id) => _ = ViewModel.Account.DeleteRosterAsync(id);
+        AccountPanel.ConsentAcceptedRequested += (_, _) => ViewModel.Account.AcceptConsent();
+        AccountPanel.JumpToConsentRequested += (_, _) => AccountPanel.RevealConsent();
 
         // 仓库里其余 16 个窗口都在 Opened 时把自己钳进工作区，唯独主窗口一直没做：
         // 1366×768 @125% 下工作区只有约 590 DIP 高，而窗口固定 840，底栏会落在屏幕外。
-        Opened += (_, _) => WindowFit.Clamp(this);
+        Opened += (_, _) =>
+        {
+            WindowFit.Clamp(this);
+            ViewModel.UpdatePanelWidth(Bounds.Width);
+            _panelWidth = ViewModel.PanelWidth;
+            PanelHost.Width = _panelWidth;
+            if (PanelHost.RenderTransform is TranslateTransform transform) transform.X = _panelWidth;
+        };
 
         // 引导遮罩关闭后把焦点还给搜索框（审计 P3-38）：遮罩期间 AppContent 被禁用，
         // 焦点随 IsVisible=false 丢回窗口级；不还回去的话，老师关闭引导后直接敲键盘没反应，
@@ -58,6 +82,23 @@ public partial class MainWindow : Window
             _oobeHooked = DataContextAsMainViewModel?.Oobe;
             _oobeHooked?.Closed += OnOobeClosed;
         };
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        ViewModel.UpdatePanelWidth(e.NewSize.Width);
+        _panelWidth = ViewModel.PanelWidth;
+        if (PanelHost is null) return;
+        PanelHost.Width = _panelWidth;
+        if (PanelHost.RenderTransform is not TranslateTransform transform) return;
+        if (!ViewModel.IsPanelOpen)
+            transform.X = _panelWidth;
+        else if (_panelTargetX > 0.5)
+        {
+            _panelTargetX = _panelWidth;
+            transform.X = _panelWidth;
+        }
     }
 
     /// <summary>引导遮罩关闭（看完 / 跳过）后，焦点回到搜索框，键盘立即可用。</summary>
@@ -216,7 +257,20 @@ public partial class MainWindow : Window
                 _ = ShowPanelAsync(ViewModel.IsPanelOpen);
                 ViewModel.OpenUpdatePanel();
                 break;
+            case TeachCraft.App.ViewModels.OobeActionKind.OpenAccountPanel:
+                // 同样只打开面板：不弹浏览器、不登录、不列共享名单。
+                _ = ShowPanelAsync(ViewModel.IsPanelOpen);
+                ViewModel.OpenAccountPanel();
+                break;
         }
+    }
+
+    /// <summary>侧栏底部「账号」：打开账号页，不登录、不联网。</summary>
+    private async void OnAccountClick(object? sender, RoutedEventArgs e)
+    {
+        var wasOpen = ViewModel.IsPanelOpen;
+        ViewModel.OpenAccountPanel();
+        await ShowPanelAsync(wasOpen);
     }
 
     /// <summary>侧栏底部「首次引导」：从第一页重新看一遍。</summary>
@@ -258,6 +312,10 @@ public partial class MainWindow : Window
             // 走查更新页：沿用 --panel update，不新增参数。
             ViewModel.OpenUpdatePanel();
         }
+        else if (target == "account")
+        {
+            ViewModel.OpenAccountPanel();
+        }
         else
         {
             var tool = ViewModel.FindTool(target);
@@ -273,12 +331,15 @@ public partial class MainWindow : Window
 
     private Task ShowPanelAsync(bool wasOpen)
     {
+        ViewModel.UpdatePanelWidth(Bounds.Width);
+        _panelWidth = ViewModel.PanelWidth;
+        PanelHost.Width = _panelWidth;
         PanelHost.IsVisible = true;
         Backdrop.IsVisible = true;
 
         if (PanelHost.RenderTransform is TranslateTransform transform)
         {
-            if (!wasOpen && transform.X >= PanelWidth - 0.5)
+            if (!wasOpen)
             {
                 transform.X = PanelWidth;
                 PanelHost.Opacity = 0;
@@ -299,6 +360,7 @@ public partial class MainWindow : Window
     private Task HidePanelAsync()
     {
         if (!ViewModel.IsPanelOpen) return Task.CompletedTask;
+        if (!ViewModel.CanDismissPanel()) return Task.CompletedTask;
 
         if (_panelTcs is null || _panelTcs.Task.IsCompleted)
             _panelTcs = new TaskCompletionSource();
@@ -309,8 +371,10 @@ public partial class MainWindow : Window
 
     // 单一进度模型：只改 TranslateTransform.X 与 Opacity，开关共用一条指数曲线。
     // 旧实现把关闭动画的 0% 关键帧写死成 X=0、Opacity=1，面板滑到一半再按 Esc 会先弹回全开位。
-    private const double PanelWidth = 452;
-    private double _panelTargetX = PanelWidth;
+    private const double StandardPanelWidth = 452;
+    private double _panelWidth = StandardPanelWidth;
+    private double PanelWidth => _panelWidth;
+    private double _panelTargetX = StandardPanelWidth;
     private double _panelLastTime;
     private DispatcherTimer? _panelTimer;
     private Stopwatch? _panelClock;
@@ -456,6 +520,12 @@ public partial class MainWindow : Window
         FileSectionHead.BringIntoView();
     }
 
+    private void OnNavTeach(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.SetSection("teach");
+        TeachSectionHead.BringIntoView();
+    }
+
     private async void OnNavProject(object? sender, RoutedEventArgs e)
     {
         MainScroll.Offset = new Vector(0, 0);
@@ -534,6 +604,36 @@ public partial class MainWindow : Window
     }
 
     private async void OnClosePanel(object? sender, EventArgs e) => await HidePanelAsync();
+
+    private void OnOpenCertificateOutput(object? sender, EventArgs e)
+    {
+        if (ViewModel.SelectedTool is not { IsCertificateBatch: true } tool) return;
+
+        try
+        {
+            if (string.IsNullOrEmpty(tool.LastOutputPath))
+            {
+                ViewModel.SetStatus("还没有生成奖状 PDF，请先完成设置并点击「生成 PDF」。", true);
+                return;
+            }
+
+            var directory = Directory.Exists(tool.LastOutputPath)
+                ? tool.LastOutputPath : Path.GetDirectoryName(tool.LastOutputPath);
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                ViewModel.SetStatus("找不到奖状所在文件夹，它可能已被移动或删除。请重新生成并选择保存位置。", true);
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo { FileName = directory, UseShellExecute = true });
+            ViewModel.SetStatus("已打开文件夹：" + directory);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开奖状所在文件夹")
+                + " 可按面板中的输出路径手动打开文件夹。", true);
+        }
+    }
 
     private async void OnBackdropPressed(object? sender, PointerPressedEventArgs e) => await HidePanelAsync();
 
@@ -641,6 +741,11 @@ public partial class MainWindow : Window
     {
         var tool = ViewModel.SelectedTool;
         if (tool is null) return;
+        if (tool.IsCertificateBatch)
+        {
+            ViewModel.SetStatus("请使用奖状面板中的底图和名单选择按钮。", true);
+            return;
+        }
 
         var (label, patterns) = InputFilter(tool);
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
@@ -655,10 +760,45 @@ public partial class MainWindow : Window
         var paths = files.Select(GetLocalPath).Where(path => !string.IsNullOrEmpty(path)).Cast<string>().ToList();
         if (paths.Count == 0) return;
 
+        if (tool.IsExcelClassSplit)
+        {
+            SelectExcelClassSplitInput(tool, paths);
+            return;
+        }
+
         if (tool.IsMultiFile) tool.AddFiles(paths);
         else tool.ReplaceFiles(paths.Take(1));
 
         ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.Files.Count} 个文件");
+    }
+
+    private async Task PickCertificateRoleAsync(bool template)
+    {
+        if (ViewModel.SelectedTool is not { IsCertificateBatch: true, IsBusy: false } tool) return;
+        var filter = template
+            ? new FilePickerFileType("奖状底图") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp" } }
+            : new FilePickerFileType("Excel 名单") { Patterns = new[] { "*.xlsx", "*.xls" } };
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = template ? "选择奖状底图" : "选择获奖名单",
+            AllowMultiple = false,
+            FileTypeFilter = new[] { filter },
+        });
+        if (files.Count == 0) return;
+        var path = GetLocalPath(files[0]);
+        if (path is null || ViewModel.SelectedTool != tool || tool.IsBusy) return;
+
+        var draft = tool.Certificate!;
+        if (template)
+        {
+            var assigned = draft.AssignTemplate(path);
+            ViewModel.SetStatus(draft.StatusText, !assigned);
+            return;
+        }
+
+        var (applied, error) = await draft.AssignRosterAsync(path);
+        if (ViewModel.SelectedTool == tool && ViewModel.IsToolPanelOpen && (applied || error is not null))
+            ViewModel.SetStatus(error ?? draft.StatusText, !applied);
     }
 
     private async void OnRunTool(object? sender, EventArgs e)
@@ -672,9 +812,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (tool.IsCertificateBatch && !tool.CanRun)
+        {
+            ViewModel.SetStatus(tool.Certificate?.StatusText ?? "请完成奖状生成设置。", true);
+            return;
+        }
+
+        if (tool.IsExcelClassSplit && !tool.CanRun)
+        {
+            ViewModel.SetStatus(tool.ExcelClassSplitStatus, true);
+            return;
+        }
+
         // 参数错误先于保存框报出：合并只选了一份、页码写错，不该让老师先挑完
         // 输出位置再被打回来（调研 P2-24 / 上轮 P3-18）。
-        if (ToolParameterCheck.Validate(tool.Kind, tool.Files, tool.PageRange) is { } invalid)
+        if (!tool.IsCertificateBatch && ToolParameterCheck.Validate(tool.Kind, tool.Files, tool.PageRange) is { } invalid)
         {
             tool.ResultText = invalid;
             tool.HasResult = true;
@@ -712,12 +864,97 @@ public partial class MainWindow : Window
         await RunToolAsync(tool, output);
     }
 
+    internal object CaptureCertificateLayoutMetrics() => CertificatePanel.CaptureLayoutMetrics();
+
+    internal void ScrollCertificateSettingsToEnd() => CertificatePanel.ScrollSettingsToEnd();
+
+    internal async Task<string> ProbeCertificateAsync(string alternateTemplate, string? exportPath, bool interact)
+    {
+        var tool = ViewModel.SelectedTool ?? throw new InvalidOperationException("未打开奖状工具。");
+        var draft = tool.Certificate ?? throw new InvalidOperationException("当前不是奖状工具。");
+        var evidence = new List<string>();
+        await CertificatePanel.WaitForPreviewAsync();
+        if (interact)
+        {
+            tool.IsBusy = true;
+            try
+            {
+                await HidePanelAsync();
+                if (!ViewModel.IsCertificateBatchPanelOpen || !PanelHost.IsVisible)
+                    throw new InvalidOperationException("生成期间奖状面板被关闭。");
+            }
+            finally { tool.IsBusy = false; }
+            evidence.Add("busy-panel-dismissal-blocked=pass");
+            var empty = new CertificateBatchDraft();
+            if (empty.AssignPaths(new[] { draft.TemplatePath!, "invalid.txt" }, out _)
+                || empty.HasTemplate || empty.HasRoster)
+                throw new InvalidOperationException("无效的第二个文件造成部分赋值。");
+            if (empty.AssignPaths(new[] { draft.TemplatePath!, Path.Combine(Path.GetDirectoryName(alternateTemplate)!, "missing.xlsx") }, out _)
+                || empty.HasTemplate || empty.HasRoster)
+                throw new InvalidOperationException("损坏名单造成部分赋值。");
+            evidence.Add("atomic-invalid-second-and-unreadable-roster=pass");
+            evidence.Add(await CertificatePanel.ProbeInteractionAsync());
+            var originalTemplate = draft.TemplatePath!;
+            await CertificatePanel.ProbeFailureRetryAsync(originalTemplate);
+            evidence.Add("failure-no-loop-explicit-same-path-retry=pass");
+            var originalImage = tool.CertificatePreviewImage;
+            draft.AssignTemplate(alternateTemplate);
+            if (tool.HasCertificatePreview) throw new InvalidOperationException("更换底图后仍显示旧预览。");
+            await CertificatePanel.WaitForPreviewAsync();
+            if (ReferenceEquals(originalImage, tool.CertificatePreviewImage)) throw new InvalidOperationException("底图未重绘。");
+            draft.ClearTemplate();
+            if (tool.HasCertificatePreview) throw new InvalidOperationException("清除底图后仍有预览。");
+            await Task.Delay(300);
+            if (tool.HasCertificatePreview) throw new InvalidOperationException("清除后的旧任务回写了预览。");
+            draft.AssignTemplate(originalTemplate);
+            await CertificatePanel.WaitForPreviewAsync();
+            ViewModel.OpenTool(ViewModel.FindTool("image-convert")!);
+            await Task.Delay(300);
+            if (tool.HasCertificatePreview) throw new InvalidOperationException("切换工具未释放奖状预览。");
+            ViewModel.OpenTool(tool);
+            await CertificatePanel.WaitForPreviewAsync();
+            ViewModel.ClosePanels();
+            await Task.Delay(300);
+            if (tool.HasCertificatePreview) throw new InvalidOperationException("隐藏面板未释放奖状预览。");
+            await ShowForShotAsync("certificate-batch");
+            await CertificatePanel.WaitForPreviewAsync();
+            var nameColumn = draft.SelectedNameColumn;
+            var awardColumn = draft.SelectedAwardColumn;
+            draft.SelectedAwardColumn = CertificateColumnOption.NoAward;
+            draft.SelectedNameColumn = null;
+            if (draft.PreviewRecord?.Award != "") throw new InvalidOperationException("不印奖项时回退示例仍含奖项。");
+            draft.SelectedNameColumn = nameColumn;
+            draft.SelectedAwardColumn = awardColumn;
+            await CertificatePanel.WaitForPreviewAsync();
+            evidence.Add("template-swap-clear-switch-hide-reopen=pass; no-award-fallback=pass");
+        }
+        if (exportPath is not null)
+        {
+            await RunToolAsync(tool, exportPath);
+            if (!tool.HasResult || tool.ResultIsError || tool.LastOutputPath != exportPath
+                || !File.Exists(exportPath) || new FileInfo(exportPath).Length == 0)
+                throw new InvalidOperationException("奖状 UI 导出失败：" + tool.ResultText);
+            evidence.Add($"RunToolAsync-export=pass; bytes={new FileInfo(exportPath).Length}; result={tool.ResultText}");
+            var resultText = tool.ResultText;
+            await HidePanelAsync();
+            await ShowForShotAsync("certificate-batch");
+            await CertificatePanel.WaitForPreviewAsync();
+            if (!tool.HasResult || tool.ResultIsError || tool.ResultText != resultText
+                || tool.LastOutputPath != exportPath)
+                throw new InvalidOperationException("重新打开奖状面板后导出结果丢失。");
+            evidence.Add("export-result-close-reopen=pass");
+        }
+        return string.Join(Environment.NewLine, evidence);
+    }
+
     private async Task RunToolAsync(ToolItemViewModel tool, string output)
     {
+        if ((tool.IsExcelClassSplit || tool.IsCertificateBatch) && !tool.CanRun) return;
+
         // 取消后是否清掉输出，要看盘上的文件是不是**本轮**写的：同路径重跑时，
         // 上一场留下的完好成品与本轮的半成品都「存在」，只看 File.Exists 分不出来（调研 P2-22）。
         // 所以在本轮开始前拍一份起点快照，连同开始时刻一起交给取消路径。
-        var outputBefore = CaptureOutputSnapshot(output);
+        var outputBefore = tool.IsCertificateBatch ? default : CaptureOutputSnapshot(output);
         var runStartedUtc = DateTime.UtcNow;
 
         tool.IsBusy = true;
@@ -745,10 +982,11 @@ public partial class MainWindow : Window
             var summary = await Task.Run(() =>
             {
                 token.ThrowIfCancellationRequested();
-                var result = ToolDispatcher.Run(request, progress);
+                var result = ToolDispatcher.Run(request, progress, token);
                 // 长任务在逐页/逐张循环里无法中途抛出（QuestPDF / OpenXml 的写盘不可中断），
                 // 所以在完成点检查一次：取消过的任务不把输出当成成功。
-                token.ThrowIfCancellationRequested();
+                if (request.Kind != ToolKind.CertificateBatch)
+                    token.ThrowIfCancellationRequested();
                 return result;
             }, token);
 
@@ -763,7 +1001,8 @@ public partial class MainWindow : Window
         catch (OperationCanceledException)
         {
             // 取消后清理半成品：留下一个用户没要的残缺文件比什么都不留更糟。
-            TryDeletePartialOutput(tool, output, outputBefore, runStartedUtc);
+            if (!tool.IsCertificateBatch)
+                TryDeletePartialOutput(tool, output, outputBefore, runStartedUtc);
             tool.ResultText = "已取消。";
             tool.HasResult = true;
             tool.ResultIsError = true;
@@ -793,7 +1032,6 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>取消后删掉这个任务写出的半成品；PdfToImages 的输出是目录，交给它自己留着。</summary>
     private static void TryDeletePartialOutput(
         ToolItemViewModel tool, string output, OutputSnapshot before, DateTime runStartedUtc)
     {
@@ -840,7 +1078,7 @@ public partial class MainWindow : Window
     public static bool DeleteCancelledOutput(
         ToolKind kind, string output, OutputSnapshot before, DateTime runStartedUtc)
     {
-        if (kind == ToolKind.PdfToImages) return false;
+        if (kind == ToolKind.CertificateBatch || ToolItemViewModel.IsFolderOutput(kind)) return false;
         if (!File.Exists(output)) return false;
 
         var writeTime = File.GetLastWriteTimeUtc(output);
@@ -867,11 +1105,11 @@ public partial class MainWindow : Window
 
     private async Task<string?> PickOutputAsync(ToolItemViewModel tool)
     {
-        if (tool.Kind == ToolKind.PdfToImages)
+        if (tool.UsesOutputFolder)
         {
             var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
             {
-                Title = "选择 PNG 输出文件夹",
+                Title = tool.IsExcelClassSplit ? "选择 Excel 输出文件夹" : "选择 PNG 输出文件夹",
                 AllowMultiple = false,
             });
             return folders.Count > 0 ? GetLocalPath(folders[0]) : null;
@@ -901,6 +1139,10 @@ public partial class MainWindow : Window
             // .doc 也放进来：Core 会给出「请先另存为 .docx」的明确指引。
             // 挡在过滤器外面，老师的文件在选择器里直接「隐身」（审计 P2-26）。
             ("Word 文档", new[] { "*.docx", "*.doc" }),
+            ToolKind.RosterCompare => ("名单文件", new[] { "*.txt", "*.xlsx", "*.xls" }),
+        ToolKind.CertificateBatch => ("图片或 Excel 名单", new[] { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.xlsx", "*.xls" }),
+        ToolKind.ExcelClassSplit => ("Excel 工作簿", new[] { "*.xlsx", "*.xls" }),
+        ToolKind.ExamPaperLayout => ("PDF 文档", new[] { "*.pdf" }),
         _ =>
             ("图片", new[] { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif" }),
     };
@@ -909,6 +1151,9 @@ public partial class MainWindow : Window
         tool.Kind switch
         {
             ToolKind.PdfToWord => ("Word 文档", new[] { "*.docx" }),
+            ToolKind.ExamPaperLayout => ("PDF 文档", new[] { "*.pdf" }),
+            ToolKind.CertificateBatch => ("PDF 文档", new[] { "*.pdf" }),
+            ToolKind.RosterCompare => ("文本报告", new[] { "*.txt" }),
             ToolKind.WordToPdf or ToolKind.PdfMerge or ToolKind.PdfSplit or ToolKind.ImagesToPdf =>
                 ("PDF 文档", new[] { "*.pdf" }),
             ToolKind.ImageConvert => (tool.SelectedFormat + " 图片", new[] { "*." + extension }),
@@ -929,8 +1174,20 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _seatGridWindow = new SeatGridWindow();
-            _seatGridWindow.Closed += (_, _) => _seatGridWindow = null;
+            var runtime = ViewModel.Account.Runtime;
+            ISeatGridCloudBridge bridge = runtime.IsConfigured
+                                          && runtime.Account is not null
+                                          && runtime.SeatDocuments is not null
+                                          && runtime.Rosters is not null
+                ? new SeatGridCloudBridge(runtime.Account, runtime.Rosters, runtime.SeatDocuments, runtime.Settings)
+                : new NullSeatGridCloudBridge();
+
+            _seatGridWindow = new SeatGridWindow(new SeatGridViewModel(), bridge);
+            _seatGridWindow.Closed += (_, _) =>
+            {
+                _seatGridWindow = null;
+                (bridge as IDisposable)?.Dispose();
+            };
             _seatGridWindow.Show();
             ViewModel.SetStatus("已打开 归位 · SeatGrid");
         }
@@ -1006,6 +1263,41 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ViewModel.SetStatus("打开 竞名 失败：" + ex.Message, true);
+        }
+    }
+
+    // ----------------------------- 作业整理 · Homework -----------------------------
+
+    private void OnLaunchHomework(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_homeworkWindow is { IsVisible: true })
+            {
+                _homeworkWindow.Activate();
+                return;
+            }
+
+            // 未配置 / 走查时注入空桥：作业整理照常打开，共享名单按钮只给出不可用提示。
+            var runtime = ViewModel.Cloud;
+            IHomeworkRosterBridge bridge = runtime.IsConfigured
+                                           && runtime.Account is not null
+                                           && runtime.Rosters is not null
+                ? new HomeworkRosterBridge(runtime.Account, runtime.Rosters, runtime.Settings)
+                : NullHomeworkRosterBridge.Instance;
+
+            _homeworkWindow = new Homework.App.HomeworkWindow(new Homework.App.HomeworkViewModel(), bridge);
+            _homeworkWindow.Closed += (_, _) =>
+            {
+                _homeworkWindow = null;
+                (bridge as IDisposable)?.Dispose();
+            };
+            _homeworkWindow.Show();
+            ViewModel.SetStatus("已打开 作业整理");
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus("打开 作业整理 失败：" + ex.Message, true);
         }
     }
 
@@ -1101,7 +1393,7 @@ public partial class MainWindow : Window
             ViewModel.SetStatus(NoPanelDragHint);
     }
 
-    private void OnDrop(object? sender, DragEventArgs e)
+    private async void OnDrop(object? sender, DragEventArgs e)
     {
         // 引导期间拖进来的文件既不能挂到工具上，也不该在状态栏留提示。
         if (ViewModel.Oobe.IsOpen) return;
@@ -1119,6 +1411,21 @@ public partial class MainWindow : Window
         if (paths.Count == 0) return;
 
         var tool = ViewModel.SelectedTool;
+        if (tool.IsCertificateBatch)
+        {
+            if (tool.IsBusy) return;
+            var draft = tool.Certificate!;
+            var (applied, error) = await draft.AssignPathsAsync(paths);
+            if (ViewModel.SelectedTool == tool && ViewModel.IsToolPanelOpen && (applied || error is not null))
+                ViewModel.SetStatus(error ?? draft.StatusText, !applied);
+            return;
+        }
+        if (tool.IsExcelClassSplit)
+        {
+            SelectExcelClassSplitInput(tool, paths);
+            return;
+        }
+
         if (tool.IsMultiFile) tool.AddFiles(paths);
         else
         {
@@ -1133,6 +1440,14 @@ public partial class MainWindow : Window
         }
 
         ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.Files.Count} 个文件");
+    }
+
+    private void SelectExcelClassSplitInput(ToolItemViewModel tool, IReadOnlyList<string> paths)
+    {
+        if (tool.TrySelectExcelClassSplitInput(paths))
+            ViewModel.SetStatus($"{tool.Name} · 已选择 {tool.FileSummary}");
+        else
+            ViewModel.SetStatus("请选择一份 .xlsx 或 .xls 工作簿。", true);
     }
 
     private static string? GetLocalPath(IStorageItem? item)

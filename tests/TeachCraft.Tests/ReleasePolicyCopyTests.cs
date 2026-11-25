@@ -33,9 +33,15 @@ public sealed class ReleasePolicyCopyTests
     }
 
     [Fact]
-    public void ReleaseBodyStatesOnlyUpdateUsesNetwork()
+    public void ReleaseBodyDoesNotDenyAccountsAndStatesDefaultOff()
     {
         var wf = RepoRoot.Read(".github/workflows/release-draft.yml");
-        Assert.Contains("仅「检查更新」会联网", wf);
+
+        // 这两句是旧口径：账号与共享名单已经是第二条可选通道，不能再否认。
+        Assert.DoesNotContain("从不上传", wf);
+        Assert.DoesNotContain("仅「检查更新」会联网", wf);
+
+        Assert.Contains("默认关闭", wf);
+        Assert.Contains("共享名单", wf);
     }
 }

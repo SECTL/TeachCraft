@@ -17,6 +17,11 @@ public static class ToolParameterCheck
 
         return kind switch
         {
+            ToolKind.RosterCompare when inputs.Count != 2 =>
+                "名单核对需要恰好两份名单文件：第 1 份为应交名单，第 2 份为已交名单。",
+            ToolKind.CertificateBatch when inputs.Count != 2 =>
+                "奖状生成需要一张底图和一份 Excel 名单。",
+            ToolKind.ExcelClassSplit when inputs.Count != 1 => "按班拆表需要恰好一份 Excel 工作簿。",
             ToolKind.PdfMerge when inputs.Count < 2 => "合并至少需要两份 PDF，请再选一份。",
             ToolKind.PdfSplit => ValidatePageRangeSyntax(pageRange),
             _ => null,

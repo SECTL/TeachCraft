@@ -379,6 +379,17 @@
         <Style Selector="Button.link:pointerover TextBlock">
             <Setter Property="TextDecorations" Value="Underline" />
         </Style>
+        <!-- 链接按钮禁用态：保持文字链接外观，不用 Fluent 默认的灰色填充块。
+             Fluent 把禁用底色画在模板的 ContentPresenter 上，按钮与模板两层都要覆盖。 -->
+        <Style Selector="Button.link:disabled">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <Style Selector="Button.link:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
 
         <!-- 工具卡：整卡可点（点卡片或标题展开说明），细边 + 纸感悬停。
              卡片本体是 Border 而不是 Button：卡内还要放「打开」按钮与可展开的说明区，
@@ -795,6 +806,317 @@
                     <BrushTransition Property="Foreground" Duration="0:0:0.15" />
                 </Transitions>
             </Setter>
+        </Style>
+
+        <!-- ==================== 统一应用框架（对齐「归位 · SeatGrid」，不改动分晓样式） ==================== -->
+        <Style Selector="Border.workspace-panel">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="Border.panel-card">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+        <Style Selector="Border.inspector-section">
+            <Setter Property="Padding" Value="16,14,16,16" />
+        </Style>
+        <Style Selector="Border.inspector-divider">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="16,0" />
+            <Setter Property="Background" Value="{StaticResource LineBrush}" />
+        </Style>
+        <Style Selector="Border.chart-card">
+            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,9" />
+        </Style>
+        <Style Selector="Border.seat-tag">
+            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.app-topbar">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="20,12" />
+        </Style>
+        <Style Selector="Border.app-statusbar">
+            <Setter Property="Background" Value="{StaticResource PaperDeepBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="Padding" Value="18,9" />
+        </Style>
+        <Style Selector="Border.dialog-header">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="20,14" />
+        </Style>
+        <Style Selector="Border.dialog-footer">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="Padding" Value="20,12" />
+        </Style>
+        <Style Selector="Border.busy-overlay">
+            <Setter Property="Background" Value="#B8FAF9F5" />
+        </Style>
+        <Style Selector="Border.busy-card">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="28,22" />
+        </Style>
+
+        <!-- 统一样式字阶 -->
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="LetterSpacing" Value="1.4" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.subhead">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.6" />
+            <Setter Property="Foreground" Value="{StaticResource InkSoftBrush}" />
+        </Style>
+        <Style Selector="TextBlock.section-title">
+            <Setter Property="FontFamily" Value="{StaticResource SerifFont}" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="TextBlock.field-label">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="LetterSpacing" Value="0.4" />
+        </Style>
+        <Style Selector="TextBlock.helper">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="LineHeight" Value="16" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBlock.toggle-note">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="LineHeight" Value="16" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="26,2,0,4" />
+        </Style>
+
+        <!-- 统一表单控件 -->
+        <Style Selector="TextBox.field">
+            <Setter Property="Background" Value="#FCFBF7" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="MinHeight" Value="30" />
+        </Style>
+        <Style Selector="TextBox.field:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+        </Style>
+        <Style Selector="TextBox.search.compact">
+            <Setter Property="Background" Value="#FCFBF7" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="MinHeight" Value="32" />
+        </Style>
+        <Style Selector="ComboBox.field">
+            <Setter Property="Background" Value="#FCFBF7" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ComboBox.field:pointerover">
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+        </Style>
+        <Style Selector="NumericUpDown.field">
+            <Setter Property="Background" Value="#FCFBF7" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+
+        <!-- 统一按钮与分段控件 -->
+        <Style Selector="Button.top">
+            <Setter Property="Padding" Value="11,6" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="Button.tool">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="FontSize" Value="11.5" />
+        </Style>
+        <Style Selector="Button.accent-outline">
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+            <Setter Property="BorderBrush" Value="#E9C4B6" />
+        </Style>
+        <Style Selector="Button.accent-outline:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FBEDE7" />
+            <Setter Property="BorderBrush" Value="#DC9B82" />
+            <Setter Property="Foreground" Value="{StaticResource AccentDeepBrush}" />
+        </Style>
+        <Style Selector="Button.accent-outline:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F7E0D6" />
+        </Style>
+
+        <Style Selector="Border.segmented">
+            <Setter Property="Background" Value="{StaticResource PaperDeepBrush}" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="3" />
+        </Style>
+        <Style Selector="Button.segment">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.segment /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="Button.segment:pointerover">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.segment.active">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.segment.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.segment.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+
+        <Style Selector="Button.mode">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+        </Style>
+        <Style Selector="Button.mode /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+        <Style Selector="Button.mode:pointerover">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.mode:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource PaperDeepBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineStrongBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.mode.active">
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.mode.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1EEE5" />
+            <Setter Property="BorderBrush" Value="#D6D1C4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+        <Style Selector="Button.mode.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EAE6DA" />
+            <Setter Property="BorderBrush" Value="#C9C3B4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        </Style>
+
+        <!-- 统一列表控件 -->
+        <Style Selector="ListBox.sg-list">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="ListBox.sg-list ListBoxItem">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.sg-list ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
+        </Style>
+        <Style Selector="ListBox.sg-list ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1EEE5" />
+        </Style>
+        <Style Selector="ListBox.sg-list ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EBE6D8" />
+        </Style>
+
+        <!-- 自带卡片外框的 ListBox（避免 ListBoxItem 选区底色与内部卡片边框叠出双层外框） -->
+        <Style Selector="ListBox.sg-card-list">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="ListBox.sg-card-list ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.sg-card-list ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.sg-card-list ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.sg-card-list ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
         </Style>
     </Application.Styles>
 </Application>

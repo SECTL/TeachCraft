@@ -1,0 +1,149 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Homework.App"
+        xmlns:models="using:Homework.Core.Models"
+        x:Name="Root"
+        x:Class="Homework.App.FillInTemplateWindow"
+        x:DataType="app:FillInTemplateViewModel"
+        Title="生成填涂模板"
+        Width="880" Height="640"
+        MinWidth="720" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PaperBrush}">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 标题 -->
+        <Border Grid.Row="0" Classes="dialog-header">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="生成填涂模板" Classes="section-title" FontSize="18" />
+                    <TextBlock Text="打印后让学生涂学号；扫描后框选数字格即可一键识别" Classes="helper" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="TEMPLATE" Classes="eyebrow" />
+            </Grid>
+        </Border>
+
+        <!-- 左：设置　右：预览 -->
+        <Grid Grid.Row="1" ColumnDefinitions="340,*" ColumnSpacing="14" Margin="16,14">
+            <Border Grid.Column="0" Classes="workspace-panel">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="模板设置" Classes="section-title" />
+                                    <TextBlock Grid.Column="1" Text="SETTINGS" Classes="eyebrow" />
+                                </Grid>
+
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="列数（学号位数）" />
+                                    <NumericUpDown Classes="field" Minimum="1" Maximum="12" Increment="1" FormatString="0"
+                                                   Value="{Binding Columns, Mode=TwoWay}"
+                                                   AutomationProperties.Name="列数" />
+                                    <TextBlock Classes="helper" Text="默认按名单中最长学号推断；不足位数时左侧补 0。" />
+                                </StackPanel>
+
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="生成范围" />
+                                    <ComboBox Classes="field" ItemsSource="{Binding Scopes}"
+                                              SelectedItem="{Binding SelectedScopeOption, Mode=TwoWay}"
+                                              AutomationProperties.Name="生成范围">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="app:FillInScopeOption">
+                                                <TextBlock Text="{Binding Label}" FontSize="11.5" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Spacing="4" IsVisible="{Binding IsOneClass}">
+                                    <TextBlock Classes="field-label" Text="选择班级" />
+                                    <ComboBox Classes="field" ItemsSource="{Binding Classes}"
+                                              SelectedItem="{Binding SelectedClass, Mode=TwoWay}"
+                                              AutomationProperties.Name="选择班级">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="models:HomeworkClass">
+                                                <TextBlock Text="{Binding Name}" FontSize="11.5" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="输出格式" />
+                                    <ComboBox Classes="field" ItemsSource="{Binding Formats}"
+                                              SelectedItem="{Binding SelectedFormatOption, Mode=TwoWay}"
+                                              AutomationProperties.Name="输出格式">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="app:FillInFormatOption">
+                                                <TextBlock Text="{Binding Label}" FontSize="11.5" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="field-label" Text="输出位置" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                        <TextBox Classes="field" Text="{Binding OutputPath, Mode=TwoWay}"
+                                                 PlaceholderText="尚未选择输出位置" IsReadOnly="True"
+                                                 AutomationProperties.Name="输出位置" />
+                                        <Button Grid.Column="1" Classes="ghost top" Content="选择…"
+                                                VerticalAlignment="Stretch" Click="OnPickOutput"
+                                                AutomationProperties.Name="选择输出位置" />
+                                    </Grid>
+                                    <TextBlock Classes="helper"
+                                               Text="全部班级时选文件夹（每班一份）；单班或通用时选具体文件。" />
+                                </StackPanel>
+
+                                <Border Classes="chart-card">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="状态" Classes="field-label" />
+                                        <TextBlock Text="{Binding StatusText}" FontSize="11" LineHeight="17"
+                                                   Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 预览 -->
+            <Border Grid.Column="1" Classes="workspace-panel" Padding="16">
+                <Grid RowDefinitions="Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="模板预览" Classes="section-title" />
+                            <TextBlock Text="按当前列数与范围渲染，不写入文件" Classes="helper" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="PREVIEW" Classes="eyebrow" />
+                    </Grid>
+                    <Border Grid.Row="1" ClipToBounds="True" Background="{StaticResource PaperBrush}"
+                            BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                            CornerRadius="8" Padding="8">
+                        <Image Source="{Binding PreviewImage}" Stretch="Uniform"
+                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                               AutomationProperties.Name="模板预览" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 页脚 -->
+        <Border Grid.Row="2" Classes="dialog-footer">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Text="所有模板只写到这台电脑；不会覆盖导入来源。"
+                           Classes="helper" FontSize="10.5"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Classes="primary top" Content="生成" Click="OnGenerate"
+                        IsEnabled="{Binding CanGenerate}" IsDefault="True" Padding="16,7"
+                        AutomationProperties.Name="生成模板" />
+                <Button Grid.Column="2" Classes="ghost top" Content="打开成品" Click="OnOpenOutput"
+                        Padding="14,7" AutomationProperties.Name="打开成品" />
+                <Button Grid.Column="3" Classes="ghost top" Content="关闭" Click="OnClose"
+                        Padding="14,7" IsCancel="True"
+                        AutomationProperties.Name="关闭" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

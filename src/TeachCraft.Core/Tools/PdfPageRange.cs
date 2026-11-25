@@ -1,9 +1,12 @@
+
 namespace TeachCraft.Core.Tools;
 
 /// <summary>工具箱可预期的失败（文件损坏、格式不支持等），消息直接面向老师展示。</summary>
 public sealed class ToolboxException : Exception
 {
     public ToolboxException(string message) : base(message) { }
+
+    public string UserFacingMessage => Message;
 }
 
 /// <summary>页码范围解析：支持 “1-3,5,8-10”。</summary>

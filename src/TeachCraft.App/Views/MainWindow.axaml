@@ -86,7 +86,7 @@
                                         Background="{StaticResource AccentBrush}" Margin="0,0,9,0"
                                         IsVisible="{Binding IsAllActive}" />
                                 <TextBlock Grid.Column="1" Text="全部工具" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="10" FontFamily="{StaticResource MonoFont}"
+                                <TextBlock Grid.Column="2" Text="{Binding AllCountLabel}" FontFamily="{StaticResource MonoFont}"
                                            FontSize="10" Foreground="{StaticResource MutedBrush}"
                                            VerticalAlignment="Center" />
                             </Grid>
@@ -284,6 +284,34 @@
                                 </Border>
                             </Grid>
                         </Button>
+
+                        <Button Classes="nav" Click="OnLaunchHomework"
+                                AutomationProperties.Name="作业整理" HorizontalAlignment="Stretch">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Viewbox Grid.Column="0" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <Canvas Width="120" Height="120">
+                                        <Rectangle Canvas.Left="18" Canvas.Top="12" Width="84" Height="96"
+                                                   RadiusX="14" RadiusY="14" Fill="#FAF9F5"
+                                                   Stroke="#E7E3D8" StrokeThickness="3" />
+                                        <Rectangle Canvas.Left="32" Canvas.Top="34" Width="56" Height="7"
+                                                   RadiusX="3" RadiusY="3" Fill="#141413" />
+                                        <Rectangle Canvas.Left="32" Canvas.Top="52" Width="42" Height="7"
+                                                   RadiusX="3" RadiusY="3" Fill="#6F6A5E" />
+                                        <Rectangle Canvas.Left="32" Canvas.Top="70" Width="56" Height="7"
+                                                   RadiusX="3" RadiusY="3" Fill="#E7E3D8" />
+                                        <Path Data="M 74 90 L 82 98 L 98 80"
+                                              Stroke="#D97757" StrokeThickness="6" StrokeLineCap="Round"
+                                              StrokeJoin="Round" />
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Grid.Column="1" Text="作业整理" VerticalAlignment="Center" />
+                                <Border Grid.Column="2" BorderBrush="#46C6613F" BorderThickness="1"
+                                        CornerRadius="3" Background="#0DD97757" Padding="5,1" VerticalAlignment="Center">
+                                    <TextBlock Text="新" FontFamily="{StaticResource MonoFont}" FontSize="8.5"
+                                               Foreground="{StaticResource AccentDeepBrush}" />
+                                </Border>
+                            </Grid>
+                        </Button>
                     </StackPanel>
 
                     <Grid ColumnDefinitions="Auto,*" Margin="6,24,6,8">
@@ -301,7 +329,7 @@
                                         Background="{StaticResource AccentBrush}" Margin="0,0,9,0"
                                         IsVisible="{Binding IsImageActive}" />
                                 <TextBlock Grid.Column="1" Text="图片处理" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="04" FontFamily="{StaticResource MonoFont}"
+                                <TextBlock Grid.Column="2" Text="{Binding ImageCountLabel}" FontFamily="{StaticResource MonoFont}"
                                            FontSize="10" Foreground="{StaticResource MutedBrush}"
                                            VerticalAlignment="Center" />
                             </Grid>
@@ -313,7 +341,19 @@
                                         Background="{StaticResource AccentBrush}" Margin="0,0,9,0"
                                         IsVisible="{Binding IsFileActive}" />
                                 <TextBlock Grid.Column="1" Text="格式工厂" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="06" FontFamily="{StaticResource MonoFont}"
+                                <TextBlock Grid.Column="2" Text="{Binding FileCountLabel}" FontFamily="{StaticResource MonoFont}"
+                                           FontSize="10" Foreground="{StaticResource MutedBrush}"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsTeachActive}" Click="OnNavTeach" AutomationProperties.Name="教学工具"
+                                HorizontalAlignment="Stretch">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Border Grid.Column="0" Width="2" Height="14" CornerRadius="1"
+                                        Background="{StaticResource AccentBrush}" Margin="0,0,9,0"
+                                        IsVisible="{Binding IsTeachActive}" />
+                                <TextBlock Grid.Column="1" Text="教学工具" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding TeachCountLabel}" FontFamily="{StaticResource MonoFont}"
                                            FontSize="10" Foreground="{StaticResource MutedBrush}"
                                            VerticalAlignment="Center" />
                             </Grid>
@@ -329,7 +369,7 @@
                         <TextBlock Text="LOCAL ONLY" FontFamily="{StaticResource MonoFont}" FontSize="9"
                                    LetterSpacing="1.6" Foreground="{StaticResource MossBrush}" />
                     </StackPanel>
-                    <TextBlock Text="文件都在本机处理。软件只在你开启联网功能时联网：检查更新读取版本号；开启集控后与平台保持连接，向平台报告所在的班级与运行状态并接收指令。集控默认关闭，关闭时不发送任何信息。" FontSize="10.5"
+                    <TextBlock Text="文件都在本机处理。联网只有三处，且都由你明确开启：点「检查更新」读取版本号；登录 SECTL 账号后，由你选择字段并手动上传或拉取共享名单与座位表；集控（本版本尚未提供入口）。账号与云同步、集控都默认关闭，关闭时不发送任何信息。" FontSize="10.5"
                                LineHeight="17" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
                     <!-- 检查更新：本应用唯一的联网入口，放在联网说明与版本号之间（原在状态栏右侧） -->
                     <Button Classes="nav nav-action" Margin="-6,2,-6,0" Padding="6,7" HorizontalAlignment="Stretch"
@@ -340,6 +380,17 @@
                                   Stroke="{StaticResource InkSoftBrush}" StrokeThickness="1.3"
                                   StrokeLineCap="Round" StrokeJoin="Round" />
                             <TextBlock Text="检查更新" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <!-- 账号：与「检查更新」并列的另一条可选通道，点开只摆本机状态 -->
+                    <Button Classes="nav nav-action" Margin="-6,0,-6,0" Padding="6,7" HorizontalAlignment="Stretch"
+                            Click="OnAccountClick" AutomationProperties.Name="账号与共享名单">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"
+                                  Data="M 8,1.6 A 3.2,3.2 0 1 1 8,8 A 3.2,3.2 0 1 1 8,1.6 M 1.8,14.2 C 1.8,10.9 4.5,8.8 8,8.8 C 11.5,8.8 14.2,10.9 14.2,14.2"
+                                  Stroke="{StaticResource InkSoftBrush}" StrokeThickness="1.3"
+                                  StrokeLineCap="Round" StrokeJoin="Round" />
+                            <TextBlock Text="账号" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                     <!-- 首次引导：与「检查更新」同属「关于这只盒子」的操作，不占主区版面 -->
@@ -388,7 +439,7 @@
                                            FontSize="12.5" LineHeight="24" Foreground="{StaticResource InkSoftBrush}" />
 
                                 <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,12,0,0">
-                                    <TextBlock Text="10 件工具 · 5 件常备" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                    <TextBlock Text="{Binding ToolboxCountLabel}" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                                LetterSpacing="1.3" Foreground="{StaticResource MutedBrush}" />
                                     <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                                Foreground="#C9C1AE" />
@@ -396,7 +447,7 @@
                                                LetterSpacing="1.3" Foreground="{StaticResource MutedBrush}" />
                                     <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                                Foreground="#C9C1AE" />
-                                    <TextBlock Text="联网仅限更新与集控" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                    <TextBlock Text="联网仅限更新、账号与集控" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                                LetterSpacing="1.3" Foreground="{StaticResource MutedBrush}" />
                                 </StackPanel>
                             </StackPanel>
@@ -822,6 +873,80 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 作业整理 · Homework -->
+                        <Border Classes="app-card" Classes.expanded="{Binding HomeworkCard.IsDescriptionExpanded}"
+                                BorderThickness="1" CornerRadius="10" Padding="18,14" Margin="0,10,0,0"
+                                IsVisible="{Binding IsHomeworkVisible}" Focusable="True" Cursor="Hand"
+                                Tag="{Binding HomeworkCard}"
+                                PointerPressed="OnAppCardPressed" KeyDown="OnAppCardKeyDown"
+                                AutomationProperties.Name="{Binding HomeworkCard.DescriptionAccessibleName}"
+                                ToolTip.Tip="{Binding HomeworkCard.DescriptionToggleLabel}">
+                            <StackPanel Spacing="0">
+                            <Grid ColumnDefinitions="46,*,Auto,Auto" ColumnSpacing="14">
+                                <Border Grid.Column="0" Width="44" Height="44" CornerRadius="7"
+                                        Background="#FCFAF4" BorderBrush="#E3DDCE" BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <Canvas Width="30" Height="30">
+                                        <Rectangle Canvas.Left="4" Canvas.Top="2" Width="22" Height="26"
+                                                   RadiusX="2" RadiusY="2" Fill="#FFFFFF"
+                                                   Stroke="#D6D1C4" StrokeThickness="1" />
+                                        <Rectangle Canvas.Left="8" Canvas.Top="8" Width="14" Height="2"
+                                                   RadiusX="1" RadiusY="1" Fill="#141413" />
+                                        <Rectangle Canvas.Left="8" Canvas.Top="13" Width="10" Height="2"
+                                                   RadiusX="1" RadiusY="1" Fill="#85806F" />
+                                        <Rectangle Canvas.Left="8" Canvas.Top="18" Width="14" Height="2"
+                                                   RadiusX="1" RadiusY="1" Fill="#E7E3D8" />
+                                        <Path Data="M 17 22 L 20 25 L 26 18"
+                                              Stroke="#D97757" StrokeThickness="1.8"
+                                              StrokeLineCap="Round" StrokeJoin="Round" />
+                                    </Canvas>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="HOMEWORK / 作业整理" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                               LetterSpacing="2.2" Foreground="{StaticResource MutedBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="作业整理" FontFamily="{StaticResource SerifFont}" FontSize="21" LetterSpacing="0.2" Foreground="{StaticResource InkBrush}" />
+                                        <TextBlock Text="· Homework" FontFamily="{StaticResource SerifFont}" FontSize="14"
+                                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                                    </StackPanel>
+                                    <TextBlock Text="导入扫描的作业页与班级名单，逐张匹配学生后按班级归档。"
+                                               FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                        <Ellipse Width="5" Height="5" Fill="{StaticResource MossBrush}" />
+                                        <TextBlock Text="首版" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                                   Foreground="{StaticResource MossBrush}" />
+                                    </StackPanel>
+                                    <Button Classes="primary" Content="打开应用" Click="OnLaunchHomework" />
+                                </StackPanel>
+
+                                <Path Grid.Column="3" Classes="tool-chevron"
+                                      Classes.expanded="{Binding HomeworkCard.IsDescriptionExpanded}"
+                                      Data="M 1 1 L 6 6 L 11 1"
+                                      Stroke="{StaticResource MutedBrush}" StrokeThickness="1.3"
+                                      StrokeLineCap="Round" StrokeJoin="Round"
+                                      Width="12" Height="7" VerticalAlignment="Center"
+                                      IsHitTestVisible="False" />
+                            </Grid>
+
+                            <controls:ExpandReveal IsExpanded="{Binding HomeworkCard.IsDescriptionExpanded}"
+                                                   Duration="0:0:0.26">
+                                <StackPanel Margin="0,15,0,0">
+                                    <Border Height="1" Background="{StaticResource LineBrush}"
+                                            Margin="0,0,0,14" />
+                                    <views:ToolDescriptionView DataContext="{Binding HomeworkCard.Detail}" />
+                                    <Button Classes="link" Content="收起说明" FontSize="11.5"
+                                            HorizontalAlignment="Left" Margin="0,14,0,0"
+                                            Click="OnCollapseAppDescription" Tag="{Binding HomeworkCard}" />
+                                </StackPanel>
+                            </controls:ExpandReveal>
+                            </StackPanel>
+                        </Border>
+
                         <!-- 02 图片处理 -->
                         <Grid x:Name="ImageSectionHead" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,30,0,14"
                               IsVisible="{Binding HasImageResults}">
@@ -877,6 +1002,42 @@
 
                         <ItemsControl x:Name="FileToolsList" ItemsSource="{Binding VisibleFileTools}"
                                       IsVisible="{Binding HasFileResults}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <!-- 双列但不做等高：一张卡展开说明时，另一张不会被拉出空白 -->
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ToolItemViewModel">
+                                    <!-- 工具卡：点卡片或标题展开说明，右上「打开」进抽屉 -->
+                                    <views:ToolCardView Margin="0,0,7,7" OpenRequested="OnOpenTool" Expanded="OnToolCardExpanded"
+                                                        VerticalAlignment="Top"
+                                                        Width="{Binding $parent[ItemsControl].Bounds.Width,
+                                                                        Converter={x:Static conv:ColumnWidthConverter.TwoColumns}}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 04 教学工具 -->
+                        <Grid x:Name="TeachSectionHead" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,30,0,14"
+                              IsVisible="{Binding HasTeachResults}">
+                            <TextBlock Text="04" FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                       Foreground="{StaticResource AccentDeepBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="教学工具" FontFamily="{StaticResource SerifFont}"
+                                       FontSize="19" LetterSpacing="0.2" Foreground="{StaticResource InkBrush}"
+                                       Margin="12,0,0,0" />
+                            <TextBlock Grid.Column="2" Text="TEACH / CLASS" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                                       LetterSpacing="2" Foreground="{StaticResource MutedBrush}"
+                                       VerticalAlignment="Center" Margin="12,0,0,0" />
+                            <Border Grid.Column="3" Height="1" Background="{StaticResource LineBrush}"
+                                    Margin="12,0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4" Text="{Binding TeachCountLabel}" FontFamily="{StaticResource MonoFont}"
+                                       FontSize="9.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <ItemsControl x:Name="TeachToolsList" ItemsSource="{Binding VisibleTeachTools}"
+                                      IsVisible="{Binding HasTeachResults}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <!-- 双列但不做等高：一张卡展开说明时，另一张不会被拉出空白 -->
@@ -972,13 +1133,13 @@
         <!-- ==================== 抽屉 ==================== -->
         <Grid Grid.ColumnSpan="2" IsVisible="{Binding IsPanelOpen}" ZIndex="10">
             <Border x:Name="Backdrop" Background="{StaticResource OverlayBrush}" PointerPressed="OnBackdropPressed" />
-            <Border x:Name="PanelHost" Classes="panel" Width="452" HorizontalAlignment="Right"
+            <Border x:Name="PanelHost" Classes="panel" Width="{Binding PanelWidth}" HorizontalAlignment="Right"
                     BoxShadow="-26 0 70 0 #1A141413">
                 <Border.RenderTransform>
                     <TranslateTransform X="452" />
                 </Border.RenderTransform>
                 <Grid ClipToBounds="True">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding #Root.DataContext.IsStandardToolPanelOpen}">
                         <StackPanel Margin="28,26,28,32">
                             <views:ToolPanelView x:Name="ToolPanel" DataContext="{Binding SelectedTool}"
                                                  IsVisible="{Binding #Root.DataContext.IsToolPanelOpen}"
@@ -994,11 +1155,21 @@
                                                    CheckRequested="OnPanelCheckUpdate"
                                                    InstallRequested="OnPanelInstallUpdate"
                                                    DismissRequested="OnPanelDismissUpdate" />
+                            <!-- 必须显式绑定 Account：否则继承 MainWindow 的 MainViewModel，
+                                 AccountText/IsConfigured/CloudEnabled 等属性不存在，界面全空。 -->
+                            <views:AccountPanelView x:Name="AccountPanel" DataContext="{Binding Account}"
+                                                    IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsAccountPanelOpen}"
+                                                    CloseRequested="OnClosePanel" />
                         </StackPanel>
                     </ScrollViewer>
+                    <views:ExamPaperLayoutPanelView x:Name="ExamLayoutPanel" DataContext="{Binding SelectedTool}"
+                                          IsVisible="{Binding #Root.DataContext.IsExamPaperLayoutPanelOpen}"
+                                          FilePickRequested="OnPickFiles" RunRequested="OnRunTool"
+                                          CancelRequested="OnCancelTool" CloseRequested="OnClosePanel" />
+                    <views:CertificateBatchPanelView x:Name="CertificatePanel" DataContext="{Binding SelectedTool}"
+                                          IsVisible="{Binding #Root.DataContext.IsCertificateBatchPanelOpen}" />
                 </Grid>
             </Border>
         </Grid>
     </Grid>
 </Window>
-

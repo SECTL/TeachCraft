@@ -1,0 +1,233 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:app="using:Homework.App"
+        x:Name="Root"
+        x:Class="Homework.App.ExportOptionsWindow"
+        x:DataType="app:ExportOptionsViewModel"
+        Title="导出作业"
+        Width="1040" Height="720"
+        MinWidth="880" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource PaperBrush}">
+    <Window.Styles>
+        <Style Selector="ListBox.mode-list">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+        <Style Selector="ListBox.mode-list ListBoxItem">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="ListBox.mode-list ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.mode-list ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource PinnedBrush}" />
+        </Style>
+        <Style Selector="ListBox.mode-list ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1EEE5" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 标题 -->
+        <Border Grid.Row="0" Classes="dialog-header">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="导出设置" Classes="section-title" FontSize="18" />
+                    <TextBlock Text="选择导出方式与位置，右侧实时预检将要写出的内容" Classes="helper" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="EXPORT" Classes="eyebrow" />
+            </Grid>
+        </Border>
+
+        <!-- 左：设置　右：预检 -->
+        <Grid Grid.Row="1" ColumnDefinitions="420,*" ColumnSpacing="14" Margin="16,14">
+            <Border Grid.Column="0" Classes="workspace-panel">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="导出方式" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="MODE" />
+                                </Grid>
+                                <ListBox x:Name="ModeList" Classes="mode-list"
+                                         ItemsSource="{Binding Modes}"
+                                         SelectionChanged="OnModeSelectionChanged"
+                                         AutomationProperties.Name="导出方式">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate x:DataType="app:ExportModeOption">
+                                            <Grid ColumnDefinitions="18,*" ColumnSpacing="8">
+                                                <Border Width="14" Height="14" CornerRadius="7"
+                                                        BorderBrush="{StaticResource LineStrongBrush}"
+                                                        BorderThickness="1" Background="{StaticResource CardBrush}"
+                                                        VerticalAlignment="Center">
+                                                    <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}"
+                                                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                             IsVisible="{Binding $parent[ListBoxItem].IsSelected}" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Title}" FontSize="12"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource InkBrush}" />
+                                                    <TextBlock Text="{Binding Description}" Classes="helper" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="inspector-divider" />
+
+                        <Border Classes="inspector-section">
+                            <StackPanel Spacing="9">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Classes="section-title" Text="输出位置" />
+                                    <TextBlock Grid.Column="1" Classes="eyebrow" Text="TARGET" />
+                                </Grid>
+                                <StackPanel Spacing="5">
+                                    <TextBlock Classes="field-label" Text="输出文件夹" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                        <TextBox Classes="field" Text="{Binding OutputDirectory, Mode=TwoWay}"
+                                                 PlaceholderText="尚未选择输出文件夹" IsReadOnly="True"
+                                                 AutomationProperties.Name="输出文件夹" />
+                                        <Button Grid.Column="1" Classes="ghost top" Content="选择…"
+                                                VerticalAlignment="Stretch" Click="OnPickFolder"
+                                                AutomationProperties.Name="选择输出文件夹" />
+                                    </Grid>
+                                    <TextBlock Classes="helper" Text="所有文件只写到这台电脑；不会覆盖导入来源。" />
+                                </StackPanel>
+
+                                <CheckBox Content="覆盖已存在的同名文件"
+                                          IsChecked="{Binding OverwriteExisting, Mode=TwoWay}"
+                                          FontSize="11.5"
+                                          AutomationProperties.Name="覆盖已存在的同名文件" />
+
+                                <Border Classes="chart-card">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="写入摘要" Classes="field-label" />
+                                        <TextBlock Text="{Binding PreviewText}" FontSize="11" LineHeight="17"
+                                                   Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Spacing="5" IsVisible="{Binding #Root.HasConflicts}">
+                                    <TextBlock Text="冲突（必须处理）" Classes="field-label"
+                                               Foreground="{StaticResource AccentDeepBrush}" />
+                                    <ItemsControl ItemsSource="{Binding Conflicts}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" FontSize="10.5" LineHeight="16"
+                                                           Foreground="{StaticResource AccentDeepBrush}"
+                                                           TextWrapping="Wrap" Margin="0,0,0,3" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <StackPanel Spacing="5" IsVisible="{Binding #Root.HasWarnings}">
+                                    <TextBlock Text="提示" Classes="field-label" />
+                                    <ItemsControl ItemsSource="{Binding Warnings}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" Classes="helper"
+                                                           Margin="0,0,0,3" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <Border IsVisible="{Binding #Root.HasDialogError}"
+                                        Background="{StaticResource AccentWashBrush}"
+                                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                                        CornerRadius="6" Padding="10,8">
+                                    <TextBlock Text="{Binding #Root.DialogError}" FontSize="10.5"
+                                               TextWrapping="Wrap" Foreground="{StaticResource AccentDeepBrush}" />
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 预检 -->
+            <Border Grid.Column="1" Classes="workspace-panel" Padding="16">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="导出预检" Classes="section-title" />
+                            <TextBlock Text="只做规划，不写入任何文件" Classes="helper" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="PRECHECK" Classes="eyebrow" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,0,0,10">
+                        <Border Classes="chart-card">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="待写文件" Classes="field-label" />
+                                <TextBlock Text="{Binding PageCount}" FontFamily="{StaticResource MonoFont}"
+                                           FontSize="22" Foreground="{StaticResource InkBrush}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="chart-card">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="涉及学生" Classes="field-label" />
+                                <TextBlock Text="{Binding StudentCount}" FontFamily="{StaticResource MonoFont}"
+                                           FontSize="22" Foreground="{StaticResource InkBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Text="{Binding #Root.ModeExplanation}"
+                               Classes="helper" Margin="0,0,0,10" />
+
+                    <StackPanel Grid.Row="3" Spacing="5" Margin="0,0,0,10"
+                                IsVisible="{Binding #Root.HasDiagnostics}">
+                        <TextBlock Text="冲突与提示（前 6 条）" Classes="field-label" />
+                        <ItemsControl ItemsSource="{Binding #Root.DiagnosticLines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="10.5" LineHeight="16"
+                                               Foreground="{StaticResource InkSoftBrush}"
+                                               TextWrapping="Wrap" Margin="0,0,0,2" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto"
+                                  IsVisible="{Binding #Root.HasTreeSketch}">
+                        <Border Classes="chart-card" Padding="12">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="输出结构示意" Classes="field-label" />
+                                <TextBlock Text="{Binding #Root.TreeSketch}"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="10.5"
+                                           LineHeight="18" Foreground="{StaticResource InkSoftBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 页脚 -->
+        <Border Grid.Row="2" Classes="dialog-footer">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Text="{Binding BlockedReason}" Classes="helper" FontSize="10.5"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Classes="primary top" Content="开始导出" Click="OnExport"
+                        IsEnabled="{Binding CanExport}" IsDefault="True" Padding="16,7"
+                        AutomationProperties.Name="开始导出" />
+                <Button Grid.Column="2" Classes="ghost top" Content="取消" Click="OnCancel"
+                        Padding="14,7" IsCancel="True"
+                        AutomationProperties.Name="取消导出" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

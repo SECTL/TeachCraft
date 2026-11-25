@@ -12,12 +12,17 @@ public enum ToolKind
     PdfToImages,
     PdfMerge,
     PdfSplit,
+    RosterCompare,
+    ExcelClassSplit,
+    ExamPaperLayout,
+    CertificateBatch,
 }
 
 /// <summary>一次工具运行所需的全部输入与选项。</summary>
 public sealed class ToolRequest
 {
     public ToolKind Kind { get; init; }
+    /// <summary>有序输入；名单核对固定为第 1 份应交名单、第 2 份已交名单。</summary>
     public IReadOnlyList<string> Inputs { get; init; } = Array.Empty<string>();
     public string Output { get; init; } = string.Empty;
 
@@ -38,16 +43,26 @@ public sealed class ToolRequest
     public string? PageRange { get; init; }
     public bool KeepLayout { get; init; }
     public int Dpi { get; init; } = 150;
+    public string LayoutMode { get; init; } = "two-up";
+    public int ExamPaperDpi { get; init; } = 600;
+    public string? CertificateWorksheet { get; init; }
+    public int CertificateHeaderRow { get; init; } = 1;
+    public int CertificateNameColumn { get; init; } = -1;
+    public int CertificateAwardColumn { get; init; } = -1;
+    public CertificateTextPlacement CertificatePlacement { get; init; } = CertificateTextPlacement.Default;
 }
 
 public static class ToolDispatcher
 {
-    public static string Run(ToolRequest request, IProgress<int>? progress = null)
+    public static string Run(ToolRequest request, IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         if (request.Inputs.Count == 0)
             throw new ToolboxException("请先选择要处理的文件。");
         if (string.IsNullOrWhiteSpace(request.Output))
             throw new ToolboxException("请先选择输出位置。");
+        if (request.Kind == ToolKind.CertificateBatch && request.Inputs.Count != 2)
+            throw new ToolboxException("奖状生成需要一张底图和一份 Excel 名单。");
 
         foreach (var input in request.Inputs)
         {
@@ -55,8 +70,8 @@ public static class ToolDispatcher
                 throw new ToolboxException($"找不到文件：{Path.GetFileName(input)}");
         }
 
-        // 输出保护只在这一层做一次，覆盖全部十件工具。
-        // 十个工具各自的实现不再各写一套——曾因只有 PdfToolbox 写了 EnsureDistinct、
+        // 输出保护只在这一层做一次，覆盖全部工具。
+        // 各工具的实现不再各写一套——曾因只有 PdfToolbox 写了 EnsureDistinct、
         // 图片四件与 PDF 转图片没写，老师可以在保存框里选中原图把原件覆盖掉。
         EnsureOutputDoesNotOverwriteInput(request);
 
@@ -81,6 +96,15 @@ public static class ToolDispatcher
             ToolKind.PdfToImages => PdfToolbox.PdfToImages(first, request.Output, request.Dpi, progress),
             ToolKind.PdfMerge => PdfToolbox.Merge(request.Inputs, request.Output),
             ToolKind.PdfSplit => PdfToolbox.Split(first, request.Output, request.PageRange ?? string.Empty),
+            ToolKind.RosterCompare => RosterComparer.WriteReport(request.Inputs, request.Output),
+            ToolKind.ExcelClassSplit => ExcelClassSplitter.Split(first, request.Output),
+            ToolKind.ExamPaperLayout => ExamPaperLayoutToolbox.Layout(first, request.Output,
+                request.LayoutMode == "booklet" ? ExamPaperLayoutMode.Booklet : ExamPaperLayoutMode.TwoUp,
+                request.ExamPaperDpi),
+            ToolKind.CertificateBatch => CertificateBatchToolbox.Generate(new CertificateBatchRequest(
+                request.Inputs[0], request.Inputs[1], request.CertificateWorksheet ?? string.Empty,
+                request.CertificateHeaderRow, request.CertificateNameColumn, request.CertificateAwardColumn,
+                request.CertificatePlacement, request.Output), progress, cancellationToken),
             _ => throw new ToolboxException("未知的工具类型。"),
         };
     }

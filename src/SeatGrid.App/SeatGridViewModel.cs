@@ -4,10 +4,14 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using SeatGrid.App.Cloud;
+using SeatGrid.Core;
+using SeatGrid.Core.Cloud;
 using SeatGrid.Core.Export;
 using SeatGrid.Core.Exam;
 using SeatGrid.Core.Models;
@@ -21,6 +25,20 @@ public partial class SeatGridViewModel : ObservableObject
 {
     private static readonly IBrush SuccessBrush = new SolidColorBrush(Color.Parse("#5A7A4B"));
     private static readonly IBrush ErrorBrush = new SolidColorBrush(Color.Parse("#C6613F"));
+
+    // ----------------------------- 云端存档 -----------------------------
+
+    private ISeatGridCloudBridge? _cloud;
+    private string _linkedRosterId = string.Empty;
+    private string _linkedRosterName = string.Empty;
+    private int _linkedRosterVersion;
+    private SeatGridRosterFields _linkedFields = SeatGridRosterFields.None;
+
+    // 自动保存是「一次用户改动 → 一次延迟上传」，不是定时器：没有改动就没有任务、没有请求。
+    // 600ms 只在这一个由用户动作启动的任务里等待，用来把连续拖动 / 连发编辑合并成一次上传。
+    private static readonly TimeSpan AutoSyncDebounce = TimeSpan.FromMilliseconds(600);
+    private CancellationTokenSource? _autoSyncCts;
+    private Task? _autoSyncTask;
 
     private readonly List<StudentViewModel> _students = new();
     private readonly Dictionary<SeatPosition, StudentViewModel> _assignments = new();
@@ -67,6 +85,73 @@ public partial class SeatGridViewModel : ObservableObject
         SelectedStudent = null;
     }
 
+    /// <summary>宿主注入云端能力；null / Null 桥接都表示不可用。</summary>
+    public void AttachCloud(ISeatGridCloudBridge? bridge)
+    {
+        if (ReferenceEquals(_cloud, bridge)) return;
+        if (_cloud is not null) _cloud.StateChanged -= OnCloudStateChanged;
+        _cloud = bridge;
+        if (_cloud is not null) _cloud.StateChanged += OnCloudStateChanged;
+        NotifyCloudProperties();
+    }
+
+    internal ISeatGridCloudBridge? CloudBridge => _cloud;
+
+    public bool CanUseCloud => _cloud?.IsAvailable == true;
+
+    /// <summary>对应 CloudSyncSettings.AutoSyncSeatDocument；默认关闭，只有用户主动打开才为真。</summary>
+    public bool IsAutoSyncEnabled
+    {
+        get => _cloud?.IsAutoSyncEnabled == true;
+        set
+        {
+            if (_cloud is null || _cloud.IsAutoSyncEnabled == value) return;
+            _cloud.SetAutoSyncEnabled(value);
+            OnPropertyChanged(nameof(IsAutoSyncEnabled));
+        }
+    }
+
+    /// <summary>当前自动保存任务；无任务时是已完成的任务。供走查 / 测试等待收尾，不触发任何请求。</summary>
+    public Task AutoSyncSettled => _autoSyncTask ?? Task.CompletedTask;
+
+    public bool HasLinkedRoster => !string.IsNullOrEmpty(_linkedRosterId);
+
+    public string LinkedRosterId => _linkedRosterId;
+
+    public SeatGridRosterFields LinkedFields => _linkedFields;
+
+    public bool ShowCloudAccountLink => !CanUseCloud;
+
+    public string CloudSummary => !CanUseCloud
+        ? _cloud?.StatusText ?? "云端存档未接入。"
+        : HasLinkedRoster
+            ? $"已关联共享名单「{_linkedRosterName}」v{_linkedRosterVersion} · {_cloud!.StatusText}"
+            : $"未关联共享名单 · {_cloud!.StatusText}";
+
+    public string CloseWarning =>
+        $"当前 {StudentCount} 人名单与排座只保存在内存中，关闭后不会保留。可先用「导出配置」" +
+        (CanUseCloud ? "或「上传到云端」" : string.Empty) + "留档。";
+
+    private void OnCloudStateChanged(object? sender, EventArgs e)
+    {
+        if (Application.Current is not null && !Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(NotifyCloudProperties);
+            return;
+        }
+        NotifyCloudProperties();
+    }
+
+    private void NotifyCloudProperties()
+    {
+        OnPropertyChanged(nameof(CanUseCloud));
+        OnPropertyChanged(nameof(IsAutoSyncEnabled));
+        OnPropertyChanged(nameof(HasLinkedRoster));
+        OnPropertyChanged(nameof(ShowCloudAccountLink));
+        OnPropertyChanged(nameof(CloudSummary));
+        OnPropertyChanged(nameof(CloseWarning));
+    }
+
     // ----------------------------- 撤销 / 重做 -----------------------------
 
     private readonly SeatUndoStack _undo = new();
@@ -108,6 +193,66 @@ public partial class SeatGridViewModel : ObservableObject
         change();
         _undo.Push(before, label);
         NotifyUndoState();
+        ScheduleAutoSync();
+    }
+
+    /// <summary>
+    /// 一次成功的数据改动最多安排一次上传。开关、登录、考场、名单关联任一不满足就什么都不做；
+    /// 连续改动会取消上一次尚未执行的任务，因此 600ms 内的一串编辑只上传最终状态。
+    /// 这里不创建定时器、不轮询、不在窗口打开或启动时调用——没有用户改动就没有任务。
+    /// </summary>
+    private void ScheduleAutoSync()
+    {
+        // 与 TeachCraft.Core.Cloud.CloudAutoSyncPolicy.ShouldAutoSync 同一组阻断条件；
+        // SeatGrid.App 不引用 TeachCraft.Core，故按桥接属性就地判定。
+        if (_cloud is not { } bridge
+            || !bridge.IsAvailable
+            || !bridge.IsAutoSyncEnabled
+            || !bridge.IsSignedIn
+            || IsExamMode
+            || !HasLinkedRoster)
+            return;
+
+        _autoSyncCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _autoSyncCts = cts;
+        _autoSyncTask = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(AutoSyncDebounce, cts.Token).ConfigureAwait(false);
+
+                // 等待期间开关可能被关掉、名单关联可能被清掉、也可能进了考场，重新判定一次。
+                if (!bridge.IsAutoSyncEnabled || !bridge.IsAvailable || !bridge.IsSignedIn)
+                    return;
+                if (IsExamMode || !HasLinkedRoster) return;
+
+                var document = BuildCloudDocument(Title);
+                var (id, revision) = bridge is ISeatGridLastDocumentSource source
+                    ? source.GetLastDocument()
+                    : (null, 0);
+                var result = await bridge.UploadDocumentAsync(document, id, revision, cts.Token)
+                    .ConfigureAwait(false);
+                bridge.RememberDocument(result.Entry.Id, result.Entry.Revision);
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                // 被后续改动取消是正常防抖，不提示。
+            }
+            catch (Exception ex)
+            {
+                // 自动保存失败绝不弹错误框，也不动本地数据；只在状态栏留一句可操作的提示。
+                ReportAutoSyncFailure($"自动同步失败：{ex.Message}（可手动上传）");
+            }
+        }, cts.Token);
+    }
+
+    private void ReportAutoSyncFailure(string message)
+    {
+        if (Application.Current is not null && !Dispatcher.UIThread.CheckAccess())
+            Dispatcher.UIThread.Post(() => SetStatus(message, error: true));
+        else
+            SetStatus(message, error: true);
     }
 
     /// <summary>拍一份当前状态。学生按 Id 克隆，座位用坐标，撤销时整体重建 ViewModel。</summary>
@@ -1105,6 +1250,8 @@ public partial class SeatGridViewModel : ObservableObject
 
     public void LoadRoster(RosterImportResult result)
     {
+        ClearRosterLink();
+
         // 导入名单是整体替换：考场安排指向的是旧名单，留着只会串名。
         // 静默退出考场并入替换流程（不弹窗——导入入口原有的确认已覆盖这一步）。
         var exitedExam = ExitExamModeForReplace();
@@ -2354,6 +2501,8 @@ public partial class SeatGridViewModel : ObservableObject
     /// </summary>
     public void ApplyConfig(SeatGridConfig config, string? sourceName = null)
     {
+        ClearRosterLink();
+
         // 同 LoadRoster：整份配置替换也意味着考场安排作废，先静默退出考场。
         var exitedExam = ExitExamModeForReplace();
 
@@ -2436,6 +2585,127 @@ public partial class SeatGridViewModel : ObservableObject
         ClearUndo();
 
         if (exitedExam) SetStatus($"{StatusText} · 已退出考场模式。");
+    }
+
+    /// <summary>与「导出配置」共用的一份日常座位快照，避免两处各拼一套。</summary>
+    public SeatGridConfig BuildConfigSnapshot() => new(
+        ToSettings(), GetModels(), GetCoreAssignments(), new List<string>(), GetCoreConstraints());
+
+    /// <summary>把当前日常座位打包成云端文档；考场快照与未关联名单都明确拒绝。</summary>
+    public SeatGridCloudDocument BuildCloudDocument(string name, SeatGridConfig? config = null)
+    {
+        const string examMessage = "这份座位表来自考场快照，不能上传到云端。请先返回日常座位再上传。";
+        if (IsExamMode) throw new SeatGridException(examMessage);
+
+        config ??= BuildConfigSnapshot();
+        if (config.Settings.LayoutOverride is not null) throw new SeatGridException(examMessage);
+        if (!HasLinkedRoster)
+            throw new SeatGridException("这份座位表还没有关联共享名单。请先把当前名单保存到共享名单库。");
+
+        var students = SeatGridRosterProjection.FromStudents(config.Students, _linkedFields);
+        var snapshot = new SeatGridRosterInput(
+            _linkedRosterVersion, _linkedRosterName, PresentFieldNames(_linkedFields), students);
+        var appVersion = typeof(SeatGridViewModel).Assembly.GetName().Version?.ToString() ?? "1.45.0";
+        return SeatGridCloudMapper.ToDocument(
+            config, name, _linkedRosterId, _linkedRosterVersion, snapshot, appVersion);
+    }
+
+    /// <summary>上传当前名单到共享库后直接建立关联，保留已有排座与约束。</summary>
+    public void LinkSharedRoster(
+        string rosterId, string rosterName, int version, SeatGridRosterFields fields)
+    {
+        _linkedRosterId = rosterId;
+        _linkedRosterName = rosterName;
+        _linkedRosterVersion = version;
+        _linkedFields = fields;
+        NotifyCloudProperties();
+    }
+
+    /// <summary>用共享名单整体替换当前名单，并建立关联。缺字段只告警，不丢人。</summary>
+    public void ApplySharedRoster(SeatGridRosterPick pick)
+    {
+        var warnings = new List<string>();
+        var students = SeatGridRosterProjection.ToStudents(pick.Students, warnings);
+        LoadRoster(new RosterImportResult(string.Empty, pick.Name, students, warnings));
+
+        _linkedRosterId = pick.RosterId;
+        _linkedRosterName = pick.Name;
+        _linkedRosterVersion = pick.Version;
+        _linkedFields = pick.Fields;
+
+        var missing = MissingFieldLabels(pick.Fields);
+        if (missing.Count > 0)
+            warnings.Add($"共享名单未提供「{string.Join("、", missing)}」，相关排座方式不可用。");
+
+        RosterHint = string.Join("；", warnings);
+        SetStatus($"已关联共享名单「{pick.Name}」v{pick.Version} · {StudentCount} 人" +
+                  (warnings.Count > 0 ? $" · {string.Join("；", warnings)}" : "。"));
+        NotifyCloudProperties();
+    }
+
+    /// <summary>从云端座位表整体还原日常座位，并重建共享名单关联。</summary>
+    public void ApplyCloudDocument(
+        SeatGridCloudDocument doc,
+        SeatGridRosterInput? roster,
+        bool usedSnapshot,
+        IReadOnlyList<string>? pullWarnings = null)
+    {
+        var result = SeatGridCloudMapper.FromDocument(doc, roster!, usedSnapshot);
+        ApplyConfig(result.Config, doc.Name);
+
+        _linkedRosterId = doc.RosterId;
+        _linkedRosterName = doc.RosterSnapshot?.Name ?? roster?.Name ?? doc.Name;
+        _linkedRosterVersion = doc.RosterVersion;
+        _linkedFields = FieldsFromPresent(roster?.FieldsPresent ?? doc.RosterSnapshot?.FieldsPresent);
+
+        var warnings = (pullWarnings ?? Array.Empty<string>()).Concat(result.Warnings).ToList();
+        if (warnings.Count > 0)
+            SetStatus($"{StatusText} · {string.Join("；", warnings)}");
+        NotifyCloudProperties();
+    }
+
+    /// <summary>导入名单 / 配置时清掉旧的云端关联，避免把新名单挂到旧名单的版本上。</summary>
+    public void ClearRosterLink()
+    {
+        if (_linkedRosterId.Length == 0 && _linkedRosterVersion == 0 &&
+            _linkedFields == SeatGridRosterFields.None) return;
+
+        _linkedRosterId = string.Empty;
+        _linkedRosterName = string.Empty;
+        _linkedRosterVersion = 0;
+        _linkedFields = SeatGridRosterFields.None;
+        NotifyCloudProperties();
+    }
+
+    private static IReadOnlyList<string> PresentFieldNames(SeatGridRosterFields fields)
+    {
+        var names = new List<string>();
+        if (fields.Height) names.Add("height");
+        if (fields.Vision) names.Add("vision");
+        if (fields.Score) names.Add("score");
+        if (fields.Notes) names.Add("notes");
+        if (fields.OriginalGroup) names.Add("originalGroup");
+        return names;
+    }
+
+    private static SeatGridRosterFields FieldsFromPresent(IReadOnlyCollection<string>? present)
+    {
+        if (present is null) return SeatGridRosterFields.None;
+        var set = new HashSet<string>(present, StringComparer.OrdinalIgnoreCase);
+        return new SeatGridRosterFields(
+            set.Contains("height"), set.Contains("vision"), set.Contains("score"),
+            set.Contains("notes"), set.Contains("originalGroup") || set.Contains("original_group"));
+    }
+
+    private static IReadOnlyList<string> MissingFieldLabels(SeatGridRosterFields fields)
+    {
+        var labels = new List<string>();
+        if (!fields.Height) labels.Add("身高");
+        if (!fields.Vision) labels.Add("视力");
+        if (!fields.Score) labels.Add("成绩");
+        if (!fields.Notes) labels.Add("备注");
+        if (!fields.OriginalGroup) labels.Add("原小组");
+        return labels;
     }
 
     public void SetStatus(string text, bool error = false)

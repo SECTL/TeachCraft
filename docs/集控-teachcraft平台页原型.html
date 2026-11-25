@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>集控 · TeachCraft 平台页（原型）</title>
+<style>
+  /* ── 设计令牌：直接取 One-Stop 的 tokens.css + dark-theme.css 浅色模式 ── */
+  :root {
+    --home-bg: #f7fbff;
+    --home-section: #f1f7ff;
+    --home-strong: #071426;
+    --home-muted: rgb(30 65 125 / 0.68);
+    --home-line: rgb(37 99 235 / 0.25);
+    --home-border: rgb(59 130 246 / 0.2);
+    --home-panel: rgb(255 255 255 / 0.82);
+    --home-panel-hover: rgb(255 255 255 / 0.96);
+    --home-chip: rgb(37 99 235 / 0.1);
+    --home-chip-text: #1d4ed8;
+    --home-primary: #2563eb;
+    --home-primary-hover: #1d4ed8;
+    --home-accent-bg: rgb(37 99 235 / 0.1);
+    --home-accent-border: rgb(37 99 235 / 0.22);
+    --home-accent-text: #1d4ed8;
+    --home-card-shadow: rgb(37 99 235 / 0.12);
+    --ok: #15803d;
+    --warn: #b45309;
+    --danger: #b91c1c;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --ui: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--home-bg);
+    color: var(--home-strong);
+    font-family: var(--ui);
+    font-size: 13px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app { display: grid; grid-template-columns: 208px 1fr; min-height: 100vh; }
+
+  /* ── 侧栏 ── */
+  .side {
+    border-right: 1px solid var(--home-border);
+    background: var(--home-panel);
+    padding: 18px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 0 8px 16px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 6px;
+    background: var(--home-primary); color: #fff;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+  }
+  .brand-text { font-weight: 700; font-size: 14px; letter-spacing: -0.2px; }
+  .brand-sub { font-family: var(--mono); font-size: 9px; letter-spacing: 1.2px; color: var(--home-muted); }
+
+  .nav-label {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 1.4px;
+    color: var(--home-muted); padding: 14px 8px 6px; text-transform: uppercase;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 9px; border-radius: 5px;
+    color: var(--home-muted); text-decoration: none; font-size: 12.5px;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { background: var(--home-section); color: var(--home-strong); }
+  .nav-item.active {
+    background: var(--home-accent-bg); border-color: var(--home-accent-border);
+    color: var(--home-accent-text); font-weight: 600;
+  }
+  .nav-item .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+  .nav-item.active .dot { opacity: 1; }
+
+  /* ── 主区 ── */
+  .main { padding: 26px 34px 60px; max-width: 1320px; min-width: 0; }
+
+  .crumb { font-family: var(--mono); font-size: 10px; letter-spacing: 1.3px; color: var(--home-muted); }
+  .crumb b { color: var(--home-accent-text); font-weight: 600; }
+
+  .page-head { display: flex; align-items: flex-start; gap: 20px; margin: 10px 0 22px; }
+  .page-title { margin: 0; font-size: 27px; font-weight: 700; letter-spacing: -0.5px; }
+  .page-sub { margin: 5px 0 0; font-size: 12.5px; color: var(--home-muted); }
+  .head-meta { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+  .pill {
+    padding: 2px 9px; border-radius: 999px; font-size: 11.5px;
+    border: 1px solid var(--home-border); background: var(--home-section); color: var(--home-muted);
+    white-space: nowrap;
+  }
+  .pill.ok     { border-color: color-mix(in srgb, var(--ok) 35%, transparent); background: color-mix(in srgb, var(--ok) 8%, transparent); color: var(--ok); }
+  .pill.warn   { border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); color: var(--warn); }
+  .pill.danger { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--danger); }
+  .pill.mono { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.4px; }
+
+  /* ── 卡片 ── */
+  .card {
+    background: var(--home-panel);
+    border: 1px solid var(--home-border);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+  }
+  .card + .card { margin-top: 12px; }
+  .card-head {
+    padding: 13px 16px 11px;
+    border-bottom: 1px solid var(--home-border);
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  }
+  .card-title { margin: 0; font-size: 14px; font-weight: 700; }
+  .card-desc { margin: 4px 0 0; font-size: 12px; color: var(--home-muted); }
+  .card-body { padding: 14px 16px; }
+
+  /* ── 设备条 ── */
+  .device-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .device-name { font-weight: 600; font-size: 13.5px; }
+  .sep { color: var(--home-muted); opacity: 0.4; }
+
+  /* ── 指令网格 ── */
+  .cmd-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+    gap: 9px; padding: 14px 16px 16px;
+  }
+  .cmd {
+    text-align: left; cursor: pointer;
+    border: 1px solid var(--home-border);
+    background: var(--home-panel-hover);
+    border-radius: 7px; padding: 11px 12px;
+    display: flex; flex-direction: column; gap: 5px;
+    transition: border-color .14s, transform .14s, box-shadow .14s;
+    font-family: inherit;
+  }
+  .cmd:hover { border-color: var(--home-primary); transform: translateY(-1px); box-shadow: 0 3px 10px var(--home-card-shadow); }
+  .cmd:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+  .cmd-top { display: flex; align-items: center; gap: 6px; }
+  .cmd-label { font-size: 13px; font-weight: 600; color: var(--home-strong); }
+  .cmd-cmd { font-family: var(--mono); font-size: 10px; color: var(--home-muted); letter-spacing: 0.2px; }
+  .cmd-args { font-size: 11px; color: var(--home-muted); line-height: 1.5; }
+  .tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.8px;
+    padding: 0 5px; border-radius: 3px; border: 1px solid var(--home-border);
+    color: var(--home-muted); margin-left: auto;
+  }
+  .tag.query { border-color: var(--home-accent-border); background: var(--home-accent-bg); color: var(--home-accent-text); }
+  .tag.confirm { border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 9%, transparent); color: var(--warn); }
+
+  /* ── 权限条 ── */
+  .perm-note {
+    margin: 0 16px 14px; padding: 9px 11px;
+    border: 1px dashed var(--home-border); border-radius: 6px;
+    font-size: 11.5px; color: var(--home-muted); background: var(--home-section);
+  }
+  .perm-note b { color: var(--home-strong); font-weight: 600; }
+
+  /* ── 两栏 ── */
+  .cols { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; align-items: start; }
+  @media (max-width: 1100px) {
+    .cols { grid-template-columns: 1fr; }
+    .app { grid-template-columns: 1fr; }
+    .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px; }
+    .side .nav-label { display: none; }
+    .side .brand { padding: 0 10px 0 0; }
+    .main { padding: 18px 16px 48px; }
+  }
+
+  /* ── 上方状态卡 ── */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 1px; background: var(--home-border); border-radius: 7px; overflow: hidden; }
+  .stat { background: var(--home-panel); padding: 11px 13px; }
+  .stat-k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.1px; color: var(--home-muted); text-transform: uppercase; }
+  .stat-v { font-size: 16px; font-weight: 700; margin-top: 3px; letter-spacing: -0.3px; }
+  .stat-v small { font-size: 11px; font-weight: 500; color: var(--home-muted); margin-left: 3px; }
+
+  /* ── 最近动作 ── */
+  .log { list-style: none; margin: 0; padding: 4px 0; }
+  .log li {
+    display: grid; grid-template-columns: 54px 1fr auto;
+    gap: 9px; align-items: baseline;
+    padding: 7px 16px; border-bottom: 1px dashed color-mix(in srgb, var(--home-border) 60%, transparent);
+    font-size: 12px;
+  }
+  .log li:last-child { border-bottom: none; }
+  .log time { font-family: var(--mono); font-size: 10.5px; color: var(--home-muted); }
+  .log .what { color: var(--home-strong); }
+  .log .what em { font-style: normal; color: var(--home-muted); }
+
+  /* ── 空态 ── */
+  .empty { padding: 26px 16px; text-align: center; color: var(--home-muted); font-size: 12px; }
+
+  /* ── 提示条 ── */
+  .arm-hint {
+    margin: 0 16px 10px; padding: 8px 11px; border-radius: 6px;
+    background: color-mix(in srgb, var(--warn) 9%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+    color: var(--warn); font-size: 11.5px;
+  }
+
+  .foot-note {
+    margin-top: 18px; padding: 12px 14px;
+    border: 1px dashed var(--home-border); border-radius: 7px;
+    font-size: 11.5px; line-height: 1.7; color: var(--home-muted);
+    background: var(--home-section);
+  }
+  .foot-note b { color: var(--home-strong); }
+  .foot-note code { font-family: var(--mono); font-size: 10.5px; background: var(--home-chip); color: var(--home-chip-text); padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══════════ 侧栏 ══════════ -->
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div>
+        <div class="brand-text">启明中学</div>
+        <div class="brand-sub">SC-K7Q2M9</div>
+      </div>
+    </div>
+
+    <div class="nav-label">地点</div>
+    <a class="nav-item" href="#"><span class="dot"></span>总览</a>
+    <a class="nav-item" href="#"><span class="dot"></span>年级与班级</a>
+    <a class="nav-item active" href="#"><span class="dot"></span>高一 1班</a>
+    <a class="nav-item" href="#"><span class="dot"></span>已接入客户端</a>
+    <a class="nav-item" href="#"><span class="dot"></span>成员</a>
+    <a class="nav-item" href="#"><span class="dot"></span>审计流水</a>
+
+    <div class="nav-label">平台</div>
+    <a class="nav-item" href="#"><span class="dot"></span>SecRandom</a>
+    <a class="nav-item" href="#"><span class="dot"></span>Corkboard</a>
+    <a class="nav-item active" href="#"><span class="dot"></span>TeachCraft<span class="tag" style="margin-left:auto">新</span></a>
+  </aside>
+
+  <!-- ══════════ 主区 ══════════ -->
+  <main class="main">
+
+    <div class="crumb">集控 / 启明中学 / <b>高一 1班</b> / TeachCraft</div>
+
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">TeachCraft</h1>
+        <p class="page-sub">知微 · 教师工具箱 —— 座位表、课程表、课表编排</p>
+      </div>
+      <div class="head-meta">
+        <span class="pill ok">在线</span>
+        <span class="pill">高一 1班</span>
+        <span class="pill mono">8 条指令</span>
+      </div>
+    </div>
+
+    <!-- ── 设备与状态 ── -->
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">这台设备</h2>
+          <p class="card-desc">教室大屏内置 PC · 由教室端接入，教师笔记本不接入</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="device-row" style="margin-bottom:14px">
+          <span class="device-name">高一(1)班讲台机</span>
+          <span class="sep">·</span>
+          <span class="pill mono">v1.31.0</span>
+          <span class="sep">·</span>
+          <span style="color:var(--home-muted);font-size:12px">最后心跳 12 秒前</span>
+        </div>
+
+        <div class="stat-row">
+          <div class="stat">
+            <div class="stat-k">正在显示</div>
+            <div class="stat-v">座位表</div>
+          </div>
+          <div class="stat">
+            <div class="stat-k">视角</div>
+            <div class="stat-v">教师</div>
+          </div>
+          <div class="stat">
+            <div class="stat-k">投影</div>
+            <div class="stat-v">关</div>
+          </div>
+          <div class="stat">
+            <div class="stat-k">考场模式</div>
+            <div class="stat-v">关</div>
+          </div>
+          <div class="stat">
+            <div class="stat-k">已排座</div>
+            <div class="stat-v">48<small>/48</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 指令 ── -->
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">可执行操作</h2>
+          <p class="card-desc">按钮来自服务端下发的平台命令表（<code style="font-family:var(--mono);font-size:11px">PLATFORM_COMMANDS.teachcraft</code>）。带「查询」的回传设备结果；带「需确认」的要 4 秒内再点一次。</p>
+        </div>
+      </div>
+
+      <div class="cmd-grid">
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">打开座位表</span>
+            <span class="tag">ACTION</span>
+          </div>
+          <span class="cmd-cmd">seatgrid.open</span>
+          <span class="cmd-args">view? · 教师 / 学生</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">切换视角</span>
+            <span class="tag">ACTION</span>
+          </div>
+          <span class="cmd-cmd">seatgrid.view</span>
+          <span class="cmd-args">view 必填 · 教师 / 学生</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">全屏投影</span>
+            <span class="tag">ACTION</span>
+          </div>
+          <span class="cmd-cmd">seatgrid.project</span>
+          <span class="cmd-args">on · 开 / 关</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">考场模式</span>
+            <span class="tag confirm">需确认</span>
+          </div>
+          <span class="cmd-cmd">seatgrid.exam</span>
+          <span class="cmd-args">on · 开 / 关 · columns? 4–8</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">显示课程表</span>
+            <span class="tag">ACTION</span>
+          </div>
+          <span class="cmd-cmd">classblock.show</span>
+          <span class="cmd-args">class_name ≤20 字</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">读取座位状态</span>
+            <span class="tag query">查询</span>
+          </div>
+          <span class="cmd-cmd">seatgrid.read</span>
+          <span class="cmd-args">回标题 / 人数 / 布局，不含姓名</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">读取课程表状态</span>
+            <span class="tag query">查询</span>
+          </div>
+          <span class="cmd-cmd">classblock.read</span>
+          <span class="cmd-args">回年级 / 学期 / 班级数</span>
+        </button>
+
+        <button class="cmd">
+          <div class="cmd-top">
+            <span class="cmd-label">读取编排摘要</span>
+            <span class="tag query">查询</span>
+          </div>
+          <span class="cmd-cmd">gradeweave.read</span>
+          <span class="cmd-args">班级名 + 冲突计数，不含明细</span>
+        </button>
+
+      </div>
+
+      <p class="perm-note">
+        <b>权限：</b>「打开 / 切换 / 投影 / 查询」需要 <b>operator</b>；「考场模式」需要 <b>admin</b>——
+        它会改座位绑定并打断课堂。
+        <b>成绩条、名单、桌贴一律不下发</b>，也不声明 <code style="font-family:var(--mono);font-size:10.5px">roster.read</code>。
+      </p>
+    </section>
+
+    <!-- ── 两栏：最近动作 + 隐私边界 ── -->
+    <div class="cols" style="margin-top:12px">
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">最近动作</h2>
+            <p class="card-desc">来自 <code style="font-family:var(--mono);font-size:11px">GET /control/api/sites/:id/logs</code></p>
+          </div>
+          <span class="pill mono" style="margin-left:auto">今天</span>
+        </div>
+        <ul class="log">
+          <li>
+            <time>07:18</time>
+            <span class="what">王老师 <em>· 打开座位表</em></span>
+            <span class="pill ok" style="padding:0 7px">成功 43ms</span>
+          </li>
+          <li>
+            <time>07:18</time>
+            <span class="what">王老师 <em>· 切换视角 → 学生</em></span>
+            <span class="pill ok" style="padding:0 7px">成功 51ms</span>
+          </li>
+          <li>
+            <time>07:19</time>
+            <span class="what">王老师 <em>· 全屏投影 开</em></span>
+            <span class="pill ok" style="padding:0 7px">成功 38ms</span>
+          </li>
+          <li>
+            <time>07:52</time>
+            <span class="what">李教务 <em>· 显示课程表 · 高一 1班</em></span>
+            <span class="pill ok" style="padding:0 7px">成功 62ms</span>
+          </li>
+          <li>
+            <time>08:03</time>
+            <span class="what">李教务 <em>· 考场模式 开（6 列）</em></span>
+            <span class="pill danger" style="padding:0 7px">缺权限</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">隐私边界</h2>
+            <p class="card-desc">这条线由字段设计保证，不靠文案</p>
+          </div>
+        </div>
+        <div class="card-body" style="padding-top:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tbody>
+              <tr>
+                <td style="padding:6px 0;color:var(--home-muted);width:44%">座位布局 / 座号</td>
+                <td style="padding:6px 0"><span class="pill ok" style="padding:0 7px">可上报</span></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:var(--home-muted)">班级名 / 课表</td>
+                <td style="padding:6px 0"><span class="pill ok" style="padding:0 7px">可上报</span></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:var(--home-muted)">学生姓名 / 座次</td>
+                <td style="padding:6px 0"><span class="pill danger" style="padding:0 7px">不传</span></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:var(--home-muted)">成绩 / 考号</td>
+                <td style="padding:6px 0"><span class="pill danger" style="padding:0 7px">不传</span></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:var(--home-muted)">桌贴 PDF</td>
+                <td style="padding:6px 0"><span class="pill danger" style="padding:0 7px">不做远程导出</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div class="foot-note">
+      <b>这一页还不是真实现。</b>它是照 One-Stop 现有控制台的设计语汇做的静态原型：
+      设计令牌直接取 <code>tokens.css</code> / <code>dark-theme.css</code> 的浅色模式，
+      卡片、指令网格、状态徽标、审计流水的形态都照 <code>PlatformPanel.vue</code>。
+      真正的按钮来自 <code>/me</code> 的 <code>platformCommands</code>，前端不硬编码命令表——
+      所以加平台不用改前端，这一页的布局会自然长出来。命令名与参数取自
+      <code>docs/集控用处清单-2026-11-16.md</code> 第三节的草案，尚未在服务端登记。
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

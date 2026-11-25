@@ -617,7 +617,7 @@ public static class PdfToolbox
         return string.IsNullOrWhiteSpace(clean) ? "文档" : clean;
     }
 
-    private static string ExplainPdfError(Exception ex)
+    internal static string ExplainPdfError(Exception ex)
     {
         var message = ex.Message;
         if (message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
