@@ -50,6 +50,8 @@ public sealed class SeatProjectionWindow : Window
         PointerMoved += (_, _) => Cursor = new Cursor(StandardCursorType.None);
     }
 
+    public void RefreshChart() => Content = BuildContent();
+
     private Control BuildContent()
     {
         var root = new Grid

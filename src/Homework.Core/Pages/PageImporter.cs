@@ -1,6 +1,7 @@
 using Homework.Core.Models;
 using PdfSharp.Pdf.IO;
 using SkiaSharp;
+using TeachCraft.Shared;
 
 namespace Homework.Core.Pages;
 
@@ -92,11 +93,11 @@ public static class PageImporter
             }
             catch (HomeworkException ex)
             {
-                warns.Add($"{name}：{ex.Message}");
+                warns.Add($"{name}：{ErrorText.Describe(ex, "读取图片")}");
             }
             catch (Exception ex)
             {
-                warns.Add($"{name}：读取失败（{ex.Message}）");
+                warns.Add($"{name}：{ErrorText.Describe(ex, "读取图片")}");
             }
 
             progress?.Report((i + 1) * 100 / ordered.Count);
@@ -231,7 +232,7 @@ public static class PageImporter
         catch (Exception ex)
         {
             Rollback();
-            warns.Add($"PDF 渲染失败：{ex.Message}；这份 PDF 的页面已全部移除。");
+            warns.Add($"{ErrorText.Describe(ex, "渲染 PDF")}；这份 PDF 的页面已全部移除。");
             return Array.Empty<string>();
         }
     }

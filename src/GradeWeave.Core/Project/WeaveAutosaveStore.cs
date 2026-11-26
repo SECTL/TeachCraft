@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using GradeWeave.Core.Models;
+using TeachCraft.Shared;
 
 namespace GradeWeave.Core.Project;
 
@@ -138,7 +139,7 @@ public sealed class WeaveAutosaveStore
                 }
                 catch (Exception ex) when (IsFileFailure(ex))
                 {
-                    warning = $"当前工程文件无法写入，已改存恢复文件：{ex.Message}";
+                    warning = $"当前工程文件无法写入，已改存恢复文件：{ErrorText.Describe(ex, "写入工程文件")}";
                 }
             }
 
@@ -153,7 +154,7 @@ public sealed class WeaveAutosaveStore
             catch (Exception ex) when (IsFileFailure(ex))
             {
                 return new WeaveAutosaveResult(
-                    false, WeaveAutosaveTarget.RecoveryFile, RecoveryPath, warning ?? ex.Message);
+                    false, WeaveAutosaveTarget.RecoveryFile, RecoveryPath, warning ?? ErrorText.Describe(ex, "保存工程"));
             }
         }
     }

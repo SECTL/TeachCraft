@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Updating;
 
@@ -93,13 +94,13 @@ public sealed class PortableUpdater
                     // 回滚失败时备份就是唯一的自救材料，不能删（见 finally 的 keepBackup）。
                     keepBackup = true;
                     return Result.Fail(
-                        $"替换文件时出错，且未能完全恢复：{ex.Message}。"
-                        + $"旧文件备份保留在 {backup}，可手动拷回安装目录。",
+                        ErrorText.Describe(ex, "替换文件")
+                        + $"未能完全恢复，旧文件备份保留在 {backup}，可手动拷回安装目录。",
                         rolledBack: false);
                 }
 
                 return Result.Fail(
-                    $"替换文件时出错，已恢复到更新前的状态：{ex.Message}",
+                    ErrorText.Describe(ex, "替换文件") + "已恢复到更新前的状态。",
                     rolledBack: true);
             }
 
@@ -107,7 +108,7 @@ public sealed class PortableUpdater
         }
         catch (Exception ex)
         {
-            return Result.Fail($"解压更新包失败：{ex.Message}");
+            return Result.Fail(ErrorText.Describe(ex, "解压更新包"));
         }
         finally
         {

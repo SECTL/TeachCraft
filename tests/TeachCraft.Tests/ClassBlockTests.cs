@@ -309,7 +309,8 @@ public sealed class ClassBlockTests : IDisposable
         // 唤起失败必须说「已生成」并给出路径；旧实现把两件事并进一个 try，
         // 一律报「生成打印文件失败」，老师重试永远失败也拿不到文件。
         Assert.Contains("课程表 PDF 已生成，但没有找到能打开它的程序", source, StringComparison.Ordinal);
-        Assert.Contains("catch (Exception openEx)", source, StringComparison.Ordinal);
+        Assert.Contains("请手动打开该文件", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("openEx.Message", source, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -58,10 +58,10 @@ public partial class SeatPreviewWindow : Window
             (PreviewImage.Source as IDisposable)?.Dispose();
             PreviewImage.Source = bitmap;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Subtitle.Text = string.IsNullOrEmpty(Subtitle.Text)
-                ? $"预览图加载失败：{ex.Message}"
+                ? "预览图加载失败：文件可能已被移动或占用，请重试。"
                 : $"{Subtitle.Text} · 预览图加载失败";
         }
     }

@@ -40,6 +40,7 @@ public partial class SeatGridWindow : Window
     private readonly ISeatGridCloudBridge? _cloud;
     private string? _lastDocumentId;
     private int _lastDocumentRevision;
+    private SeatProjectionWindow? _projectionWindow;
 
     // ----------------------------- 座位 / 行列拖拽 -----------------------------
     private enum DragMode { None, Seat, Row, Column }
@@ -1231,8 +1232,91 @@ public partial class SeatGridWindow : Window
 
     private void OnProjection(object? sender, RoutedEventArgs e)
     {
-        var window = new SeatProjectionWindow(ViewModel);
-        window.ShowDialog(this);
+        SetRemoteProjection(true);
+    }
+
+    public bool IsProjecting => _projectionWindow is { IsVisible: true };
+
+    public string SetRemoteView(bool studentView)
+    {
+        ViewModel.IsStudentView = studentView;
+        _projectionWindow?.RefreshChart();
+        return ViewModel.IsStudentView ? "student" : "teacher";
+    }
+
+    public bool SetRemoteProjection(bool on)
+    {
+        if (on)
+        {
+            if (_projectionWindow is { IsVisible: true } existing)
+            {
+                existing.RefreshChart();
+                existing.Activate();
+                return true;
+            }
+
+            var window = new SeatProjectionWindow(ViewModel);
+            window.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_projectionWindow, window))
+                    _projectionWindow = null;
+            };
+            _projectionWindow = window;
+            window.Show(this);
+            return true;
+        }
+
+        if (_projectionWindow is { } current)
+        {
+            _projectionWindow = null;
+            current.Close();
+        }
+
+        return false;
+    }
+
+    public void SetRemoteExam(bool on, int columns = 8)
+    {
+        if (on)
+        {
+            if (!ViewModel.HasStudents)
+                throw new InvalidOperationException("当前归位未导入学生名单，无法进入考场模式。");
+            var maxColumns = Math.Clamp(columns, 4, 8);
+            ViewModel.EnterExamMode(new ExamLayoutOptions(maxColumns, true));
+        }
+        else if (ViewModel.IsExamMode)
+        {
+            ViewModel.LeaveExamMode();
+        }
+
+        _projectionWindow?.RefreshChart();
+    }
+
+    /// <summary>集控只读摘要：仅返回数量与几何信息，绝不含学生姓名。</summary>
+    public (
+        bool IsExam,
+        string View,
+        int StudentCount,
+        int AssignedCount,
+        int SeatCount,
+        int Groups,
+        int Rows,
+        int Columns,
+        bool Projecting,
+        string Title) ReadRemoteSummary()
+    {
+        var layout = ViewModel.CurrentLayoutPublic;
+        return (
+            ViewModel.IsExamMode,
+            ViewModel.IsStudentView ? "student" : "teacher",
+            ViewModel.StudentCount,
+            ViewModel.AssignedCount,
+            ViewModel.SeatCount,
+            layout.Groups,
+            layout.Rows,
+            layout.Columns,
+            IsProjecting,
+            ViewModel.Title ?? string.Empty);
     }
 
     private void OnTogglePin(object? sender, RoutedEventArgs e) => ViewModel.ToggleSelectedSeatPin();
@@ -1727,10 +1811,10 @@ public partial class SeatGridWindow : Window
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
                 ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
             }
-            catch (Exception openEx)
+            catch (Exception)
             {
                 ViewModel.SetStatus(
-                    $"PDF 已生成，但没有找到能打开它的程序：{path}（{openEx.Message}）", true);
+                    "PDF 已生成，但没有找到能打开它的程序，请手动打开该文件。", true);
             }
         }
         catch (Exception ex)
@@ -1946,7 +2030,7 @@ public partial class SeatGridWindow : Window
         {
             Report(ex, "准备云端座位表失败");
             // 状态栏那一行太不起眼，前置条件不满足时用户会以为按钮没反应；补一个模态弹窗说明原因。
-            await ConfirmDialog.ShowAsync(this, "准备云端座位表失败", ex.Message, "知道了", "关闭", danger: false);
+            await ConfirmDialog.ShowAsync(this, "准备云端座位表失败", ErrorText.Describe(ex, "准备云端座位表"), "知道了", "关闭", danger: false);
         }
     }
 
@@ -2020,7 +2104,7 @@ public partial class SeatGridWindow : Window
         catch (Exception ex)
         {
             Report(ex, "应用共享名单失败");
-            await ConfirmDialog.ShowAsync(this, "应用共享名单失败", ex.Message, "知道了", "关闭", danger: false);
+            await ConfirmDialog.ShowAsync(this, "应用共享名单失败", ErrorText.Describe(ex, "应用共享名单"), "知道了", "关闭", danger: false);
         }
     }
 
@@ -2043,7 +2127,7 @@ public partial class SeatGridWindow : Window
         catch (Exception ex)
         {
             Report(ex, "还原云端座位表失败");
-            await ConfirmDialog.ShowAsync(this, "还原云端座位表失败", ex.Message, "知道了", "关闭", danger: false);
+            await ConfirmDialog.ShowAsync(this, "还原云端座位表失败", ErrorText.Describe(ex, "还原云端座位表"), "知道了", "关闭", danger: false);
         }
     }
 
@@ -2111,12 +2195,6 @@ public partial class SeatGridWindow : Window
         // 不把 CLR / IO 原文（含路径与堆栈措辞）抛到界面上。
         // 调用方的 prefix 已经带「失败」（如「导入名单失败」），而 ErrorText.Describe
         // 自己会补「失败：」，先摘掉尾部再交过去，否则会出现「导入名单失败失败：…」。
-        if (ex is SeatGridException)
-        {
-            ViewModel.SetStatus(ex.Message, true);
-            return;
-        }
-
         var action = prefix.EndsWith("失败", StringComparison.Ordinal)
             ? prefix[..^2]
             : prefix;

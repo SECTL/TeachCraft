@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GradeWeave.Core.Export;
 using GradeWeave.Core.Models;
+using TeachCraft.Shared;
 
 namespace GradeWeave.App;
 
@@ -244,7 +245,7 @@ public partial class ExportOptionsViewModel : ObservableObject
         {
             if (token.IsCancellationRequested || _isClosed) return;
             PreviewImage = null;
-            PreviewEmptyText = "预览生成失败：" + ex.Message;
+            PreviewEmptyText = ErrorText.Describe(ex, "生成预览");
             PreviewCaption = string.Empty;
             PreviewDetail = string.Empty;
         }

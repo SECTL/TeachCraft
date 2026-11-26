@@ -10,17 +10,18 @@ namespace TeachCraft.App.ViewModels;
 /// </summary>
 public partial class AppCardViewModel : ObservableObject
 {
-    public AppCardViewModel(string key, string name, ToolDescription description)
+    public AppCardViewModel(string key, string name, ToolDescription description, string? searchAlias = null)
     {
         Key = key;
         Name = name;
         Detail = description;
 
-        // 搜索命中面：应用名、英文 key、一句话定位、要点、输入输出与三条摘要。
+        // 搜索命中面：应用名、英文 key / 别名、一句话定位、要点、输入输出与三条摘要。
         SearchText = string.Join(
             ' ',
             name,
             key,
+            searchAlias ?? string.Empty,
             description.Tagline,
             string.Join(' ', description.Highlights),
             description.InputDetail,

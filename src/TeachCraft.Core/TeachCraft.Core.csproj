@@ -24,4 +24,8 @@
     <PackageReference Include="ClosedXML" Version="0.105.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\CHANGELOG.md" LogicalName="TeachCraft.Core.CHANGELOG.md" />
+  </ItemGroup>
+
 </Project>

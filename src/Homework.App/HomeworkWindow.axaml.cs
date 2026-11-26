@@ -639,7 +639,7 @@ public partial class HomeworkWindow : Window, IScanImportSink
     private async void OnPullSharedRoster(object? sender, RoutedEventArgs e) => await PullSharedRosterAsync();
 
     /// <summary>
-    /// 从共享库拉取班级名单。作业整理只有读的能力：拉到的结果经既有 ApplyRoster
+    /// 从共享库拉取班级名单。辑册只有读的能力：拉到的结果经既有 ApplyRoster
     /// 落进当前批次，不臆造性别等可选字段，也不改动共享库里的原件。
     /// </summary>
     private async Task PullSharedRosterAsync()
@@ -725,8 +725,9 @@ public partial class HomeworkWindow : Window, IScanImportSink
         }
         catch (HomeworkException ex)
         {
-            ws.SetStatus(ex.Message);
-            await ConfirmDialog.ShowAsync(this, "导出失败", ex.Message, "知道了", "关闭", danger: false);
+            var message = ErrorText.Describe(ex, "导出");
+            ws.SetStatus(message);
+            await ConfirmDialog.ShowAsync(this, "导出失败", message, "知道了", "关闭", danger: false);
         }
         catch (OperationCanceledException)
         {
@@ -766,7 +767,7 @@ public partial class HomeworkWindow : Window, IScanImportSink
         var root = !string.IsNullOrWhiteSpace(documents) ? documents : desktop;
         return string.IsNullOrWhiteSpace(root)
             ? Path.Combine(Path.GetTempPath(), "TeachCraft", "Homework", "导出")
-            : Path.Combine(root, "TeachCraft", "作业整理导出");
+            : Path.Combine(root, "TeachCraft", "辑册导出");
     }
 
     // ----------------------------- 键盘 -----------------------------
@@ -839,7 +840,7 @@ public partial class HomeworkWindow : Window, IScanImportSink
         Dispatcher.UIThread.Post(async () =>
         {
             var confirmed = await ConfirmDialog.ShowAsync(
-                this, "关闭作业整理？",
+                this, "关闭辑册？",
                 "当前批次还有未提交的作业页，关闭后本次匹配与导入不会保留。原始文件不会被删除。",
                 "放弃并关闭", "继续编辑", danger: true);
             if (confirmed)

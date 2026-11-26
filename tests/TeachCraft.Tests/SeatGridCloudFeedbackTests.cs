@@ -74,7 +74,8 @@ public sealed class SeatGridCloudFeedbackTests
         Assert.Contains("catch (Exception ex)", method);
         Assert.Contains("Report(ex, \"准备云端座位表失败\")", method);
         Assert.Contains("ConfirmDialog.ShowAsync", method);
-        Assert.Contains("ex.Message", method);
+        Assert.Contains("ErrorText.Describe(ex, \"准备云端座位表\")", method);
+        Assert.DoesNotContain("ex.Message", method);
         Assert.Contains("\"知道了\"", method);
     }
 

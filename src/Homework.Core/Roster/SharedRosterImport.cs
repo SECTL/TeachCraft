@@ -15,7 +15,7 @@ public readonly record struct RosterSkipBreakdown(int EmptyNameRows, int Duplica
 }
 
 /// <summary>
-/// 把中性的共享名单输入转换成作业整理既有的 <see cref="RosterImportResult"/>。
+/// 把中性的共享名单输入转换成辑册既有的 <see cref="RosterImportResult"/>。
 /// 纯映射：不引用任何云 DTO / HTTP 类型；宿主桥接层负责把云名单映射成这里的输入。
 /// 语义对齐 <see cref="HomeworkRosterImporter"/>：新 Guid、按首次出现的班级归并、
 /// 文本规整复用 <see cref="RosterText"/>；差异仅在重复行改为「告警 + 跳过」而非抛错。

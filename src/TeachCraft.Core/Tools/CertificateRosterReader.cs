@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using ExcelDataReader;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Tools;
 
@@ -45,7 +46,7 @@ public static class CertificateRosterReader
         }
         catch (Exception ex)
         {
-            throw new ToolboxException($"读取名单工作簿失败：{ex.Message}");
+            throw new ToolboxException(ErrorText.Describe(ex, "读取名单工作簿"));
         }
     }
 }

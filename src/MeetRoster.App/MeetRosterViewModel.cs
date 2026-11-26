@@ -448,8 +448,8 @@ public sealed partial class MeetRosterViewModel : ObservableObject
                         }
                         catch (Exception ex)
                         {
-                            // 业务校验的中文消息（InvalidDataException）原样透传，意外异常走 ErrorText 人话。
-                            var reason = ex is InvalidDataException ? ex.Message : ErrorText.Describe(ex, "读取");
+                            // ErrorText 透传业务校验的中文消息，意外异常也给可执行的中文提示。
+                            var reason = ErrorText.Describe(ex, "读取报名表");
                             errorBag.Add((i, $"{Path.GetFileName(paths[i])}：{reason}"));
                         }
                     });
@@ -615,7 +615,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         catch (InvalidDataException ex)
         {
             EndBusy();
-            SetStatus(ex.Message, true);
+            SetStatus(ErrorText.Describe(ex, "读取秩序册"), true);
             return;
         }
         catch (Exception ex)
@@ -770,9 +770,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         catch (Exception ex)
         {
             EndBusy();
-            SetStatus(ex is InvalidOperationException
-                ? ex.Message
-                : ErrorText.Describe(ex, "导出参赛手册"), true);
+            SetStatus(ErrorText.Describe(ex, "导出参赛手册"), true);
             return false;
         }
     }
@@ -822,7 +820,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         catch (InvalidDataException ex)
         {
             EndBusy();
-            SetStatus(ex.Message, true);
+            SetStatus(ErrorText.Describe(ex, "导入赛程"), true);
             return;
         }
         catch (Exception ex)
@@ -923,7 +921,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"{meetClass.Name}：{ex.Message}");
+                    errors.Add($"{meetClass.Name}：{ErrorText.Describe(ex, "导出")}");
                 }
             }
         });
@@ -972,7 +970,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
-                    errors.Add($"{meetClass.Name}：{ex.Message}");
+                    errors.Add($"{meetClass.Name}：{ErrorText.Describe(ex, "导出")}");
                 }
             }
         });
@@ -1142,7 +1140,7 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         catch (InvalidDataException ex)
         {
             EndBusy();
-            FailRosterImport(ex.Message);
+            FailRosterImport(ErrorText.Describe(ex, "读取名单"));
             return;
         }
         catch (Exception ex)

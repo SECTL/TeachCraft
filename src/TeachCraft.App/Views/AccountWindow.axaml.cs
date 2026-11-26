@@ -29,7 +29,7 @@ public partial class AccountWindow : Window
         Panel.DeleteRosterRequested += (_, id) => _ = viewModel.DeleteRosterAsync(id);
         Panel.ConsentAcceptedRequested += (_, _) => viewModel.AcceptConsent();
         // 与 MainWindow 的抽屉形态一致：「查看并同意字段说明」必须展开同意区，
-        // 否则独立窗口（归位 / 作业整理桥接、--account-shot）里这个按钮点了没反应。
+        // 否则独立窗口（归位 / 辑册桥接、--account-shot）里这个按钮点了没反应。
         Panel.JumpToConsentRequested += (_, _) => Panel.RevealConsent();
 
         Closed += (_, _) =>

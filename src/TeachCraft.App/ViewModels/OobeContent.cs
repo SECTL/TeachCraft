@@ -75,7 +75,7 @@ public static class OobeContent
                 new[]
                 {
                     "小工具覆盖图片处理、PDF 互转与拆合、名单核对和 Excel 按班拆表。",
-                    "6 件常备应用：分晓、归位、时序、织序、竞名、作业整理。",
+                    "6 件常备应用：分晓、归位、时序、织序、竞名、辑册。",
                     "右上角的搜索框可以按名称或格式搜索，也可以直接点开任意一张卡。",
                 }),
 
@@ -90,7 +90,7 @@ public static class OobeContent
                 new[]
                 {
                     "处理结果不会覆盖导入的原文件。",
-                    "联网只有三处：点「检查更新」读取版本号；登录 SECTL 账号后，由你选择字段并手动上传或拉取共享名单与座位表；集控（本版本尚未提供入口）。",
+                    "联网只有三处：点「检查更新」读取版本号；登录 SECTL 账号后，由你选择字段并手动上传或拉取共享名单与座位表；主动开启「启用 SECTL 集控」后保持一条长连接接收大屏指令。",
                     "共享名单默认只含姓名、性别、学号；身高、视力、成绩、备注、原小组由你逐项勾选，默认不包含。",
                     "账号与云同步、集控都默认关闭，关闭时不发送任何信息。",
                 }),
@@ -100,7 +100,7 @@ public static class OobeContent
                 3,
                 "STEP 03 / 04",
                 "盒子里有什么",
-                $"五件常备应用各管一件事，{ToolDescriptionCatalog.ToolIds.Count} 件小工具补上零碎活。",
+                $"六件常备应用各管一件事，{ToolDescriptionCatalog.ToolIds.Count} 件小工具补上零碎活。",
                 string.Empty,
                 BuildCapabilityBullets()),
 

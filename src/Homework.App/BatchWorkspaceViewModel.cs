@@ -9,6 +9,7 @@ using Homework.Core.Models;
 using Homework.Core.Pages;
 using Homework.Core.Recognition;
 using Homework.Core.Roster;
+using TeachCraft.Shared;
 
 namespace Homework.App;
 
@@ -124,7 +125,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
             }
             catch (HomeworkException ex)
             {
-                SetStatus(ex.Message);
+                SetStatus(ErrorText.Describe(ex, "设置应交页数"));
                 OnPropertyChanged();
                 return;
             }
@@ -294,7 +295,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
             }
             catch (HomeworkException ex)
             {
-                SetStatus(ex.Message);
+                SetStatus(ErrorText.Describe(ex, "设置填涂区"));
             }
             OnPropertyChanged();
             OnPropertyChanged(nameof(FillInRegionSummary));
@@ -313,7 +314,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
             }
             catch (HomeworkException ex)
             {
-                SetStatus(ex.Message);
+                SetStatus(ErrorText.Describe(ex, "设置填涂列数"));
             }
             OnPropertyChanged();
             OnPropertyChanged(nameof(FillInRegionSummary));
@@ -493,7 +494,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "修改批次"));
             return;
         }
 
@@ -613,7 +614,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "撤销"));
             return;
         }
         Refresh();
@@ -631,7 +632,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "重做"));
             return;
         }
         Refresh();
@@ -653,7 +654,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "导入名单"));
             return;
         }
 
@@ -678,7 +679,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "导入名单"));
             return;
         }
 
@@ -707,7 +708,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "导入图片"));
             return false;
         }
     }
@@ -729,7 +730,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "导入 PDF"));
             return false;
         }
     }
@@ -780,7 +781,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
             }
             catch (HomeworkException ex)
             {
-                SetStatus(ex.Message);
+                SetStatus(ErrorText.Describe(ex, "应用填涂区"));
                 return;
             }
             SetStatus("填涂区已应用到全部页。");
@@ -808,7 +809,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "清除填涂区"));
             return;
         }
         foreach (var page in Batch.Pages) page.FillInRegionOverride = null;
@@ -883,7 +884,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
                 catch (Exception ex)
                 {
                     results.Add((page.Id, new PageRecognition(
-                        RecognitionMethod.FillIn, string.Empty, 0, $"识别失败：{ex.Message}", now), null));
+                        RecognitionMethod.FillIn, string.Empty, 0, ErrorText.Describe(ex, "识别"), now), null));
                     progress?.Report((i + 1) * 100 / targets.Count);
                     continue;
                 }
@@ -964,7 +965,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "提交批次"));
         }
     }
 
@@ -978,7 +979,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
             }
             catch (HomeworkException ex)
             {
-                SetStatus(ex.Message);
+                SetStatus(ErrorText.Describe(ex, "放弃批次"));
                 return;
             }
         }
@@ -1016,7 +1017,7 @@ public sealed class BatchWorkspaceViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            SetStatus(ex.Message);
+            SetStatus(ErrorText.Describe(ex, "生成导出计划"));
             throw;
         }
     }

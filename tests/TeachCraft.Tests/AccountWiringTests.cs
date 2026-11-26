@@ -113,7 +113,7 @@ public sealed class AccountWiringTests
     [Fact]
     public void BothHosts_WireJumpToConsentToRevealConsent()
     {
-        // 账号页有两个宿主：主窗口抽屉与独立 AccountWindow（归位 / 作业整理桥接、--account-shot）。
+        // 账号页有两个宿主：主窗口抽屉与独立 AccountWindow（归位 / 辑册桥接、--account-shot）。
         // 「查看并同意字段说明」按钮抛出的事件必须在两处都接到 RevealConsent，否则独立窗口里点了没反应。
         var mainWindow = RepoRoot.Read("src/TeachCraft.App/Views/MainWindow.axaml.cs");
         var accountWindow = RepoRoot.Read("src/TeachCraft.App/Views/AccountWindow.axaml.cs");

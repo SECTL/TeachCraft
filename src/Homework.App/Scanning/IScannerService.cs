@@ -32,7 +32,7 @@ public interface IScannerService
     Task<ScanOutput> AcquireWithDriverUiAsync(CancellationToken token);
 }
 
-/// <summary>扫描件导入作业整理的落点。由 HomeworkWindow 实现，扫描窗口不直接碰批次。</summary>
+/// <summary>扫描件导入辑册的落点。由 HomeworkWindow 实现，扫描窗口不直接碰批次。</summary>
 public interface IScanImportSink
 {
     bool HasCurrentBatch { get; }

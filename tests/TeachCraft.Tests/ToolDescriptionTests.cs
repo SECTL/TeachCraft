@@ -227,6 +227,7 @@ public sealed class ToolDescriptionTests
             (ToolDescriptionCatalog.ClassBlockKey, "时序", viewModel.ClassBlockCard),
             (ToolDescriptionCatalog.GradeWeaveKey, "织序", viewModel.GradeWeaveCard),
             (ToolDescriptionCatalog.MeetRosterKey, "竞名", viewModel.MeetRosterCard),
+            (ToolDescriptionCatalog.HomeworkKey, "辑册", viewModel.HomeworkCard),
         };
 
         foreach (var (key, name, card) in cards)
@@ -279,6 +280,20 @@ public sealed class ToolDescriptionTests
         Assert.True(viewModel.IsGradeWeaveVisible);
         Assert.False(viewModel.IsGradeStripVisible);
         Assert.False(viewModel.IsSeatGridVisible);
+    }
+
+    [Theory]
+    [InlineData("辑册")]
+    [InlineData("WorkFolio")]
+    [InlineData("作业")]
+    [InlineData("homework")]
+    public void Search_MatchesWorkFolioByChineseEnglishAndKeyword(string query)
+    {
+        var viewModel = new MainViewModel();
+
+        viewModel.SearchText = query;
+
+        Assert.True(viewModel.IsHomeworkVisible);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Cloud;
 
@@ -138,8 +139,8 @@ public sealed class FileCloudSyncSettingsStore : ICloudSyncSettingsStore
         }
         catch (Exception ex)
         {
-            // 只带异常类型名，绝不把用户目录拼进提示。
-            _lastError = "无法写入本机设置文件（" + ex.GetType().Name + "）";
+            // 只给中文原因，绝不把用户目录或异常类型名拼进提示。
+            _lastError = ErrorText.Describe(ex, "保存本机设置");
             return false;
         }
     }

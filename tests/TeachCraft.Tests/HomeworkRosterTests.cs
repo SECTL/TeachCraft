@@ -7,7 +7,7 @@ using NPOI.HSSF.UserModel;
 namespace TeachCraft.Tests;
 
 /// <summary>
-/// 作业整理名单导入。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚）与合成班级
+/// 辑册名单导入。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚）与合成班级
 /// （八年级1班 / 九年级11班），临时文件在测试结束即删除。
 /// </summary>
 public sealed class HomeworkRosterTests : IDisposable

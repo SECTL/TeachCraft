@@ -304,7 +304,8 @@ public partial class TimetableEditorViewModel : ObservableObject
         }
         catch (GradeWeaveException ex)
         {
-            ErrorText = string.IsNullOrWhiteSpace(ErrorText) ? ex.Message : $"{ErrorText}\n· {ex.Message}";
+            var detail = TeachCraft.Shared.ErrorText.Describe(ex, "校验作息");
+            ErrorText = string.IsNullOrWhiteSpace(ErrorText) ? detail : $"{ErrorText}\n· {detail}";
             return null;
         }
     }
@@ -422,7 +423,7 @@ public partial class TimetableEditorViewModel : ObservableObject
         catch (GradeWeaveException ex)
         {
             HasPreview = false;
-            PreviewSummary = ex.Message;
+            PreviewSummary = TeachCraft.Shared.ErrorText.Describe(ex, "生成节次预览");
         }
     }
 

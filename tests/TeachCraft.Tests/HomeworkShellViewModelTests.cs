@@ -3,7 +3,7 @@ using Homework.Core.Models;
 
 namespace TeachCraft.Tests;
 
-/// <summary>作业整理外壳：批次导航、忙碌状态与关窗守卫。全部使用合成姓名与临时文件。</summary>
+/// <summary>辑册外壳：批次导航、忙碌状态与关窗守卫。全部使用合成姓名与临时文件。</summary>
 public sealed class HomeworkShellViewModelTests : IDisposable
 {
     private readonly string _root;

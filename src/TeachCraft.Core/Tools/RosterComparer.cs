@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using ExcelDataReader;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Tools;
 
@@ -114,7 +115,7 @@ public static class RosterComparer
         }
         catch (Exception ex)
         {
-            throw new ToolboxException($"无法读取名单文件「{Path.GetFileName(path)}」：{ex.Message}");
+            throw new ToolboxException(ErrorText.Describe(ex, "读取名单文件"));
         }
     }
 

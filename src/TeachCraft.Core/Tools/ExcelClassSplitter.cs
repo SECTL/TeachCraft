@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using ExcelDataReader;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Tools;
 
@@ -160,7 +161,7 @@ public static class ExcelClassSplitter
         }
         catch (Exception ex)
         {
-            throw new ToolboxException($"无法读取这份 Excel：{ex.Message}");
+            throw new ToolboxException(ErrorText.Describe(ex, "读取这份 Excel"));
         }
     }
 

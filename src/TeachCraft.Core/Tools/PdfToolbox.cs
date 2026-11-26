@@ -7,6 +7,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using TeachCraft.Shared;
 using A = DocumentFormat.OpenXml.Drawing;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
@@ -117,7 +118,7 @@ public static class PdfToolbox
         catch (ToolboxException) { throw; }
         catch (Exception ex)
         {
-            throw new ToolboxException($"合成 PDF 失败：{ex.Message}");
+            throw new ToolboxException(ErrorText.Describe(ex, "合成 PDF"));
         }
     }
 
@@ -326,7 +327,7 @@ public static class PdfToolbox
         catch (ToolboxException) { throw; }
         catch (Exception ex)
         {
-            throw new ToolboxException($"Word 转 PDF 失败：{ex.Message}");
+            throw new ToolboxException(ErrorText.Describe(ex, "Word 转 PDF"));
         }
     }
 
@@ -625,6 +626,6 @@ public static class PdfToolbox
             return "这份 PDF 已加密，请先解除密码保护。";
         if (message.Contains("not a PDF", StringComparison.OrdinalIgnoreCase))
             return "文件不是有效的 PDF。";
-        return message;
+        return "文件无法读取，请确认文件未损坏、未加密后重试。";
     }
 }

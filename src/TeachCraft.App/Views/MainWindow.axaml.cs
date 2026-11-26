@@ -19,6 +19,7 @@ using Avalonia.VisualTree;
 using Homework.App.Cloud;
 using TeachCraft.App.Cloud;
 using TeachCraft.App.Controls;
+using TeachCraft.Core.Control;
 using TeachCraft.Core.Updating;
 using SeatGrid.App;
 using SeatGrid.App.Cloud;
@@ -42,6 +43,7 @@ public partial class MainWindow : Window
     private GradeStrip.App.Views.MainWindow? _gradeStripWindow;
     private bool _runDialogOpen;   // 输出对话框 / 任务运行期间的重入守卫
     private OobeViewModel? _oobeHooked; // 引导关闭焦点归还的订阅目标（随 DataContext 换绑）
+    private ControlCenterService? _controlServiceHooked;
     public MainWindow()
     {
         InitializeComponent();
@@ -59,6 +61,17 @@ public partial class MainWindow : Window
         AccountPanel.DeleteRosterRequested += (_, id) => _ = ViewModel.Account.DeleteRosterAsync(id);
         AccountPanel.ConsentAcceptedRequested += (_, _) => ViewModel.Account.AcceptConsent();
         AccountPanel.JumpToConsentRequested += (_, _) => AccountPanel.RevealConsent();
+
+        ControlPanel.SaveConfigRequested += (_, _) => ViewModel.ControlCenter.SaveHostAndDeviceName();
+        ControlPanel.EnrollPairCodeRequested += (_, _) => _ = ViewModel.ControlCenter.EnrollWithPairCodeAsync();
+        ControlPanel.UnenrollRequested += (_, _) => _ = ViewModel.ControlCenter.UnenrollAsync();
+        ControlPanel.LoadAccountSitesRequested += (_, _) => _ = ViewModel.ControlCenter.LoadAccountSitesAsync();
+        ControlPanel.EnrollWithAccountRequested += (_, _) => _ = ViewModel.ControlCenter.EnrollWithAccountAsync();
+        ControlPanel.RefreshTreeRequested += (_, _) => _ = ViewModel.ControlCenter.RefreshDeviceTreeAsync();
+        ControlPanel.AssignClassRequested += (_, _) => _ = ViewModel.ControlCenter.AssignSelectedClassAsync();
+        ControlPanel.OccupyClassRequested += (_, _) => _ = ViewModel.ControlCenter.OccupySelectedClassAsync();
+        ControlPanel.ReleaseClassRequested += (_, _) => _ = ViewModel.ControlCenter.ReleaseClassAsync();
+        ControlPanel.PreviewSeatsRequested += (_, _) => _ = ViewModel.ControlCenter.PreviewDeviceSeatsSummaryAsync();
 
         // 仓库里其余 16 个窗口都在 Opened 时把自己钳进工作区，唯独主窗口一直没做：
         // 1366×768 @125% 下工作区只有约 590 DIP 高，而窗口固定 840，底栏会落在屏幕外。
@@ -81,6 +94,13 @@ public partial class MainWindow : Window
             if (_oobeHooked is not null) _oobeHooked.Closed -= OnOobeClosed;
             _oobeHooked = DataContextAsMainViewModel?.Oobe;
             _oobeHooked?.Closed += OnOobeClosed;
+
+            var controlService = DataContextAsMainViewModel?.Control.Service;
+            if (controlService is not null && !ReferenceEquals(_controlServiceHooked, controlService))
+            {
+                _controlServiceHooked = controlService;
+                new TeachCraftControlDispatcher(controlService, new TeachCraft.App.ControlCenter.TeachCraftAppControlHost(this)).RegisterAll();
+            }
         };
     }
 
@@ -270,6 +290,14 @@ public partial class MainWindow : Window
     {
         var wasOpen = ViewModel.IsPanelOpen;
         ViewModel.OpenAccountPanel();
+        await ShowPanelAsync(wasOpen);
+    }
+
+    /// <summary>侧栏底部「集控」：打开集控页，不自动连接或发送网络请求。</summary>
+    private async void OnControlClick(object? sender, RoutedEventArgs e)
+    {
+        var wasOpen = ViewModel.IsPanelOpen;
+        ViewModel.OpenControlPanel();
         await ShowPanelAsync(wasOpen);
     }
 
@@ -1010,10 +1038,11 @@ public partial class MainWindow : Window
         }
         catch (ToolboxException ex)
         {
-            tool.ResultText = ex.Message;
+            var message = ErrorText.Describe(ex, "处理");
+            tool.ResultText = message;
             tool.HasResult = true;
             tool.ResultIsError = true;
-            ViewModel.SetStatus(ex.Message, true);
+            ViewModel.SetStatus(message, true);
         }
         catch (Exception ex)
         {
@@ -1162,38 +1191,68 @@ public partial class MainWindow : Window
 
     private void OnProjectLaunch(object? sender, EventArgs e) => OnLaunchGradeStrip(sender, new RoutedEventArgs());
 
+    internal SeatGridWindow? ActiveSeatGridWindow => _seatGridWindow is { IsVisible: true } ? _seatGridWindow : null;
+    internal ClassBlockWindow? ActiveClassBlockWindow => _classBlockWindow is { IsVisible: true } ? _classBlockWindow : null;
+    internal GradeWeave.App.GradeWeaveWindow? ActiveGradeWeaveWindow => _gradeWeaveWindow is { IsVisible: true } ? _gradeWeaveWindow : null;
+
+    internal SeatGridWindow EnsureSeatGridWindowOpen()
+    {
+        if (_seatGridWindow is { IsVisible: true } existing)
+        {
+            existing.Activate();
+            return existing;
+        }
+
+        var runtime = ViewModel.Account.Runtime;
+        ISeatGridCloudBridge bridge = runtime.IsConfigured
+                                      && runtime.Account is not null
+                                      && runtime.SeatDocuments is not null
+                                      && runtime.Rosters is not null
+            ? new SeatGridCloudBridge(runtime.Account, runtime.Rosters, runtime.SeatDocuments, runtime.Settings)
+            : new NullSeatGridCloudBridge();
+
+        var created = new SeatGridWindow(new SeatGridViewModel(), bridge);
+        created.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_seatGridWindow, created)) _seatGridWindow = null;
+            (bridge as IDisposable)?.Dispose();
+        };
+        _seatGridWindow = created;
+        created.Show();
+        ViewModel.SetStatus("已打开 归位 · SeatGrid");
+        return created;
+    }
+
+    internal ClassBlockWindow EnsureClassBlockWindowOpen()
+    {
+        if (_classBlockWindow is { IsVisible: true } existing)
+        {
+            existing.Activate();
+            return existing;
+        }
+
+        var created = new ClassBlockWindow();
+        created.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_classBlockWindow, created)) _classBlockWindow = null;
+        };
+        _classBlockWindow = created;
+        created.Show();
+        ViewModel.SetStatus("已打开 时序 · ClassBlock");
+        return created;
+    }
+
     // ----------------------------- 归位 · SeatGrid -----------------------------
 
     private void OnLaunchSeatGrid(object? sender, RoutedEventArgs e)
     {
         try
         {
-            if (_seatGridWindow is { IsVisible: true })
-            {
-                _seatGridWindow.Activate();
-                return;
-            }
-
-            var runtime = ViewModel.Account.Runtime;
-            ISeatGridCloudBridge bridge = runtime.IsConfigured
-                                          && runtime.Account is not null
-                                          && runtime.SeatDocuments is not null
-                                          && runtime.Rosters is not null
-                ? new SeatGridCloudBridge(runtime.Account, runtime.Rosters, runtime.SeatDocuments, runtime.Settings)
-                : new NullSeatGridCloudBridge();
-
-            _seatGridWindow = new SeatGridWindow(new SeatGridViewModel(), bridge);
-            _seatGridWindow.Closed += (_, _) =>
-            {
-                _seatGridWindow = null;
-                (bridge as IDisposable)?.Dispose();
-            };
-            _seatGridWindow.Show();
-            ViewModel.SetStatus("已打开 归位 · SeatGrid");
+            EnsureSeatGridWindowOpen();
         }
         catch (Exception ex)
         {
-            ViewModel.SetStatus("打开 归位 失败：" + ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开归位"), true);
         }
     }
 
@@ -1203,20 +1262,11 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (_classBlockWindow is { IsVisible: true })
-            {
-                _classBlockWindow.Activate();
-                return;
-            }
-
-            _classBlockWindow = new ClassBlockWindow();
-            _classBlockWindow.Closed += (_, _) => _classBlockWindow = null;
-            _classBlockWindow.Show();
-            ViewModel.SetStatus("已打开 时序 · ClassBlock");
+            EnsureClassBlockWindowOpen();
         }
         catch (Exception ex)
         {
-            ViewModel.SetStatus("打开 时序 失败：" + ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开时序"), true);
         }
     }
 
@@ -1239,7 +1289,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ViewModel.SetStatus("打开 织序 失败：" + ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开织序"), true);
         }
     }
 
@@ -1262,11 +1312,11 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ViewModel.SetStatus("打开 竞名 失败：" + ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开竞名"), true);
         }
     }
 
-    // ----------------------------- 作业整理 · Homework -----------------------------
+    // ----------------------------- 辑册 · WorkFolio -----------------------------
 
     private void OnLaunchHomework(object? sender, RoutedEventArgs e)
     {
@@ -1278,7 +1328,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // 未配置 / 走查时注入空桥：作业整理照常打开，共享名单按钮只给出不可用提示。
+            // 未配置 / 走查时注入空桥：辑册照常打开，共享名单按钮只给出不可用提示。
             var runtime = ViewModel.Cloud;
             IHomeworkRosterBridge bridge = runtime.IsConfigured
                                            && runtime.Account is not null
@@ -1293,11 +1343,11 @@ public partial class MainWindow : Window
                 (bridge as IDisposable)?.Dispose();
             };
             _homeworkWindow.Show();
-            ViewModel.SetStatus("已打开 作业整理");
+            ViewModel.SetStatus("已打开 辑册 · WorkFolio");
         }
         catch (Exception ex)
         {
-            ViewModel.SetStatus("打开 作业整理 失败：" + ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开辑册"), true);
         }
     }
 
@@ -1325,7 +1375,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ViewModel.SetStatus("打开分晓失败：" + ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, "打开分晓"), true);
         }
     }
 

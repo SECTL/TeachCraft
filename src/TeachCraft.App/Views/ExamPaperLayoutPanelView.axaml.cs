@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using TeachCraft.App.ViewModels;
 using TeachCraft.Core.Tools;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App.Views;
 
@@ -120,7 +121,7 @@ public partial class ExamPaperLayoutPanelView : UserControl
             tool.ExamPaperPreviewImage = null;
             tool.ExamPaperPreviewCaption = string.Empty;
             tool.ExamPaperPreviewDetail = string.Empty;
-            tool.ExamPaperPreviewEmptyText = "预览暂不可用：" + ex.Message;
+            tool.ExamPaperPreviewEmptyText = ErrorText.Describe(ex, "生成预览");
         }
         finally
         {

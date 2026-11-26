@@ -52,11 +52,11 @@
 | 模块 | 1.45.0 状态 | 接线点 |
 | :--- | :--- | :--- |
 | 归位 · SeatGrid | **已实现**：发布 / 拉取共享名单；保存 / 拉取关联座位表；逐字段同意 | `ISeatGridCloudBridge` |
-| 作业整理 · Homework | **已实现（仅拉取）**：多选班级名单，合并进批次名单 | `IHomeworkRosterBridge`；其名单模型无性别，故不能发布 |
+| 辑册 · WorkFolio | **已实现（仅拉取）**：多选班级名单，合并进批次名单 | `IHomeworkRosterBridge`；其名单模型无性别，故不能发布 |
 | 分晓 · GradeStrip | **未接线**：它导入成绩表而非名单；未来适配器须检查 `Fields.Score` | `ISharedRosterSource` 预留 |
 | 其它模块 | **未接线** | 同一 source 接口；UI 不得声称已接入 |
 
-文档与界面使用固定表述：`归位可发布、拉取共享名单；作业整理可拉取；分晓等其他应用后续接入。`
+文档与界面使用固定表述：`归位可发布、拉取共享名单；辑册可拉取；分晓等其他应用后续接入。`
 
 ## 五、明确非目标
 
@@ -85,7 +85,7 @@
 - T4 共享名单模型与投影：`teachcraft.roster.v1` / `seatgrid.daily`，`RosterFieldPresence` 字段级同意，未勾选字段置 null 且不进云端 JSON，哨兵测试锁住。
 - T5 宿主桥接与账号面板：`src/TeachCraft.App/Cloud` + `AccountPanelView` / `AccountWindow`，侧栏「账号与云同步」入口，四面板互斥，OOBE 第 4 页扩为四个动作。
 - T6 归位适配器：`src/SeatGrid.Core/Cloud` + `src/SeatGrid.App/Cloud`，发布 / 拉取共享名单与关联座位表，版本 / 冲突 / 兜底快照 / 考场拒绝。
-- T7 作业整理适配器：`SharedRosterImport.cs` + `src/Homework.App/Cloud`，多班拉取、同名班级提示、性别缺口如实标注、不上传。
+- T7 辑册适配器：`SharedRosterImport.cs` + `src/Homework.App/Cloud`，多班拉取、同名班级提示、性别缺口如实标注、不上传。
 - T8 走查与测试：`--account-shot` / `--account-panel` / `--seatgrid-cloud-shot` / `--homework-roster-shot`，假 handler 与 Noop 凭据存储，不联网、不写真实账号状态。
 - T9b 文档与版本：本文件、`AGENTS.md`、`.memory` 各篇、`README.md`、`.gitignore` 同步，版本升至 `1.45.0`（Minor）。
 
@@ -101,7 +101,7 @@
 - Core：座位表版本恢复读 `v`（回退 `version`）；40–64KB 不可压缩文档改发原文而非拒绝；404 按 HTTP 状态判定；account.json 缺失时清空孤立 token（fail-closed）；KV 分页按原始页大小推进。
 - 设置：`ICloudSyncSettingsStore.TrySave` 默认接口成员返回失败，账号面板显示「设置未能保存到本机」；损坏文件恢复默认并提示。
 - 归位：覆盖名单预填取所选行而非已关联；删除当前关联名单即解除本地关联；考场态提示「考场快照不能上传云端」；删除死代码；`LastRoster*` 接线（`LastRosterFields` / `RememberRosterFields`）。
-- 作业整理：跳过行分列空姓名/重复/名单缺失；重名班级按同一归一化键判重与合并；拉取页登录入口可达；刷新失败清空可选行；缺失名单计入跳过数。
+- 辑册：跳过行分列空姓名/重复/名单缺失；重名班级按同一归一化键判重与合并；拉取页登录入口可达；刷新失败清空可选行；缺失名单计入跳过数。
 - 实测：构建 0 警告 0 错误；非单实例 1986 项全过（TeachCraft.Tests 1710 + GradeStrip 108 + GradeWeave 168）；三个走查 exit=0。
 
 ## 座位表自动云同步（1.45.0 增补）

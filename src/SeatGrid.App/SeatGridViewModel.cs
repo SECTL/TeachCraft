@@ -18,6 +18,7 @@ using SeatGrid.Core.Models;
 using SeatGrid.Core.Rendering;
 using SeatGrid.Core.Roster;
 using SeatGrid.Core.Seating;
+using TeachCraft.Shared;
 
 namespace SeatGrid.App;
 
@@ -242,7 +243,7 @@ public partial class SeatGridViewModel : ObservableObject
             catch (Exception ex)
             {
                 // 自动保存失败绝不弹错误框，也不动本地数据；只在状态栏留一句可操作的提示。
-                ReportAutoSyncFailure($"自动同步失败：{ex.Message}（可手动上传）");
+                ReportAutoSyncFailure($"自动同步失败：{ErrorText.Describe(ex, "上传座位表")}。可手动上传。");
             }
         }, cts.Token);
     }

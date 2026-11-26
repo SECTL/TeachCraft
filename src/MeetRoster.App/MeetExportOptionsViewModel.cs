@@ -4,6 +4,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MeetRoster.Core.Export;
 using MeetRoster.Core.Models;
+using TeachCraft.Shared;
 
 namespace MeetRoster.App;
 
@@ -233,7 +234,7 @@ public sealed partial class MeetExportOptionsViewModel : ObservableObject
         {
             if (token.IsCancellationRequested || _isClosed) return;
             PreviewImage = null;
-            PreviewEmptyText = "预览生成失败：" + ex.Message;
+            PreviewEmptyText = ErrorText.Describe(ex, "生成预览");
             PreviewCaption = string.Empty;
             PreviewDetail = string.Empty;
         }

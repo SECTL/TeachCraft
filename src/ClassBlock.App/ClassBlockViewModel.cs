@@ -307,6 +307,46 @@ public partial class ClassBlockViewModel : ObservableObject
         return TimetableBuilder.Build(_master, SelectedClass.Key, template, ToSettings());
     }
 
+    public (bool HasMaster, string Grade, string Term, string? SelectedClass, IReadOnlyList<string> Classes) ReadRemoteSummary()
+        => (
+            HasMaster,
+            GradeText,
+            TermText,
+            SelectedClass?.Name,
+            _classes.Select(c => c.Name).ToList());
+
+    public bool TrySelectClassRemote(string? className, out string? selectedName)
+    {
+        if (string.IsNullOrWhiteSpace(className))
+        {
+            selectedName = SelectedClass?.Name;
+            return true;
+        }
+
+        if (_master is null)
+        {
+            selectedName = null;
+            return false;
+        }
+
+        var query = className.Trim();
+        var match = _classes.FirstOrDefault(c =>
+            string.Equals(c.Key, query, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c.Name, query, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            selectedName = null;
+            return false;
+        }
+
+        if (!FilteredClasses.Contains(match))
+            SearchText = string.Empty;
+
+        SelectedClass = match;
+        selectedName = match.Name;
+        return true;
+    }
+
     /// <summary>
     /// 重建预览。输入类改动走 250ms 防抖，旧的渲染任务会被取消；
     /// PNG 解码放到后台线程，避免大位图在 UI 线程解码造成卡顿。
@@ -373,7 +413,8 @@ public partial class ClassBlockViewModel : ObservableObject
         }
         catch (ClassBlockException ex)
         {
-            if (!token.IsCancellationRequested && !_isClosed) SetStatus(ex.Message, true);
+            if (!token.IsCancellationRequested && !_isClosed)
+                SetStatus(ErrorText.Describe(ex, "生成课程表"), true);
         }
         catch (Exception ex)
         {

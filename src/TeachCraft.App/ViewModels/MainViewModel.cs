@@ -5,6 +5,8 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TeachCraft.App.Cloud;
+using TeachCraft.App.ControlCenter;
+using TeachCraft.Core.Control;
 using TeachCraft.Core.Oobe;
 using TeachCraft.Core.Tools;
 using TeachCraft.Core.Updating;
@@ -62,7 +64,7 @@ private readonly List<ToolItemViewModel> _teachTools;
     public ObservableCollection<ToolItemViewModel> VisibleTeachTools { get; } = new();
 
     /// <summary>
-    /// 案头常备卡：状态（展开与否）与检索文本。顺序固定为分晓 / 归位 / 时序 / 织序 / 竞名，
+    /// 案头常备卡：状态（展开与否）与检索文本。顺序固定为分晓 / 归位 / 时序 / 织序 / 竞名 / 辑册，
     /// 说明文案来自 ToolDescriptionCatalog，避免同一段话在 XAML 与视图模型里各写一份。
     /// 必须是实例字段：卡片带展开状态，做成 static 会让多个视图模型共享同一份，
     /// 测试里第二个实例一创建就继承上一次的展开状态。
@@ -83,8 +85,8 @@ private readonly List<ToolItemViewModel> _teachTools;
             ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.GradeWeaveKey)!),
         new(ToolDescriptionCatalog.MeetRosterKey, "竞名",
             ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.MeetRosterKey)!),
-        new(ToolDescriptionCatalog.HomeworkKey, "作业整理",
-            ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.HomeworkKey)!),
+        new(ToolDescriptionCatalog.HomeworkKey, "辑册",
+            ToolDescriptionCatalog.ForApp(ToolDescriptionCatalog.HomeworkKey)!, "WorkFolio"),
     };
 
     public AppCardViewModel GradeStripCard => _appCards[0];
@@ -121,11 +123,14 @@ private readonly List<ToolItemViewModel> _teachTools;
         Func<UpdateSource, IUpdateCheckService>? checkServiceFactory = null,
         IOobeStateStore? oobeStateStore = null,
         bool? showOobe = null,
-        CloudRuntime? cloudRuntime = null)
+        CloudRuntime? cloudRuntime = null,
+        IPendingChangelogStore? pendingChangelogStore = null,
+        ControlRuntime? controlRuntime = null)
     {
         _identity = identity ?? BuildIdentity.Current(typeof(MainViewModel));
         _checkService = checkService;
         _stateStore = stateStore ?? new UpdateStateStore();
+        _pendingChangelogStore = pendingChangelogStore ?? new NoopPendingChangelogStore();
         _downloaderFactory = downloaderFactory ?? (() => new UpdateDownloader(SharedHandlers.Default));
         _checkServiceFactory = checkServiceFactory ?? CreateDefaultCheckService;
 
@@ -153,6 +158,11 @@ private readonly List<ToolItemViewModel> _teachTools;
             ? new DesktopAccountSignInFlow(account, new ShellBrowserLauncher(), new LoopbackOAuthReceiver())
             : null;
         Account = new AccountViewModel(Cloud, signIn);
+
+        Control = controlRuntime ?? ControlRuntime.Disabled;
+        ControlCenter = new ControlViewModel(Control, Cloud);
+        if (Cloud.Account is { } acct)
+            acct.StateChanged += (_, _) => ControlCenter.Refresh();
 
         // showOobe：null = 按状态自行判断（默认）；true = 强制打开；false = 强制不打开。
         // 判定本身是只读的——不管打开与否都算一遍，这样 --oobe-metrics 能如实反映「该不该弹」。
@@ -239,11 +249,20 @@ private readonly List<ToolItemViewModel> _teachTools;
     /// <summary>账号面板是否展开。与其余面板互斥，共用同一个抽屉。</summary>
     [ObservableProperty] private bool _isAccountPanelOpen;
 
+    /// <summary>集控面板是否展开。与其余面板互斥，共用同一个抽屉。</summary>
+    [ObservableProperty] private bool _isControlPanelOpen;
+
     /// <summary>本进程唯一的云端装配结果。宿主窗口据此给各应用构造只读桥。</summary>
     public CloudRuntime Cloud { get; }
 
     /// <summary>账号页状态机。由构造时注入的 CloudRuntime 决定是真实能力还是未接入。</summary>
     public AccountViewModel Account { get; }
+
+    /// <summary>本进程唯一的集控装配结果。</summary>
+    public ControlRuntime Control { get; }
+
+    /// <summary>集控中心面板状态机。</summary>
+    public ControlViewModel ControlCenter { get; }
 
     /// <summary>更新面板里显示的当前构建身份（含预览序号与部署形态）。</summary>
     [ObservableProperty] private string _installDescription = "";
@@ -349,7 +368,7 @@ private readonly List<ToolItemViewModel> _teachTools;
     [ObservableProperty] private bool _isTeachActive;
     [ObservableProperty] private bool _isProjectActive;
 
-    public bool IsPanelOpen => IsToolPanelOpen || IsProjectPanelOpen || IsUpdatePanelOpen || IsAccountPanelOpen;
+    public bool IsPanelOpen => IsToolPanelOpen || IsProjectPanelOpen || IsUpdatePanelOpen || IsAccountPanelOpen || IsControlPanelOpen;
     public double PanelWidth { get; private set; } = 452;
     private double _windowWidth = 1200;
     public bool IsExamPaperLayoutPanelOpen => IsToolPanelOpen && SelectedTool?.Kind == ToolKind.ExamPaperLayout;
@@ -386,7 +405,9 @@ private readonly List<ToolItemViewModel> _teachTools;
             tool.ResultText = string.Empty;
         }
         IsProjectPanelOpen = false;
+        IsUpdatePanelOpen = false;
         IsAccountPanelOpen = false;
+        IsControlPanelOpen = false;
         IsProjectActive = false;
         IsToolPanelOpen = true;
         OnPropertyChanged(nameof(IsExamPaperLayoutPanelOpen));
@@ -410,7 +431,9 @@ private readonly List<ToolItemViewModel> _teachTools;
     public void OpenProject()
     {
         IsToolPanelOpen = false;
+        IsUpdatePanelOpen = false;
         IsAccountPanelOpen = false;
+        IsControlPanelOpen = false;
         IsProjectPanelOpen = true;
         IsProjectActive = true;
         SetStatus("正在查看 分晓 · GradeStrip");
@@ -423,6 +446,7 @@ private readonly List<ToolItemViewModel> _teachTools;
         IsProjectPanelOpen = false;
         IsUpdatePanelOpen = false;
         IsAccountPanelOpen = false;
+        IsControlPanelOpen = false;
         IsProjectActive = false;
         SetStatus(DefaultStatusText);
         NotifyPanelChanged();
@@ -452,6 +476,7 @@ private readonly List<ToolItemViewModel> _teachTools;
         IsToolPanelOpen = false;
         IsProjectPanelOpen = false;
         IsAccountPanelOpen = false;
+        IsControlPanelOpen = false;
         IsProjectActive = false;
         IsUpdatePanelOpen = true;
 
@@ -477,10 +502,28 @@ private readonly List<ToolItemViewModel> _teachTools;
         IsToolPanelOpen = false;
         IsProjectPanelOpen = false;
         IsUpdatePanelOpen = false;
+        IsControlPanelOpen = false;
         IsProjectActive = false;
         IsAccountPanelOpen = true;
 
         SetStatus("正在查看 账号与共享名单");
+        NotifyPanelChanged();
+    }
+
+    /// <summary>
+    /// 打开集控中心页。只摆出本机已知状态，不自动建立连接或触发网络请求。
+    /// </summary>
+    public void OpenControlPanel()
+    {
+        ControlCenter.Refresh();
+        IsToolPanelOpen = false;
+        IsProjectPanelOpen = false;
+        IsUpdatePanelOpen = false;
+        IsAccountPanelOpen = false;
+        IsProjectActive = false;
+        IsControlPanelOpen = true;
+
+        SetStatus("正在查看 SECTL 集控中心");
         NotifyPanelChanged();
     }
 
@@ -900,6 +943,10 @@ private readonly List<ToolItemViewModel> _teachTools;
                 return handlerMessage;
             }
 
+            // ShowGuidance（macOS / Linux）在下载与校验成功后记录待展示更新日志：
+            // 若用户随后手动替换并启动目标版本，新版本首次启动只展示一次；
+            // 若未安装而再次打开旧版本，启动判定会识别版本未变并自动清除。
+            _pendingChangelogStore.Save(PendingChangelogEntry.FromProposal(_identity.Version, proposal));
             var guidance = plan.Guidance ?? "已下载完成。";
             SetStatus(guidance);
             return guidance;
@@ -925,7 +972,25 @@ private readonly List<ToolItemViewModel> _teachTools;
     /// <summary>需要真正启动安装包时由 App 层订阅，ViewModel 不直接起进程。</summary>
     public event Func<string, InstallerPlan, Task<string>>? InstallerRequested;
 
+    /// <summary>本次启动由应用内升级成功后待展示一次的更新日志；消费后置空。</summary>
+    public UpdateChangelogDocument? StartupChangelog { get; private set; }
+
+    internal void SetStartupChangelog(UpdateChangelogDocument? document) => StartupChangelog = document;
+
+    internal UpdateChangelogDocument? ConsumeStartupChangelog()
+    {
+        var current = StartupChangelog;
+        StartupChangelog = null;
+        return current;
+    }
+
+    internal PendingChangelogEntry? CreatePendingChangelogEntry() =>
+        PendingUpdate is { } proposal
+            ? PendingChangelogEntry.FromProposal(_identity.Version, proposal)
+            : null;
+
     private readonly IUpdateStateStore _stateStore;
+    private readonly IPendingChangelogStore _pendingChangelogStore;
     private readonly Func<UpdateDownloader> _downloaderFactory;
 
 
@@ -952,6 +1017,7 @@ private readonly List<ToolItemViewModel> _teachTools;
     }
     partial void OnIsProjectPanelOpenChanged(bool value) => OnPropertyChanged(nameof(IsPanelOpen));
     partial void OnIsAccountPanelOpenChanged(bool value) => OnPropertyChanged(nameof(IsPanelOpen));
+    partial void OnIsControlPanelOpenChanged(bool value) => OnPropertyChanged(nameof(IsPanelOpen));
 
     private void ApplyFilter()
     {

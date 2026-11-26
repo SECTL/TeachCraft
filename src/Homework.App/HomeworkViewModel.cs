@@ -4,7 +4,7 @@ using Homework.Core.Models;
 
 namespace Homework.App;
 
-/// <summary>作业整理窗口外壳：首页批次列表与单个批次工作区之间导航，
+/// <summary>辑册窗口外壳：首页批次列表与单个批次工作区之间导航，
 /// 并持有长任务的忙碌状态与关窗守卫。</summary>
 public sealed partial class HomeworkViewModel : ObservableObject
 {

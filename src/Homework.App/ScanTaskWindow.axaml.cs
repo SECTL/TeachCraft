@@ -129,7 +129,7 @@ public partial class ScanTaskWindow : Window
         }
         catch (Exception ex)
         {
-            _viewModel.AddIncomingFailure(folder, $"打不开文件夹：{ex.Message}");
+            _viewModel.AddIncomingFailure(folder, ErrorText.Describe(ex, "打开文件夹"));
         }
     }
 
@@ -145,7 +145,7 @@ public partial class ScanTaskWindow : Window
         }
         catch (Exception ex)
         {
-            _viewModel.SetStatus($"复制路径失败：{ex.Message}");
+            _viewModel.SetStatus(ErrorText.Describe(ex, "复制路径"));
         }
     }
 
@@ -177,7 +177,7 @@ public partial class ScanTaskWindow : Window
         catch (Exception ex)
         {
             watcher?.Dispose();
-            _viewModel.AddIncomingFailure(folder, $"无法开始接收：{ex.Message}");
+            _viewModel.AddIncomingFailure(folder, ErrorText.Describe(ex, "开始接收"));
         }
     }
 
@@ -206,7 +206,7 @@ public partial class ScanTaskWindow : Window
             }
             catch (Exception ex)
             {
-                _viewModel.AddIncomingFailure(path, $"导入失败：{ex.Message}");
+                _viewModel.AddIncomingFailure(path, ErrorText.Describe(ex, "导入扫描件"));
             }
         });
     }
@@ -227,6 +227,6 @@ public partial class ScanTaskWindow : Window
             IReadOnlyList<string> paths,
             bool createNewBatch,
             CancellationToken token) =>
-            Task.FromResult(ScanImportOutcome.Failed("扫描窗口没有连接到作业整理。"));
+            Task.FromResult(ScanImportOutcome.Failed("扫描窗口没有连接到辑册。"));
     }
 }

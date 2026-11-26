@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using MeetRoster.Core.Models;
+using TeachCraft.Shared;
 
 namespace MeetRoster.Core.Import;
 
@@ -97,7 +98,7 @@ public static class OrderBookImporter
         }
         catch (InvalidDataException ex)
         {
-            issues.Add(new RegistrationIssue(ex.Message, false));
+            issues.Add(new RegistrationIssue(ErrorText.Describe(ex, "读取秩序册"), false));
         }
 
         ApplyRegistration(project, days, issues);

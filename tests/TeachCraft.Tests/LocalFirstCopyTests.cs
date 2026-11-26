@@ -326,9 +326,9 @@ public sealed class LocalFirstCopyTests
     {
         var readme = RepoRoot.Read("README.md");
 
-        // 必须如实写明哪几件应用接了云：归位可发布/拉取，作业整理只拉取，其余后续接入。
+        // 必须如实写明哪几件应用接了云：归位可发布/拉取，辑册只拉取，其余后续接入。
         Assert.Contains(
-            "归位可发布、拉取共享名单；作业整理可拉取；分晓等其他应用后续接入。",
+            "归位可发布、拉取共享名单；辑册可拉取；分晓等其他应用后续接入。",
             readme, StringComparison.Ordinal);
 
         // 「所有应用都可以…共享名单」这类全覆盖说法一律不许出现。
@@ -340,7 +340,7 @@ public sealed class LocalFirstCopyTests
     {
         var bridge = RepoRoot.Read(Path.Combine("src", "Homework.App", "Cloud", "IHomeworkRosterBridge.cs"));
 
-        // 作业整理对共享名单只读：桥上不得出现 Upload / Save / Put 方法。
+        // 辑册对共享名单只读：桥上不得出现 Upload / Save / Put 方法。
         foreach (var verb in new[] { "Upload", "Save", "Put" })
             Assert.DoesNotContain(verb, bridge, StringComparison.Ordinal);
 

@@ -13,8 +13,8 @@ public sealed record HomeworkRosterEntry(
     string FieldsSummary);
 
 /// <summary>
-/// 作业整理访问共享名单的只读桥。刻意不暴露任何上传 / 保存 / 删除入口：
-/// 作业整理只拉取，发布名单是「归位」的职责。
+/// 辑册访问共享名单的只读桥。刻意不暴露任何上传 / 保存 / 删除入口：
+/// 辑册只拉取，发布名单是「归位」的职责。
 /// </summary>
 public interface IHomeworkRosterBridge
 {
@@ -31,7 +31,7 @@ public interface IHomeworkRosterBridge
 
     Task<IReadOnlyList<HomeworkRosterEntry>> ListRostersAsync(CancellationToken ct);
 
-    /// <summary>按选中的名单 Id 拉取并映射成作业整理既有的名单结果。</summary>
+    /// <summary>按选中的名单 Id 拉取并映射成辑册既有的名单结果。</summary>
     Task<RosterImportResult> DownloadAsync(IReadOnlyList<string> rosterIds, CancellationToken ct);
 
     void OpenAccountSettings(Window owner);

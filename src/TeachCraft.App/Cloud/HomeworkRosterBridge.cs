@@ -7,11 +7,12 @@ using Homework.Core.Roster;
 using TeachCraft.App.ViewModels;
 using TeachCraft.App.Views;
 using TeachCraft.Core.Cloud;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App.Cloud;
 
 /// <summary>
-/// 宿主侧把云端能力翻译成作业整理的只读桥。
+/// 宿主侧把云端能力翻译成辑册的只读桥。
 /// <para>
 /// 「已配置」由宿主保证：未配置 / 走查时宿主注入 <see cref="NullHomeworkRosterBridge"/>，
 /// 本类根本不会被构造，因此这里只判登录态与用户开关。
@@ -88,7 +89,7 @@ public sealed class HomeworkRosterBridge : IHomeworkRosterBridge, IDisposable
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
             {
-                throw new CloudAuthException(ex.Message, "invalid_roster", ex);
+                throw new CloudAuthException(ErrorText.Describe(ex, "读取共享名单"), "invalid_roster", ex);
             }
             if (doc is null)
             {

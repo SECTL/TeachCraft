@@ -17,6 +17,7 @@ using GradeStrip.Core.Export;
 using GradeStrip.Core.Import;
 using GradeStrip.Core.Layout;
 using GradeStrip.Core.Model;
+using TeachCraft.Shared;
 
 namespace GradeStrip.App.ViewModels;
 
@@ -1390,13 +1391,19 @@ public partial class MainViewModel : ViewModelBase
             and not InvalidDataException and not InvalidOperationException)
             return FriendlyError(ex.InnerException, prefix);
 
+        // 调用方传来的前缀已带「失败」（如「导出失败」），Describe 会自己补「失败：」，
+        // 这里去掉尾巴只留动词短语，避免拼出「失败失败」。
+        var action = prefix.EndsWith("失败", StringComparison.Ordinal)
+            ? prefix[..^"失败".Length]
+            : prefix;
+
         var text = ex switch
         {
             FileNotFoundException or DirectoryNotFoundException => "找不到文件，可能已被移动或删除",
             UnauthorizedAccessException => "没有权限访问该文件，请检查文件属性或换一个位置",
             IOException => $"{prefix}：文件正被其他程序占用（通常是已在 Excel 中打开），请关闭后重试",
-            InvalidDataException or InvalidOperationException => ex.Message,
-            _ => $"{prefix}：{ex.Message}",
+            InvalidDataException or InvalidOperationException => ErrorText.Describe(ex, action),
+            _ => ErrorText.Describe(ex, action),
         };
 
         // 底层库（如解压失败）会抛出英文提示，统一兜底成中文

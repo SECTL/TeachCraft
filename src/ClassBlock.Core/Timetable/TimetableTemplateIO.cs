@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ClassBlock.Core.Models;
+using TeachCraft.Shared;
 
 namespace ClassBlock.Core.Timetable;
 
@@ -38,7 +39,11 @@ public static class TimetableTemplateIO
         }
         catch (Exception ex)
         {
-            throw new ClassBlock.Core.ClassBlockException($"模板文件格式不正确：{ex.Message}", ex);
+            // JsonException 的通用文案说的是「工程文件」，对模板不对；这里给模板专用话术。
+            var message = ex is JsonException
+                ? "模板文件格式不正确，可能已损坏；请重新选择模板。"
+                : ErrorText.Describe(ex, "读取模板文件");
+            throw new ClassBlock.Core.ClassBlockException(message, ex);
         }
     }
 

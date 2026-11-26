@@ -65,11 +65,11 @@ public partial class TimetableTemplateEditorWindow : Window
         }
         catch (ClassBlockException ex)
         {
-            SetEditorStatus(ex.Message);
+            SetEditorStatus(ErrorText.Describe(ex, "保存模板"));
         }
         catch (Exception ex)
         {
-            SetEditorStatus($"保存模板失败：{ex.Message}");
+            SetEditorStatus(ErrorText.Describe(ex, "保存模板"));
         }
     }
 
@@ -91,7 +91,7 @@ public partial class TimetableTemplateEditorWindow : Window
         }
         catch (Exception ex)
         {
-            SetEditorStatus($"删除模板失败：{ex.Message}");
+            SetEditorStatus(ErrorText.Describe(ex, "删除模板"));
         }
     }
 

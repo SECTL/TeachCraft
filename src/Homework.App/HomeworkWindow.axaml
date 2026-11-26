@@ -4,7 +4,7 @@
         xmlns:controls="using:Homework.App.Controls"
         x:Class="Homework.App.HomeworkWindow"
         x:DataType="app:HomeworkViewModel"
-        Title="作业整理 · Homework"
+        Title="辑册 · WorkFolio"
         Icon="avares://TeachCraft/Assets/teachcraft.ico"
         Width="1440" Height="920"
         MinWidth="1120" MinHeight="680"
@@ -164,9 +164,9 @@
                             </Canvas>
                         </Viewbox>
                         <StackPanel VerticalAlignment="Center" Spacing="1">
-                            <TextBlock Text="作业整理" FontFamily="{StaticResource SerifFont}" FontSize="15"
+                            <TextBlock Text="辑册" FontFamily="{StaticResource SerifFont}" FontSize="15"
                                        FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
-                            <TextBlock Text="HOMEWORK" FontFamily="{StaticResource MonoFont}" FontSize="8.5"
+                            <TextBlock Text="WORKFOLIO" FontFamily="{StaticResource MonoFont}" FontSize="8.5"
                                        LetterSpacing="2" Foreground="{StaticResource MutedBrush}" />
                         </StackPanel>
                         <Border Width="1" Height="24" Background="{StaticResource LineBrush}" Margin="5,0" />
@@ -177,7 +177,7 @@
                                    FontFamily="{StaticResource SerifFont}" FontSize="18"
                                    Foreground="{StaticResource InkBrush}" VerticalAlignment="Center"
                                    MaxWidth="260" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="课堂归档" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                        <TextBlock Text="作业归档" FontSize="11" Foreground="{StaticResource MutedBrush}"
                                    VerticalAlignment="Center" Margin="2,0,0,0" />
                     </StackPanel>
 
@@ -244,7 +244,7 @@
                             HorizontalAlignment="Center" VerticalAlignment="Center"
                             Width="460" Padding="34,30">
                         <StackPanel Spacing="12" HorizontalAlignment="Center">
-                            <TextBlock Text="HOMEWORK" Classes="eyebrow" HorizontalAlignment="Center" />
+                            <TextBlock Text="WORKFOLIO" Classes="eyebrow" HorizontalAlignment="Center" />
                             <TextBlock Text="还没有批次" FontFamily="{StaticResource SerifFont}" FontSize="22"
                                        Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" />
                             <TextBlock Text="新建一个批次，导入扫描的作业页与班级名单，再逐张匹配学生。"

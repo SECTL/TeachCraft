@@ -35,7 +35,7 @@ public static class ToolDescriptionCatalog
         "certificate-batch",
     };
 
-    /// <summary>案头常备顺序：分晓 / 归位 / 时序 / 织序 / 竞名 / 作业整理。</summary>
+    /// <summary>案头常备顺序：分晓 / 归位 / 时序 / 织序 / 竞名 / 辑册。</summary>
     public static IReadOnlyList<string> AppKeys { get; } = new[]
     {
         GradeStripKey,
@@ -318,7 +318,7 @@ public static class ToolDescriptionCatalog
             }),
 
         [HomeworkKey] = new ToolDescription(
-            "作业整理",
+            "辑册",
             "把扫描的作业页按学生归档：导入图片或 PDF，或用扫描任务直接接收，逐张匹配，四种导出一次配好。",
             new[] { "扫描任务", "图片与 PDF 拆页", "名单导入或手填", "逐张匹配", "四种导出" },
             "作业照片 JPG / PNG、扫描 PDF；Windows 可直接用 WIA 扫描仪，其他平台监听收件文件夹；班级名单 .xlsx / .xls / .csv，也可手动录入",

@@ -144,7 +144,7 @@ public sealed partial class ExportOptionsWindow : Window, INotifyPropertyChanged
         catch (HomeworkException ex)
         {
             // 规划阶段已经把可读原因放进 Conflicts / PreviewText；这里只兜住 BuildOptions 的意外失败。
-            DialogError = ex.Message;
+            DialogError = ErrorText.Describe(ex, "生成导出设置");
         }
         catch (Exception ex)
         {

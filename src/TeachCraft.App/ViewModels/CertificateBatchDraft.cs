@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TeachCraft.Core.Tools;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App.ViewModels;
 
@@ -136,7 +137,7 @@ public partial class CertificateBatchDraft : ObservableObject
             ApplyRoster(path, CertificateRosterReader.LoadWorkbook(path));
             return true;
         }
-        catch (ToolboxException ex) { return SetAssignmentError(ex.Message); }
+        catch (ToolboxException ex) { return SetAssignmentError(ErrorText.Describe(ex, "读取获奖名单")); }
         finally { FinishRosterLoad(generation); }
     }
 
@@ -185,7 +186,7 @@ public partial class CertificateBatchDraft : ObservableObject
         {
             var generation = ++_rosterLoadGeneration;
             try { ApplyInputs(template, roster, CertificateRosterReader.LoadWorkbook(roster)); }
-            catch (ToolboxException ex) { error = ex.Message; return false; }
+            catch (ToolboxException ex) { error = ErrorText.Describe(ex, "读取获奖名单"); return false; }
             finally { FinishRosterLoad(generation); }
         }
         else if (template is not null) AssignTemplate(template);
@@ -217,7 +218,7 @@ public partial class CertificateBatchDraft : ObservableObject
             CertificateWorkbookSnapshot? workbook = null;
             string? error = null;
             try { workbook = await Task.Run(() => CertificateRosterReader.LoadWorkbook(roster)); }
-            catch (ToolboxException ex) { error = ex.Message; }
+            catch (ToolboxException ex) { error = ErrorText.Describe(ex, "读取获奖名单"); }
 
             if (generation != _rosterLoadGeneration
                 || (template is not null && templateGeneration != _templateInputGeneration))
@@ -330,7 +331,7 @@ public partial class CertificateBatchDraft : ObservableObject
             AwardColumnChoices.Add(CertificateColumnOption.NoAward);
             StatusText = "请明确选择姓名列和奖项列；如不打印奖项，请明确选择“（不印奖项）”。";
         }
-        catch (ToolboxException ex) { StatusText = ex.Message; }
+        catch (ToolboxException ex) { StatusText = ErrorText.Describe(ex, "读取工作表"); }
         NotifyState();
     }
 
@@ -349,7 +350,7 @@ public partial class CertificateBatchDraft : ObservableObject
                 _worksheet.HeaderRow, SelectedNameColumn.Index, SelectedAwardColumn.Index);
             StatusText = $"已读取 {_records.Count} 条奖状记录；重复姓名会按原表逐行生成。";
         }
-        catch (ToolboxException ex) { StatusText = ex.Message; }
+        catch (ToolboxException ex) { StatusText = ErrorText.Describe(ex, "读取奖状记录"); }
         NotifyState();
     }
 

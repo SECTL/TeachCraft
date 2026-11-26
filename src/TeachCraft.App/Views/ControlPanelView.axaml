@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TeachCraft.App.ViewModels"
+             xmlns:ctrl="using:TeachCraft.Core.Control"
+             x:DataType="vm:ControlViewModel"
+             x:Class="TeachCraft.App.Views.ControlPanelView">
+    <StackPanel Spacing="0">
+
+        <!-- 面板眉头：与工具／更新／账号面板同构 -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                <Border Width="18" Height="1" Background="{StaticResource AccentBrush}" VerticalAlignment="Center"
+                        Opacity="0.8" />
+                <TextBlock Text="CONTROL" FontFamily="{StaticResource MonoFont}" FontSize="10" LetterSpacing="2.4"
+                           Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="/" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="#C9C1AE" />
+                <TextBlock Text="集控中心" FontSize="10.5" LetterSpacing="0.8"
+                           Foreground="{StaticResource MutedBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="panel-close" Click="OnClose" VerticalAlignment="Top"
+                    ToolTip.Tip="关闭" AutomationProperties.Name="关闭">
+                <Path Width="11" Height="11" Stretch="Uniform"
+                      Data="M3,3 L11,11 M11,3 L3,11" Stroke="{Binding $parent[Button].Foreground}"
+                      StrokeThickness="1.4" StrokeLineCap="Round" />
+            </Button>
+        </Grid>
+
+        <TextBlock FontFamily="{StaticResource SerifFont}" FontSize="32" LetterSpacing="1"
+                   Foreground="{StaticResource InkBrush}">
+            <Run Text="SECTL 集控中心" />
+        </TextBlock>
+        <TextBlock Text="{Binding StatusLabel}" FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
+                   Foreground="{StaticResource AccentDeepBrush}" Margin="0,5,0,6" />
+        <TextBlock Text="{Binding SettingsSaveWarning}" FontSize="10" LineHeight="16" TextWrapping="Wrap"
+                   Foreground="{StaticResource AccentDeepBrush}" IsVisible="{Binding HasSettingsSaveWarning}"
+                   Margin="0,0,0,8" />
+
+        <!-- 异常状态提示横幅（被接管 / 被移除） -->
+        <Border IsVisible="{Binding IsSuperseded}"
+                Background="{StaticResource AccentWashBrush}"
+                BorderBrush="{StaticResource AccentDeepBrush}" BorderThickness="1"
+                CornerRadius="6" Padding="12,10" Margin="0,0,0,14">
+            <TextBlock Text="⚠ 当前班级已被另一台设备接管，本机已回到未占班状态。如需恢复调度，请在下方重新点「占用此班」。"
+                       FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                       Foreground="{StaticResource InkBrush}" />
+        </Border>
+        <Border IsVisible="{Binding IsRevoked}"
+                Background="{StaticResource AccentWashBrush}"
+                BorderBrush="{StaticResource AccentDeepBrush}" BorderThickness="1"
+                CornerRadius="6" Padding="12,10" Margin="0,0,0,14">
+            <TextBlock Text="⛔ 设备凭证已被管理员移除，已停止自动重连。请重新输入地点ID与配对码，或点击「清除本机接入」。"
+                       FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                       Foreground="{StaticResource InkBrush}" />
+        </Border>
+
+        <!-- 01 开关与接入 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <TextBlock Text="01" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="连接与接入" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14" Margin="0,0,0,20">
+            <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Text="启用 SECTL 集控" FontSize="11.5" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="默认关闭；开启并接入后保持一条 WebSocket 长连接以接收大屏指令。"
+                                   FontSize="9.5" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding ControlEnabled}"
+                                  IsEnabled="{Binding IsConfigured}"
+                                  OnContent="已开启" OffContent="已关闭"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.Name="启用 SECTL 集控" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock Text="允许远程控制指令" FontSize="11.5" Foreground="{StaticResource InkBrush}" />
+                        <TextBlock Text="关闭后仍保留连接状态，但收到的控制指令一律按本机设置拒绝。"
+                                   FontSize="9.5" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding LocalRemoteAllowed}"
+                                  IsEnabled="{Binding IsConfigured}"
+                                  OnContent="允许" OffContent="暂停"
+                                  VerticalAlignment="Center"
+                                  AutomationProperties.Name="允许远程控制指令" />
+                </Grid>
+
+                <Border Height="1" Background="{StaticResource LineBrush}" />
+
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="地点" FontSize="10.5"
+                               Foreground="{StaticResource MutedBrush}" Margin="0,0,14,0" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SiteLabel}" FontSize="10.5"
+                               TextWrapping="Wrap" Foreground="{StaticResource InkSoftBrush}" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="设备ID" FontSize="10.5"
+                               Foreground="{StaticResource MutedBrush}" Margin="0,7,14,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DeviceIdText}"
+                               FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="占班" FontSize="10.5"
+                               Foreground="{StaticResource MutedBrush}" Margin="0,7,14,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedClassText}" FontSize="10.5"
+                               Foreground="{StaticResource InkSoftBrush}" Margin="0,7,0,0" />
+                </Grid>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="服务器地址与设备名称" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+                    <TextBox Text="{Binding HostText}" PlaceholderText="https://sectl.cn" FontSize="11"
+                             IsEnabled="{Binding IsConfigured}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBox Grid.Column="0" Text="{Binding DeviceNameText}" PlaceholderText="教室机名称" FontSize="11"
+                                 IsEnabled="{Binding IsConfigured}" />
+                        <Button Grid.Column="1" Content="保存" Classes="ghost" Click="OnSaveConfig"
+                                IsEnabled="{Binding IsConfigured}" />
+                    </Grid>
+                </StackPanel>
+
+                <Border Height="1" Background="{StaticResource LineBrush}" />
+
+                <!-- 方式 A：地点ID + 配对码（免登录教室机） -->
+                <StackPanel Spacing="7">
+                    <TextBlock Text="双因子接入（免账号登录）" FontSize="10.5" Foreground="{StaticResource InkBrush}" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <TextBox Grid.Column="0" Text="{Binding SiteIdInput}" PlaceholderText="地点ID 如 SC-6M34RQ"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                 IsEnabled="{Binding IsConfigured}" />
+                        <TextBox Grid.Column="1" Text="{Binding PairCodeInput}" PlaceholderText="配对码 如 ABCD-7KQ2"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                 IsEnabled="{Binding IsConfigured}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="配对码接入" Classes="primary" Click="OnEnrollPairCode"
+                                IsEnabled="{Binding IsConfigured}" />
+                        <Button Content="清除本机接入" Classes="ghost" Click="OnUnenroll"
+                                IsEnabled="{Binding HasCredential}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- 方式 B：用已登录 SECTL 账号接入 -->
+                <StackPanel Spacing="7">
+                    <TextBlock Text="用已登录的 SECTL 账号接入" FontSize="10.5" Foreground="{StaticResource InkBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="读取我的地点" Classes="ghost" Click="OnLoadAccountSites"
+                                IsEnabled="{Binding CanUseAccountEnroll}" />
+                        <Button Content="用选中地点接入" Classes="ghost" Click="OnEnrollWithAccount"
+                                IsEnabled="{Binding CanUseAccountEnroll}" />
+                    </StackPanel>
+                    <ComboBox ItemsSource="{Binding AccountSites}"
+                              SelectedItem="{Binding SelectedAccountSite}"
+                              IsVisible="{Binding HasAccountSites}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate DataType="ctrl:ControlSiteSummary">
+                                <TextBlock Text="{Binding DisplayLabel}" FontSize="11" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
+                <TextBlock Text="{Binding FeedbackMessage}" FontSize="10.5" LineHeight="17" TextWrapping="Wrap"
+                           Foreground="{StaticResource AccentDeepBrush}" IsVisible="{Binding HasFeedbackMessage}" />
+            </StackPanel>
+        </Border>
+
+        <!-- 02 班级归属与座位几何 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <TextBlock Text="02" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="班级归属与占班调度" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14" Margin="0,0,0,20">
+            <StackPanel Spacing="10">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="获取班级列表" Classes="ghost" Click="OnRefreshTree"
+                            IsEnabled="{Binding HasCredential}" />
+                    <Button Content="绑定班级" Classes="ghost" Click="OnAssignClass"
+                            IsEnabled="{Binding HasTreeClasses}" />
+                </StackPanel>
+                <ComboBox ItemsSource="{Binding TreeClasses}"
+                          SelectedItem="{Binding SelectedTreeClass}"
+                          IsVisible="{Binding HasTreeClasses}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate DataType="vm:ControlClassOption">
+                            <TextBlock Text="{Binding DisplayLabel}" FontSize="11" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="占用此班" Classes="primary" Click="OnOccupyClass"
+                            IsEnabled="{Binding CanOccupyClass}" />
+                    <Button Content="释放占班" Classes="ghost" Click="OnReleaseClass"
+                            IsEnabled="{Binding CanReleaseClass}" />
+                    <Button Content="查座签几何" Classes="ghost" Click="OnPreviewSeats"
+                            IsEnabled="{Binding HasCredential}" />
+                </StackPanel>
+                <TextBlock Text="{Binding SeatGeometrySummary}" FontSize="10" LineHeight="16" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}" IsVisible="{Binding HasSeatGeometrySummary}" />
+            </StackPanel>
+        </Border>
+
+        <!-- 03 隐私与安全边界 -->
+        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,0,0,10">
+            <TextBlock Text="03" FontFamily="{StaticResource MonoFont}" FontSize="9"
+                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="隐私边界与最近记录" FontSize="11.5" Foreground="{StaticResource InkBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <Border Classes="card" Padding="16,14">
+            <StackPanel Spacing="8">
+                <TextBlock Text="知微集控只处理大屏展示指令（归位视角 / 全屏投影 / 考场模式 / 时序显示）与非身份摘要（人数、排数、冲突计数），从不声明或上传学生姓名、学号、成绩或原始文件。若教室机装有还原卡，请把 %LOCALAPPDATA%\TeachCraft\Control 加入穿透白名单。"
+                           FontSize="10" LineHeight="16" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}" />
+                <ItemsControl ItemsSource="{Binding RecentLogs}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding .}" FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                       Foreground="{StaticResource InkSoftBrush}" TextWrapping="Wrap" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+    </StackPanel>
+</UserControl>

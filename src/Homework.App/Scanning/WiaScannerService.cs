@@ -98,11 +98,12 @@ public sealed class WiaScannerService : IScannerService
                 catch (COMException ex)
                 {
                     var friendly = WiaErrorText.DescribeHResult((uint)ex.ErrorCode);
-                    errors.Add($"{attempt.Name}: 0x{(uint)ex.ErrorCode:X8} {friendly ?? ex.Message}");
+                    var reason = friendly ?? $"扫描仪驱动报错（代码 0x{(uint)ex.ErrorCode:X8}），请确认设备已连接、驱动正常后重试。";
+                    errors.Add($"{attempt.Name}：{reason}");
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    errors.Add($"{attempt.Name}: {ex.GetType().Name} {ex.Message}");
+                    errors.Add($"{attempt.Name}：扫描仪驱动报错，请确认设备已连接、驱动正常后重试。");
                 }
                 finally
                 {
@@ -119,7 +120,8 @@ public sealed class WiaScannerService : IScannerService
         }
         catch (COMException ex)
         {
-            throw new HomeworkException($"驱动界面扫描失败（COM 0x{(uint)ex.ErrorCode:X8}）：{ex.Message}", ex);
+            throw new HomeworkException(
+                $"扫描仪驱动报错（代码 0x{(uint)ex.ErrorCode:X8}），请确认设备已连接、驱动正常后重试。", ex);
         }
         finally
         {

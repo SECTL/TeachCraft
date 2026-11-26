@@ -8,7 +8,7 @@ public enum ScanFileKind
 }
 
 /// <summary>
-/// 判断收件文件夹里的文件是否值得导入。只接受作业整理已有的图片格式与 PDF；
+/// 判断收件文件夹里的文件是否值得导入。只接受辑册已有的图片格式与 PDF；
 /// 扫描仪写入中的临时文件、系统缩略图与 Office 锁文件一律跳过。
 /// </summary>
 public static class ScanFileClassifier

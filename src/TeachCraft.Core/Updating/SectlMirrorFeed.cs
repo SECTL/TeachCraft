@@ -95,7 +95,7 @@ public static class SectlMirrorFeed
         if (string.IsNullOrEmpty(projectId)) return Array.Empty<ReleaseEntry>();
 
         // 版本表：只保留启用的，且必须能解析成语义版本。
-        var versions = new Dictionary<string, (SemanticVersion Version, bool Prerelease)>(StringComparer.Ordinal);
+        var versions = new Dictionary<string, (SemanticVersion Version, bool Prerelease, string? Notes)>(StringComparer.Ordinal);
         if (root.TryGetProperty("versions", out var versionArray) && versionArray.ValueKind == JsonValueKind.Array)
         {
             foreach (var v in versionArray.EnumerateArray())
@@ -113,7 +113,8 @@ public static class SectlMirrorFeed
                 if (!SemanticVersion.TryParse(tag.TrimStart('v', 'V'), out var version)) continue;
 
                 var prerelease = v.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True;
-                versions[tag] = (version, prerelease);
+                var notes = ReadOptionalNotes(v);
+                versions[tag] = (version, prerelease, notes);
             }
         }
 
@@ -164,8 +165,22 @@ public static class SectlMirrorFeed
                 kv.Key,
                 kv.Value.Version,
                 kv.Value.Prerelease,
-                assets.TryGetValue(kv.Key, out var list) ? list : new List<ReleaseAsset>()))
+                assets.TryGetValue(kv.Key, out var list) ? list : new List<ReleaseAsset>(),
+                kv.Value.Notes))
             .ToList();
+    }
+
+    private static string? ReadOptionalNotes(JsonElement version)
+    {
+        foreach (var field in new[] { "changelog", "release_notes", "notes", "description", "body" })
+        {
+            if (version.TryGetProperty(field, out var el) && el.ValueKind == JsonValueKind.String)
+            {
+                var value = el.GetString();
+                if (!string.IsNullOrWhiteSpace(value)) return value;
+            }
+        }
+        return null;
     }
 
     private static bool HasServerSource(JsonElement package)

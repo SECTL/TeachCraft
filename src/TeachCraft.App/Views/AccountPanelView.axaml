@@ -144,7 +144,7 @@
                            FontSize="10.5" LineHeight="18" TextWrapping="Wrap"
                            Foreground="{StaticResource MutedBrush}"
                            IsVisible="{Binding !HasRosters}" />
-                <TextBlock Text="在归位或作业整理中拉取；分晓等其他应用后续接入。"
+                <TextBlock Text="在归位或辑册中拉取；分晓等其他应用后续接入。"
                            FontSize="9.5" LineHeight="17" TextWrapping="Wrap"
                            Foreground="{StaticResource MutedBrush}" />
             </StackPanel>

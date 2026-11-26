@@ -12,6 +12,7 @@ using SeatGrid.Core.Cloud;
 using TeachCraft.App.ViewModels;
 using TeachCraft.App.Views;
 using TeachCraft.Core.Cloud;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App.Cloud;
 
@@ -156,7 +157,7 @@ public sealed class SeatGridCloudBridge : ISeatGridCloudBridge, ISeatGridLastDoc
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             // Core 解码/版本校验抛标准异常以守住单测契约；桥层转为带 UserFacingMessage 的云端异常供界面原样提示。
-            throw new CloudAuthException(ex.Message, "invalid_roster", ex);
+            throw new CloudAuthException(ErrorText.Describe(ex, "读取共享名单"), "invalid_roster", ex);
         }
         if (doc is null) return null;
 
@@ -186,7 +187,7 @@ public sealed class SeatGridCloudBridge : ISeatGridCloudBridge, ISeatGridLastDoc
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            throw new CloudAuthException(ex.Message, "validation", ex);
+            throw new CloudAuthException(ErrorText.Describe(ex, "保存共享名单"), "validation", ex);
         }
         return new SeatGridRosterEntry(
             info.RosterId, info.Name, info.Version, info.UpdatedAtUtc, info.StudentCount,

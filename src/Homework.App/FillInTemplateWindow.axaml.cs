@@ -124,7 +124,7 @@ public sealed partial class FillInTemplateWindow : Window
         }
         catch (Exception ex)
         {
-            _viewModel.StatusText = "打开失败：" + ex.Message;
+            _viewModel.StatusText = ErrorText.Describe(ex, "打开成品");
         }
     }
 

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Homework.Core.Models;
 using SkiaSharp;
+using TeachCraft.Shared;
 
 namespace Homework.Core.Pages;
 
@@ -77,7 +78,7 @@ public static class PageImageDecoder
         catch (HomeworkException) { throw; }
         catch (Exception ex)
         {
-            throw new HomeworkException($"读取图片失败：{ex.Message}", ex);
+            throw new HomeworkException(ErrorText.Describe(ex, "读取图片"), ex);
         }
     }
 
@@ -119,7 +120,7 @@ public static class PageImageDecoder
         catch (HomeworkException) { throw; }
         catch (Exception ex)
         {
-            throw new HomeworkException($"读取 PDF 页失败：{ex.Message}", ex);
+            throw new HomeworkException(ErrorText.Describe(ex, "读取 PDF 页"), ex);
         }
     }
 

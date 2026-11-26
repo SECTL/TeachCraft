@@ -60,6 +60,25 @@ public partial class ClassBlockWindow : Window
         await ViewModel.RefreshPreviewAsync();
     }
 
+    public async Task<string?> ShowRemoteClassAsync(string? className)
+    {
+        if (!string.IsNullOrWhiteSpace(className))
+        {
+            if (!ViewModel.HasMaster)
+                throw new InvalidOperationException("时序尚未导入年级课程总表。");
+            if (!ViewModel.TrySelectClassRemote(className, out var matched))
+                throw new InvalidOperationException($"时序总表中未找到班级「{className.Trim()}」。");
+
+            await ViewModel.RefreshPreviewAsync();
+            return matched;
+        }
+
+        return ViewModel.SelectedClass?.Name;
+    }
+
+    public (bool HasMaster, string Grade, string Term, string? SelectedClass, IReadOnlyList<string> Classes) ReadRemoteSummary()
+        => ViewModel.ReadRemoteSummary();
+
     public void CaptureTo(string path)
     {
         var pixelSize = new PixelSize((int)Bounds.Width, (int)Bounds.Height);
@@ -159,10 +178,10 @@ public partial class ClassBlockWindow : Window
                 Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
                 ViewModel.SetStatus("已生成打印 PDF，请在打开的阅读器里打印。");
             }
-            catch (Exception openEx)
+            catch (Exception)
             {
                 ViewModel.SetStatus(
-                    $"课程表 PDF 已生成，但没有找到能打开它的程序：{path}（{openEx.Message}）", true);
+                    $"课程表 PDF 已生成，但没有找到能打开它的程序：{path}。请手动打开该文件。", true);
             }
         }
         catch (Exception ex)
@@ -281,15 +300,8 @@ public partial class ClassBlockWindow : Window
 
     private void Report(Exception ex, string prefix)
     {
-        if (ex is ClassBlockException)
-        {
-            ViewModel.SetStatus(ex.Message, true);
-            return;
-        }
-
-        // 非业务异常走 ErrorText 网关（审计 P2-13）：不把 CLR / IO 原文抛给老师。
-        // 调用方前缀已带「失败」（如「导入总表失败」），Describe 会自己补「失败：…」，
-        // 这里去掉尾巴只传动词短语，拼出来的话术与旧格式一致。
+        // Describe 原样透传业务异常的中文提示，其余异常只给中文话术（审计 P2-13）。
+        // 前缀已带「失败」，去掉尾巴只传动词短语，避免拼出「失败失败」。
         var action = prefix.EndsWith("失败", StringComparison.Ordinal)
             ? prefix[..^"失败".Length]
             : prefix;

@@ -142,7 +142,7 @@ public sealed partial class RosterImportWindow : Window, INotifyPropertyChanged
         catch (HomeworkException ex)
         {
             ResetExcelState();
-            ShowExcelError(ex.Message);
+            ShowExcelError(ErrorText.Describe(ex, "读取名单"));
         }
         catch (Exception ex)
         {
@@ -228,7 +228,7 @@ public sealed partial class RosterImportWindow : Window, INotifyPropertyChanged
         catch (HomeworkException ex)
         {
             ResetExcelState();
-            ShowExcelError(ex.Message);
+            ShowExcelError(ErrorText.Describe(ex, "读取工作表"));
         }
         catch (Exception ex)
         {
@@ -273,7 +273,7 @@ public sealed partial class RosterImportWindow : Window, INotifyPropertyChanged
         }
         catch (HomeworkException ex)
         {
-            ShowExcelError(ex.Message);
+            ShowExcelError(ErrorText.Describe(ex, "读取名单"));
         }
         catch (Exception ex)
         {
@@ -311,7 +311,7 @@ public sealed partial class RosterImportWindow : Window, INotifyPropertyChanged
         }
         catch (HomeworkException ex)
         {
-            PasteError.Text = ex.Message;
+            PasteError.Text = ErrorText.Describe(ex, "解析名单");
             PasteError.IsVisible = true;
         }
         catch (Exception ex)

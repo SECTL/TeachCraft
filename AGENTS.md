@@ -6,7 +6,7 @@
 
 ## 一、项目定位
 
-「知微」是面向教师的本地工具箱：14 件图片 / PDF / 表格小工具，加上「分晓 · GradeStrip」成绩条生成器、「归位 · SeatGrid」座位表生成器、「时序 · ClassBlock」课程表生成器、「织序 · GradeWeave」全年级课表编排器、「竞名 · MeetRoster」运动会报名与赛程与「作业整理 · Homework」扫描作业归档，共 6 件常备应用，统一使用分晓的纸墨设计语言与本地优先原则。技术栈为 **C# / .NET 10 + Avalonia 12**，所有文件处理在本机完成。联网只有三处、都由用户明确开启：①点「检查更新」读取版本号（GitHub Releases，或用户选定的 SECTL 镜像）；②在「账号与云同步」里主动登录 SECTL 后，手动发布 / 拉取共享名单与关联座位表；③主动开启「接入 SECTL 集控」后以设备身份保持一条长连接接收指令（本版本尚未实现）。三处默认关闭，关闭时不建立连接、不发送任何文件；云同步不做心跳、不上传原始文件；归位座位表另有可选的「自动同步」（默认关闭、事件触发、无定时器）。
+「知微」是面向教师的本地工具箱：14 件图片 / PDF / 表格小工具，加上「分晓 · GradeStrip」成绩条生成器、「归位 · SeatGrid」座位表生成器、「时序 · ClassBlock」课程表生成器、「织序 · GradeWeave」全年级课表编排器、「竞名 · MeetRoster」运动会报名与赛程与「辑册 · WorkFolio」扫描作业归档，共 6 件常备应用，统一使用分晓的纸墨设计语言与本地优先原则。技术栈为 **C# / .NET 10 + Avalonia 12**，所有文件处理在本机完成。联网只有三处、都由用户明确开启：①点「检查更新」读取版本号（GitHub Releases，或用户选定的 SECTL 镜像）；②在「账号与云同步」里主动登录 SECTL 后，手动发布 / 拉取共享名单与关联座位表；③主动开启「启用 SECTL 集控」后以设备身份保持一条 WebSocket 长连接接收大屏展示指令与只读摘要查询（不传学生姓名、学号与成绩）。三处默认关闭，关闭时不建立连接、不发送任何文件；云同步不做心跳、不上传原始文件；归位座位表另有可选的「自动同步」（默认关闭、事件触发、无定时器）。
 
 ---
 
@@ -41,7 +41,9 @@ $$\text{v}\{Major\}.\{Minor\}.\{Patch\}[-\text{preview}.\{RunNumber\}]$$
 
 ### 3. 晋级规则
 
-当前基线：`1.45.0`。本轮新增 SECTL 账号与共享名单（可选 OAuth 登录、字段级同意、归位发布 / 拉取、作业整理拉取），按新功能升 Minor；唯一版本源仍是 `Directory.Build.props`。本轮实测非单实例 1986 项全过（TeachCraft.Tests 1710 + GradeStrip.Tests 108 + GradeWeave.Tests 168），构建 0 错误，详见 `.memory/07`；契约与未确认项见 `.memory/15-SECTL账号与共享名单.md`。
+当前基线：`1.46.0`。本轮完成 SECTL 集控中心接入（`platform: "teachcraft"`、v4 协议、默认关闭、侧栏「集控」面板、双因子配对码与已登录 SECTL 账号双通道接入、班级树/占班/座签几何只读查询、8 条大屏展示与只读摘要指令），按新功能升 Minor；唯一版本源仍是 `Directory.Build.props`。契约与实现记录见 `.memory/16-SECTL集控接入.md`。
+
+上一版基线（`1.45.0`）：新增 SECTL 账号与共享名单（可选 OAuth 登录、字段级同意、归位发布 / 拉取、辑册（原暂名「作业整理」）拉取），按新功能升 Minor。当时实测非单实例 2006 项全过（TeachCraft.Tests 1730 + GradeStrip.Tests 108 + GradeWeave.Tests 168），构建 0 错误，详见 `.memory/07`；契约与未确认项见 `.memory/15-SECTL账号与共享名单.md`。
 
 上一版基线（`1.44.0`）：把扫描选项改为按 WIA 驱动能力显示（A），按新功能升 Minor。范围：`ScannerCapabilities` / `WiaCapabilityReader` 读取 `3086` / `3088`（来源）、`6146`（色彩）、`6147` / `6148`（分辨率）、`3097`（尺寸）、`3096`（最大页数）；只显示驱动报告的来源 / 尺寸 / 分辨率 / 色彩，未报告时用「输稿器单面 / A4 / 300 dpi / 黑白」并提示；8K/16K 不在 A 中显示（WIA 无标准枚举，需 B 自定义像素范围或收件文件夹 / ScanGear 2）；分辨率允许驱动报告的 75–1200，`ScanSettings.NormalizedForDriver()` 只做范围保护。C（TWAIN）待决策写入 `.memory/14-扫描驱动能力与TWAIN待决策.md`：本机只有 32 位 `twain_32.dll`、无 `TWAINDSM.dll` / `twain_64`、无 Canon `.ds`；实际扫描机器需复核 64 位 DS，C 只做 Windows x64、成本高。本轮实测：`dotnet test tests/TeachCraft.Tests/TeachCraft.Tests.csproj -c Release --no-build --filter "FullyQualifiedName!~SingleInstanceSignalTests"` 非单实例 1364 项 + GradeStrip.Tests 108 + GradeWeave.Tests 168，合计 1640 项全部通过（扫描相关 75 项，新增 17 项）；单实例信号 5 项中 3 项受本机常驻 Debug 实例占用命名事件影响超时，全量 TeachCraft.Tests 为 1369 项（1366 通过 / 3 失败）。Release 构建 0 错误、2 条既存 xUnit2013 警告；`--homework-scan-shot <png>` 直接扫描页只显示驱动报告的来源 / A4–A3 / 200–300–600 dpi / 黑白–灰度（演示驱动），状态 `scanners=2; selected=Canon iR-ADV C5560i; direct=True; received=3; window=820,740`。视觉复核以 820×740 走查为准；C 待决策记录见 `.memory/14-扫描驱动能力与TWAIN待决策.md`，设计与不变量见 `.memory/13-作业整理.md`。
 
@@ -71,9 +73,9 @@ $$\text{v}\{Major\}.\{Minor\}.\{Patch\}[-\text{preview}.\{RunNumber\}]$$
 
 工作流：`.github/workflows/release-draft.yml`
 
-本节测试数量以 1.45.0 为当前基线：本轮非单实例 1986 项（TeachCraft.Tests 1710 + GradeStrip.Tests 108 + GradeWeave.Tests 168）全部通过，构建 0 错误；单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时，按既有口径排除。1.44.0 的 1640 项（非单实例）/ 1645 项（全量）、1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项作为历史保留。
+本节测试数量以 1.45.0 为当前基线：本轮非单实例 2006 项（TeachCraft.Tests 1730 + GradeStrip.Tests 108 + GradeWeave.Tests 168）全部通过，构建 0 错误；单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时，按既有口径排除。1.44.0 的 1640 项（非单实例）/ 1645 项（全量）、1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项作为历史保留。
 
-1. **测试**：`windows-latest` 上依次运行 `dotnet test tests/GradeStrip.Tests/GradeStrip.Tests.csproj -c Release`（108 项，分晓导入 / 报表 / 导出回归 / Core 导出守卫）、`dotnet test tests/TeachCraft.Tests/TeachCraft.Tests.csproj -c Release`（1710 项，工具箱、时序模板与日块右界、竞名报名/赛程/秩序册/名单导入导出端到端与导出设置、工具说明展开、检查更新页与镜像回退与下载速度、发布身份与版本脚本、归位考场导出与座号、撤销重做与考场快照交叉、清空画布回归、奖状生成、作业整理批次 / 名单 / 拆页 / 导出 / 视图模型 / 应交页数与撤回、填涂识别 / 模板 / 选区、扫描任务 / WIA 映射 / 收件监听 / 扫描能力）与 `dotnet test tests/GradeWeave.Tests/GradeWeave.Tests.csproj -c Release`（168 项，织序自动保存 / 作息时间表 / 导入与拖拽确认 / 编排 / 活动 / 走班与孤儿课 / 手动放课 / 锁课 / 冲突聚合台 / 教师名单与分工五视角 / 导出设置与三样式 / 希沃模板导出 / xls 导入 / 导出 / 工程往返 / 岗位匹配回归），失败则阻止发布。数量为 2026-11-22 `1.44.0` 本地 Release 实测基线，合计 1645 项（非单实例 1640 项；单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时）。
+1. **测试**：`windows-latest` 上依次运行 `dotnet test tests/GradeStrip.Tests/GradeStrip.Tests.csproj -c Release`（108 项，分晓导入 / 报表 / 导出回归 / Core 导出守卫）、`dotnet test tests/TeachCraft.Tests/TeachCraft.Tests.csproj -c Release`（1730 项，工具箱、时序模板与日块右界、竞名报名/赛程/秩序册/名单导入导出端到端与导出设置、工具说明展开、检查更新页与镜像回退与下载速度、发布身份与版本脚本、归位考场导出与座号、撤销重做与考场快照交叉、清空画布回归、奖状生成、作业整理批次 / 名单 / 拆页 / 导出 / 视图模型 / 应交页数与撤回、填涂识别 / 模板 / 选区、扫描任务 / WIA 映射 / 收件监听 / 扫描能力）与 `dotnet test tests/GradeWeave.Tests/GradeWeave.Tests.csproj -c Release`（168 项，织序自动保存 / 作息时间表 / 导入与拖拽确认 / 编排 / 活动 / 走班与孤儿课 / 手动放课 / 锁课 / 冲突聚合台 / 教师名单与分工五视角 / 导出设置与三样式 / 希沃模板导出 / xls 导入 / 导出 / 工程往返 / 岗位匹配回归），失败则阻止发布。数量为 2026-11-25 `1.45.0` 本地 Release 实测基线，合计 2011 项（非单实例 2006 项；单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时）。
 2. **构建矩阵**：7 个 RID × 2 种部署模式 = 14 个包。
 
 | RID | 运行器 | 产物 |
@@ -133,13 +135,13 @@ src/GradeWeave.App           # 织序课表编排窗口
 src/GradeWeave.Core          # 工作簿导入、自动编排、冲突分析、Excel/PNG/PDF 导出
 src/GradeStrip.App           # 分晓成绩条窗口（Library，同进程内嵌）
 src/GradeStrip.Core          # 成绩导入、分析、xlsx 导出
-src/Homework.App             # 作业整理窗口（批次列表、三栏匹配、导出设置、填涂识别与矩形选区、扫描任务 / WIA 直接扫描 / 收件文件夹、驱动能力发现）
-src/Homework.App/Cloud       # 作业整理共享名单拉取适配器
+src/Homework.App             # 辑册 · WorkFolio 窗口（批次列表、三栏匹配、导出设置、填涂识别与矩形选区、扫描任务 / WIA 直接扫描 / 收件文件夹、驱动能力发现）
+src/Homework.App/Cloud       # 辑册共享名单拉取适配器
 src/Homework.Core            # 作业页 / 名单导入、批次与撤销、命名与路径保护、四种导出、填涂检测 / 学号解析 / 模板渲染、扫描设置 / 收件监听 / 偏好、扫描能力
 src/Homework.Core/Roster/SharedRosterImport.cs  # 共享名单拉取与多班合并（只拉取、不上传）
 tests/GradeStrip.Tests       # xUnit 测试（108 项，分晓导入 / 报表 / 导出回归 + 合成 fixtures）
 tests/GradeWeave.Tests       # xUnit 测试（168 项，织序自动保存 / 作息时间表 / 导入 / 编排 / 活动 / 走班 / 手动放课 / 锁课 / 冲突聚合台 / 教师名单与分工五视角 / 导出设置与三样式 / 希沃模板导出 / xls 导入 / 导出 / 工程往返 / 岗位匹配回归 + 合成 fixtures）
-tests/TeachCraft.Tests       # xUnit 测试（1710 项，工具箱、时序模板、竞名报名/赛程/秩序册/名单导入导出端到端与导出设置、工具说明展开与检查更新页、归位考场导出与座号、撤销重做与清空画布回归、奖状生成、作业整理批次 / 名单 / 拆页 / 导出 / 视图模型 / 应交页数与撤回、填涂识别 / 模板 / 选区、扫描任务 / WIA 映射 / 收件监听 / 扫描能力）
+tests/TeachCraft.Tests       # xUnit 测试（1730 项，工具箱、时序模板、竞名报名/赛程/秩序册/名单导入导出端到端与导出设置、工具说明展开与检查更新页、归位考场导出与座号、撤销重做与清空画布回归、奖状生成、辑册批次 / 名单 / 拆页 / 导出 / 视图模型 / 应交页数与撤回、填涂识别 / 模板 / 选区、扫描任务 / WIA 映射 / 收件监听 / 扫描能力）
                              # 1.45.0 新增云相关测试：SectlOAuthClientTests / LoopbackOAuthReceiverTests / SectlTokenStoreTests / SectlCloudKvClientTests / SectlCloudDocumentStoreTests / SharedRosterDocumentTests / SharedRosterProjectionTests / SharedRosterStoreTests / SharedRosterValidatorTests / SectlAccountServiceTests / AccountViewModelTests / AccountWiringTests / CloudWiringTests / CloudSyncSettingsTests / CloudGuardFixtures / FakeSectlApiHandler / MemoryDocumentStore / ShellBrowserLauncherTests / DesktopAccountSignInFlowTests / SeatGridCloudMapperTests / SeatGridCloudViewModelTests / SeatGridRosterBridgeMapperTests / SeatGridRosterProjectionTests / HomeworkSharedRosterImportTests / HomeworkRosterBridgeTests / HomeworkRosterPickerTests
 installer                    # Inno Setup 脚本与中文语言文件
 bundle/macos                 # Info.plist / Entitlements / DMG 脚本
@@ -213,7 +215,7 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 
 ## 八、编码与设计准则
 
-1. **语言**：界面中文，工具 ID 用等宽拉丁（`image-convert` 等）；异常消息面向老师，必须是可读中文。
+1. **语言**：界面中文，工具 ID 用等宽拉丁（`image-convert` 等）；异常消息面向老师，必须是可读中文。**所有面向用户的报错必须经 `ErrorText.Describe(ex, "动作")` 或固定中文句，不得拼接 `ex.Message` / `ex.ToString()` / 英文异常类型；`UserFacingErrorTextTests` 守护。**
 2. **设计语言**：沿用分晓的 Anthropic 纸墨色板（`#FAF9F5` / `#141413` / `#D97757`）、Anthropic Serif + Mono 字体、1px 细边白卡、无阴影、0.12–0.32s 克制动效。
 3. **本地优先**：不得加入遥测与使用统计；账号只做可选的 SECTL OAuth 身份，不自建账号密码体系。联网只允许三处，且都必须由用户明确开启：①「检查更新」读取版本号——GitHub Releases 或 SECTL 镜像；②「账号与云同步」——用户主动登录 SECTL 后，手动发布 / 拉取共享名单与关联座位表；③「接入 SECTL 集控」——用户在设置里主动开启后，以设备身份与集控 Hub 保持长连接、上报班级与运行状态并接收指令（本版本尚未实现）。**三处默认关闭**，关闭时不建立任何常驻连接、不上传任何文件；云同步不做心跳、不上传原始文件；唯一的自动同步是归位座位表的可选开关（默认关闭、事件触发、无定时器、设置里可见可关）。任何新增联网行为都必须同时在设置里可见、可关，并在 `LocalFirstCopyTests` 里补一条守护。
 4. **工具定义**：工具 ID 与顺序是稳定契约，变更需升 Minor 以上并同步 `.memory/03-功能与工具面板.md`。
@@ -224,15 +226,15 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 9. **提交规范**：Conventional Commits（`feat:` / `fix:` / `chore:` / `docs:`），正文说明「为什么」。
 10. **工具说明**：每件工具与常备应用的说明文案只在 `src/TeachCraft.App/ViewModels/ToolDescriptionCatalog.cs` 维护，界面一律绑定，不在 XAML 里另写一份；说明默认收起，点卡片或卡片标题才展开（`ExpandReveal`，260ms 高度揭示）。新增工具或常备应用必须同时补一条说明，否则卡片不会展开空白区——`ToolDescriptionTests` 会拦住漏写。
 11. **奖状生成**（1.40.0，`certificate-batch`，第 14 件）：图片底图 + XLSX / XLS 名单，工作表、表头行、姓名列与奖项列由用户明确指定，不猜列；奖项可明确选择「（不印奖项）」。表头之后跳过空姓名，重复姓名逐行保留。`CertificateTextPlacement` 保存底图内 0 到 1 的归一化位置与比例字号，预览和 PDF 共用 `CertificatePageGeometry` 与 `CertificateRenderer.DrawCertificate`，输出一条有效记录一页的 A4 PDF。所有处理在本机完成，Core 拒绝覆盖底图或名单，已有同名输出拒绝覆盖。
-12. **作业整理填涂识别**（1.42.0，`homework`）：智学网式 A4 填涂模板（300 DPI 2480×3508，列数 1–12、行 0–9、左侧补 0、数字格实线边框）由 SkiaSharp 画 PNG、QuestPDF 嵌 A4；归一化矩形选区（批次级 + 单页覆盖）框选数字格，确定性检测（区域内缩 0.02 / 格内缩 0.15 / 亮度 180 / 最小墨迹 0.15 / 领先 0.10）逐列取胜者，学号精确优先、去前导零唯一匹配，跨班重复 / 空 / 非数字进待处理并写明原因。只做填涂，不引入 OCR / 二维码 / 仅 Windows 代码；一次运行一步撤销，取消不写入，名单重导清理识别结果，自动匹配不覆盖手动、不超应交页数。
-13. **作业整理扫描任务**（1.43.0，`homework`）：两条接收路径共用同一个导入落点。Windows 直接扫描走 WIA（`WIA.DeviceManager`，后台 STA 线程；平板 / 输稿器单面 / 双面，A4 / A3 / B5 / 8K / 16K / 自动，200 / 300 / 600 dpi，黑白 / 灰度 / 彩色，全部 / 仅第 1 页；逐页 PNG，失败回退 JPEG；输稿器最多 100 页；需要安装扫描仪 WIA 驱动）。其他平台走收件文件夹：`ScanInboxWatcher` 只在文件大小稳定且可读时通知，过滤 `~$` / `.tmp` / `.crdownload` / `Thumbs.db`，同一文件不重复导入，旧文件只由「导入现有文件」显式处理。两条路都经 `IScanImportSink` 导入当前批次或新建批次；扫描文件保存到 `%LOCALAPPDATA%\TeachCraft\Homework\Scans`，偏好保存到 `%LOCALAPPDATA%\TeachCraft\Homework\scan-task.json`；不新增联网，不引入 TWAIN，直接扫描只在 Windows 可用，其他平台明确引导到收件文件夹。界面为原创 `ScanTaskWindow`（纸墨卡片、直接扫描 / 收件文件夹两个页签、接收记录与错误行），不照抄 Windows 传真和扫描。
+12. **辑册填涂识别**（1.42.0，`homework`）：智学网式 A4 填涂模板（300 DPI 2480×3508，列数 1–12、行 0–9、左侧补 0、数字格实线边框）由 SkiaSharp 画 PNG、QuestPDF 嵌 A4；归一化矩形选区（批次级 + 单页覆盖）框选数字格，确定性检测（区域内缩 0.02 / 格内缩 0.15 / 亮度 180 / 最小墨迹 0.15 / 领先 0.10）逐列取胜者，学号精确优先、去前导零唯一匹配，跨班重复 / 空 / 非数字进待处理并写明原因。只做填涂，不引入 OCR / 二维码 / 仅 Windows 代码；一次运行一步撤销，取消不写入，名单重导清理识别结果，自动匹配不覆盖手动、不超应交页数。
+13. **辑册扫描任务**（1.43.0，`homework`）：两条接收路径共用同一个导入落点。Windows 直接扫描走 WIA（`WIA.DeviceManager`，后台 STA 线程；平板 / 输稿器单面 / 双面，A4 / A3 / B5 / 8K / 16K / 自动，200 / 300 / 600 dpi，黑白 / 灰度 / 彩色，全部 / 仅第 1 页；逐页 PNG，失败回退 JPEG；输稿器最多 100 页；需要安装扫描仪 WIA 驱动）。其他平台走收件文件夹：`ScanInboxWatcher` 只在文件大小稳定且可读时通知，过滤 `~$` / `.tmp` / `.crdownload` / `Thumbs.db`，同一文件不重复导入，旧文件只由「导入现有文件」显式处理。两条路都经 `IScanImportSink` 导入当前批次或新建批次；扫描文件保存到 `%LOCALAPPDATA%\TeachCraft\Homework\Scans`，偏好保存到 `%LOCALAPPDATA%\TeachCraft\Homework\scan-task.json`；不新增联网，不引入 TWAIN，直接扫描只在 Windows 可用，其他平台明确引导到收件文件夹。界面为原创 `ScanTaskWindow`（纸墨卡片、直接扫描 / 收件文件夹两个页签、接收记录与错误行），不照抄 Windows 传真和扫描。
 14. **扫描驱动能力**（1.44.0，`homework`）：扫描选项不再硬编码。`ScannerCapabilities` + `WiaCapabilityReader` 读取 WIA `3086` / `3088`、`6146`、`6147` / `6148`、`3097`、`3096`；界面只显示驱动报告的来源 / 尺寸 / 分辨率 / 色彩，未报告时用保守默认值并提示；8K/16K 不在 A 中显示（WIA 无标准枚举），需要 B 或收件文件夹 / ScanGear 2；分辨率允许 75–1200，`ScanSettings.NormalizedForDriver()` 只做范围保护。C（TWAIN）待决策见 `.memory/14-扫描驱动能力与TWAIN待决策.md`；C 只做 Windows x64、成本高。
 
 ---
 
 ## 九、验证要求
 
-1.45.0 为当前基线：本轮非单实例 1986 项全过（TeachCraft.Tests 1710 + GradeStrip.Tests 108 + GradeWeave.Tests 168），构建 0 错误；单实例信号 5 项中 3 项受本机常驻 Debug 实例干扰超时，按既有口径排除。1.44.0 实测非单实例 1640 项全部通过（全量 1645 项，单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时）；1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项为历史基线。
+1.45.0 为当前基线：本轮非单实例 2006 项全过（TeachCraft.Tests 1730 + GradeStrip.Tests 108 + GradeWeave.Tests 168），构建 0 错误；单实例信号 5 项中 3 项受本机常驻 Debug 实例干扰超时，按既有口径排除。1.44.0 实测非单实例 1640 项全部通过（全量 1645 项，单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时）；1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项为历史基线。
 
 - 提交前必须通过：`dotnet build TeachCraft.slnx -c Release` 与全部 xUnit 测试（2026-11-22 `1.44.0` 实测：GradeStrip.Tests 108 项 + TeachCraft.Tests 1369 项 + GradeWeave.Tests 168 项，合计 1645 项；非单实例 1640 项全过）。
 - 涉及图片 / PDF 引擎的改动，必须额外用真实文件跑一遍：格式转换、PDF 合并、Word→PDF、PDF 转图片。
@@ -241,9 +243,9 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 - 涉及织序的改动，必须额外验证：真实结构工作簿的导入、生成后无教师 / 班级冲突、教研与会议时段不被占用、分层走班同步、Excel / PNG / PDF 三种导出。
 - 涉及教师分工的改动，必须额外验证：先建教师名单再分工的默认顺序、名单批量添加与未任课教师保存、班级 / 教师 / 学科 / 体检视角切换不丢草稿、下拉按学科过滤、删除教师前的任课 / 班主任 / 课表引用拦截。
 - 涉及竞名的改动，必须额外验证：多班报名表导入、每项男女各 2 人 / 每人 2 个单项的超限提示仅在违规时显示、20*50 与一分钟跳绳的忽略且不进入体检、比赛项目列 0/1/2 个框的动态显示、按班回写的文件名与字段、往届赛程“竞赛日程 + 项目分组表”导入、班级高亮与 1120×680 布局；**秩序册导入须用真实文件核对名单人数与分组表人数一致（含跨页续页）、导出 Excel 四页与单班底色、导出 PDF 页数与跨页表头**。
-- 涉及作业整理的改动，必须额外验证：填涂模板 PNG 2480×3508 / PDF 1 页 A4、合成填涂页的检测数字串与失败原因、学号精确与去前导零唯一匹配、跨班重复 / 空 / 非数字进待处理、一次运行一步撤销、取消不写入、名单重导清理识别结果；`--homework-fillin-shot --homework-fillin-demo` 走查状态 `recognized=3; matched=3; pending=0; columns=3`。
+- 涉及辑册的改动，必须额外验证：填涂模板 PNG 2480×3508 / PDF 1 页 A4、合成填涂页的检测数字串与失败原因、学号精确与去前导零唯一匹配、跨班重复 / 空 / 非数字进待处理、一次运行一步撤销、取消不写入、名单重导清理识别结果；`--homework-fillin-shot --homework-fillin-demo` 走查状态 `recognized=3; matched=3; pending=0; columns=3`。
 - 涉及扫描任务的改动，必须额外验证：Windows 直接扫描的扫描仪枚举与设置映射（无硬件时用 `WiaScanRequest` 映射测试）、输稿器多页与取消、收件文件夹的稳定写入 / 临时文件过滤 / 重复抑制 / 导入现有文件、两条路导入当前批次与新建批次、扫描文件与偏好只落本机；`--homework-scan-shot <png>` 走查直接扫描与 `.inbox.png` 两个状态（`scanners=2; selected=Canon iR-ADV C5560i; direct=True; received=3; window=820,740`；直接扫描页只显示驱动报告的来源 / A4–A3 / 200–300–600 dpi / 黑白–灰度（演示驱动）；C 待决策见 `.memory/14-扫描驱动能力与TWAIN待决策.md`），`--homework-shot --homework-demo --width 1120` 核对主窗口「扫描」按钮不挤占顶栏。
-- 涉及 SECTL 账号与云同步的改动，必须额外验证：授权 / 换 token / 刷新 / userinfo / KV 全链路用假 handler（`FakeSectlApiHandler`）钉死请求形状，不联网；字段级同意的哨兵测试证明未勾选字段为 null 且不出现在云端 JSON；名单版本（store revision）与冲突检测、考场快照拒绝上传、64 KB 边界（39 KB / 41 KB / 压缩后 61 KB）、DPAPI 失败即 fail-closed；作业整理多班名单拉取与同名班级合并；`git status` 确认 `Account/` 下 token 文件未进仓库。走查参数 `--account-shot` / `--account-panel` / `--seatgrid-cloud-shot` / `--homework-roster-shot`，一律注入假 handler 与 Noop 凭据存储，不碰真实账号状态。
+- 涉及 SECTL 账号与云同步的改动，必须额外验证：授权 / 换 token / 刷新 / userinfo / KV 全链路用假 handler（`FakeSectlApiHandler`）钉死请求形状，不联网；字段级同意的哨兵测试证明未勾选字段为 null 且不出现在云端 JSON；名单版本（store revision）与冲突检测、考场快照拒绝上传、64 KB 边界（39 KB / 41 KB / 压缩后 61 KB）、DPAPI 失败即 fail-closed；辑册多班名单拉取与同名班级合并；`git status` 确认 `Account/` 下 token 文件未进仓库。走查参数 `--account-shot` / `--account-panel` / `--seatgrid-cloud-shot` / `--homework-roster-shot`，一律注入假 handler 与 Noop 凭据存储，不碰真实账号状态。
 - 发布前用 `--shot` / `--panel <tool-id>` / `--gradestrip-shot` / `--seatgrid-shot` / `--classblock-shot` / `--gradeweave-shot` / `--meetroster-shot` / `--homework-fillin-shot` / `--homework-scan-shot` / `--account-shot` / `--seatgrid-cloud-shot` / `--homework-roster-shot` 做一次视觉走查（详见 `.memory/07-验证与测试资产.md`）。
 
 ---
@@ -318,6 +320,6 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 - **考场快照拒绝上传**：`ExamSnapshot` 是独立快照不是日常数据，发布入口在考场态直接禁用并写明原因，Core 层再挡一道；导入侧见到标记如实拒绝，绝不产出「导回来变成日常布局」的配置。
 - **64 KB 策略**：KV value 上限 64 KB，gzip 后再 base64 会膨胀约 4/3；原始 JSON > 40 KB 才压缩，压缩后 envelope 的 UTF-8 字节 > 60 KB 即拒绝上传并提示精简字段，不等服务端 429。每命名空间软上限 200 份，索引丢失时按 list 结果逐 key 回读重建。
 - **凭据与 fail-closed**：token 只写 `%LOCALAPPDATA%\TeachCraft\Account\`，Windows 用 DPAPI、其它平台明文但收紧权限，`ToString()` 脱敏，`.gitignore` 按文件名忽略。刷新单飞 + 先原子落盘后使用；加密 / 解密失败即 fail-closed，不降级成明文写入。`offline_access` 未启用，桌面 public client 是否返回 `refresh_token` 待联通烟测确认；没有就按「到期重新登录」处理，不臆造 token、不静默续用过期 token，疑似重放时整族吊销。
-- **模块矩阵（文档与 UI 必须如实写明）**：归位可发布、拉取共享名单；作业整理可拉取；分晓等其他应用后续接入。作业整理无性别字段，只能拉取、不能发布；多班拉取时同名班级要提示而非静默覆盖。
+- **模块矩阵（文档与 UI 必须如实写明）**：归位可发布、拉取共享名单；辑册可拉取；分晓等其他应用后续接入。辑册无性别字段，只能拉取、不能发布；多班拉取时同名班级要提示而非静默覆盖。
 - **非目标**：本版本不实现集控（不建 `Control/`、不写 `device_secret`、不长连接）；不做心跳、定时刷新、重试循环；不做定时器驱动的自动同步（归位座位表的可选自动同步是事件触发、无定时器，且默认关闭）；不上传原始 Excel / CSV / PDF / 图片与文件路径；不提供用户可改的 base URL / client id 开关。三处联网都默认关闭、手动触发，关闭时不建立任何常驻连接。
 - **走查**：`--account-shot` / `--account-panel` / `--seatgrid-cloud-shot` / `--homework-roster-shot` 一律注入假 handler 与 Noop 凭据存储，不联网、不写真实账号状态；契约与未确认项见 `.memory/15-SECTL账号与共享名单.md`。

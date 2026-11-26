@@ -54,7 +54,7 @@ public sealed class DesktopAccountSignInFlow
         }
         catch (InvalidOperationException ex) when (!ct.IsCancellationRequested && HasChinese(ex.Message))
         {
-            return SignInOutcome.Fail(ex.Message);
+            return SignInOutcome.Fail(ErrorText.Describe(ex, "登录"));
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
@@ -117,7 +117,7 @@ public sealed class DesktopAccountSignInFlow
         }
         catch (CloudAuthException ex)
         {
-            return SignInOutcome.Fail(ex.Message);
+            return SignInOutcome.Fail(ErrorText.Describe(ex, "登录"));
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {

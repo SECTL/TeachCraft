@@ -1,3 +1,5 @@
+using TeachCraft.Shared;
+
 namespace TeachCraft.Core.Cloud;
 
 /// <summary>
@@ -35,7 +37,7 @@ public sealed class SectlSharedRosterSource : ISharedRosterSource
             {
                 // 单份文档读取失败（网络、损坏、版本不兼容）不影响整张列表，但必须如实标记，
                 // 否则界面会把读不出的名单显示成 0 人的空壳。取消则照常向上抛。
-                loadError = $"读取失败：{ex.Message}";
+                loadError = ErrorText.Describe(ex, "读取共享名单");
             }
 
             result.Add(FromInfo(info, doc, loadError is not null, loadError));

@@ -140,8 +140,7 @@ public partial class CertificateBatchPanelView : UserControl
         catch (Exception ex)
         {
             if (!IsCurrent(tool, cancellation)) return;
-            tool.FailCertificatePreview(ex is ToolboxException ? ex.Message
-                : TeachCraft.Shared.ErrorText.Describe(ex, "读取底图"));
+            tool.FailCertificatePreview(TeachCraft.Shared.ErrorText.Describe(ex, "读取底图"));
             UpdateHandles();
         }
         finally

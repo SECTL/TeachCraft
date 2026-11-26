@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Homework.Core;
 using Homework.Core.Models;
 using Homework.Core.Recognition;
+using TeachCraft.Shared;
 
 namespace Homework.App;
 
@@ -226,11 +227,11 @@ public sealed partial class FillInTemplateViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            StatusText = ex.Message;
+            StatusText = ErrorText.Describe(ex, "生成模板");
         }
         catch (Exception ex)
         {
-            StatusText = "生成失败：" + ex.Message;
+            StatusText = ErrorText.Describe(ex, "生成模板");
         }
     }
 
@@ -251,11 +252,11 @@ public sealed partial class FillInTemplateViewModel : ObservableObject
         }
         catch (HomeworkException ex)
         {
-            StatusText = ex.Message;
+            StatusText = ErrorText.Describe(ex, "预览模板");
         }
         catch (Exception ex)
         {
-            StatusText = "预览失败：" + ex.Message;
+            StatusText = ErrorText.Describe(ex, "预览模板");
         }
     }
 }

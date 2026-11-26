@@ -176,7 +176,7 @@ public sealed class HomeworkRosterPickerTests
         vm.SelectAll();
         Assert.True(vm.CanPull);
 
-        bridge.ListError = new InvalidOperationException("读取失败");
+        bridge.ListError = new InvalidOperationException("list failed");
         await vm.RefreshAsync(CancellationToken.None);
 
         Assert.True(vm.HasError);

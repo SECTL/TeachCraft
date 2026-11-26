@@ -11,7 +11,8 @@ public sealed record ReleaseEntry(
     string TagName,
     SemanticVersion Version,
     bool IsPrerelease,
-    IReadOnlyList<ReleaseAsset> Assets);
+    IReadOnlyList<ReleaseAsset> Assets,
+    string? ReleaseNotes = null);
 
 /// <summary>
 /// 把 GitHub Releases API 的 JSON 归一化为可比较的条目。
@@ -63,7 +64,13 @@ public static class UpdateFeed
                 }
             }
 
-            yield return new ReleaseEntry(tag, version, isPrerelease, assets);
+            var releaseNotes = element.TryGetProperty("body", out var bodyElement)
+                               && bodyElement.ValueKind == JsonValueKind.String
+                ? bodyElement.GetString()
+                : null;
+            if (string.IsNullOrWhiteSpace(releaseNotes)) releaseNotes = null;
+
+            yield return new ReleaseEntry(tag, version, isPrerelease, assets, releaseNotes);
         }
     }
 

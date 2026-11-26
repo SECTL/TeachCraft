@@ -1,0 +1,103 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:updating="using:TeachCraft.Core.Updating"
+        x:Class="TeachCraft.App.Views.UpdateChangelogWindow"
+        x:DataType="updating:UpdateChangelogDocument"
+        Title="更新日志 · 知微"
+        Icon="avares://TeachCraft/Assets/teachcraft.ico"
+        Width="600" Height="540"
+        MinWidth="460" MinHeight="380"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource PaperBrush}">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 顶栏：与首次引导及检查更新面板同源的纸墨抬头 -->
+        <Border Grid.Row="0" Background="{StaticResource CardBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"
+                Padding="28,22,28,18">
+            <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                    <Border Width="18" Height="1" Background="{StaticResource AccentBrush}"
+                            VerticalAlignment="Center" Opacity="0.85" />
+                    <TextBlock Text="WHAT'S NEW / 更新日志" FontFamily="{StaticResource MonoFont}"
+                               FontSize="9.5" LetterSpacing="2.2" Foreground="{StaticResource MutedBrush}" />
+                </StackPanel>
+                <TextBlock Text="{Binding Headline}" FontFamily="{StaticResource SerifFont}"
+                           FontSize="26" LetterSpacing="-0.2" Foreground="{StaticResource InkBrush}"
+                           TextWrapping="Wrap" Margin="0,2,0,0" />
+                <TextBlock Text="{Binding Subtitle}" FontSize="12"
+                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- 正文：按版本倒序排列的白卡 -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Releases}" Margin="24,18,24,18">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="updating:ChangelogRelease">
+                        <Border Classes="card" Padding="20,16" Margin="0,0,0,12">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                    <Border Grid.Column="0" Background="{StaticResource AccentWashBrush}"
+                                            BorderBrush="#46C6613F" BorderThickness="1"
+                                            CornerRadius="4" Padding="8,2" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TagName}" FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="10.5" Foreground="{StaticResource AccentDeepBrush}" />
+                                    </Border>
+                                    <TextBlock Grid.Column="2" Text="{Binding DateText}"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                                               IsVisible="{Binding DateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                </Grid>
+
+                                <ItemsControl ItemsSource="{Binding Sections}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="updating:ChangelogSection">
+                                            <StackPanel Spacing="6" Margin="0,0,0,8">
+                                                <TextBlock Text="{Binding Heading}"
+                                                           FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource InkBrush}"
+                                                           IsVisible="{Binding Heading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                <ItemsControl ItemsSource="{Binding Items}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="x:String">
+                                                            <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,5">
+                                                                <Border Grid.Column="0" Width="4" Height="4" CornerRadius="2"
+                                                                        Background="{StaticResource AccentBrush}"
+                                                                        Margin="0,8,10,0" VerticalAlignment="Top" />
+                                                                <TextBlock Grid.Column="1" Text="{Binding}"
+                                                                           FontSize="12.5" LineHeight="21"
+                                                                           Foreground="{StaticResource InkSoftBrush}"
+                                                                           TextWrapping="Wrap" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- 底栏：一次提示说明 + 确认按钮 -->
+        <Border Grid.Row="2" Background="{StaticResource CardBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                Padding="28,14">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
+                <TextBlock Grid.Column="0" Text="仅在通过应用内更新完成升级后展示一次。"
+                           FontSize="11" Foreground="{StaticResource MutedBrush}"
+                           VerticalAlignment="Center" TextWrapping="Wrap" />
+                <Button Grid.Column="1" Classes="primary" Content="知道了"
+                        IsDefault="True" IsCancel="True"
+                        Padding="20,8" Click="OnAcknowledge"
+                        AutomationProperties.Name="知道了，关闭更新日志" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

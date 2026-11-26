@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using ClassBlock.Core.Models;
+using TeachCraft.Shared;
 
 namespace ClassBlock.Core.Import;
 
@@ -31,7 +32,7 @@ public static class MasterScheduleImporter
         }
         catch (Exception ex)
         {
-            throw new ClassBlockException($"无法读取这份总表：{ex.Message}", ex);
+            throw new ClassBlockException(ErrorText.Describe(ex, "读取课程总表"), ex);
         }
 
         using (workbook)

@@ -650,7 +650,7 @@ public partial class GradeWeaveViewModel : ObservableObject
         catch (GradeWeaveException ex)
         {
             RefreshTimetableState();
-            SetStatus(ex.Message, true);
+            SetStatus(ErrorText.Describe(ex, "确认作息"), true);
         }
     }
 
@@ -1975,7 +1975,7 @@ public partial class GradeWeaveViewModel : ObservableObject
         }
         catch (GradeWeaveException ex)
         {
-            SetStatus(ex.Message, true);
+            SetStatus(ErrorText.Describe(ex, "生成课表"), true);
         }
         catch (Exception ex)
         {
@@ -2053,7 +2053,7 @@ public partial class GradeWeaveViewModel : ObservableObject
         }
         catch (GradeWeaveException ex)
         {
-            if (!quiet) SetStatus(ex.Message, true);
+            if (!quiet) SetStatus(ErrorText.Describe(ex, "冲突检查"), true);
         }
         catch (Exception ex)
         {

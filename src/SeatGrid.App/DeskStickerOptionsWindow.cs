@@ -225,10 +225,10 @@ public sealed class DeskStickerOptionsWindow : Window
         catch (OperationCanceledException)
         {
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             if (token.IsCancellationRequested || _closed) return;
-            _previewHint.Text = "预览生成失败：" + ex.Message;
+            _previewHint.Text = "预览生成失败：文件可能已被移动或占用，请重试。";
             _previewHint.IsVisible = true;
         }
     }

@@ -1,4 +1,5 @@
 using SkiaSharp;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Tools;
 
@@ -224,7 +225,7 @@ public static class ImageToolbox
         catch (ToolboxException) { throw; }
         catch (Exception ex)
         {
-            throw new ToolboxException($"读取图片失败：{ex.Message}");
+            throw new ToolboxException(ErrorText.Describe(ex, "读取图片"));
         }
     }
 

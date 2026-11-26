@@ -97,7 +97,7 @@ public sealed class CloudSyncSettingsTests : IDisposable
 
         Assert.False(saved);
         Assert.False(string.IsNullOrEmpty(store.LastError));
-        Assert.Contains("无法写入本机设置文件", store.LastError, StringComparison.Ordinal);
+        Assert.Contains("保存本机设置失败", store.LastError, StringComparison.Ordinal);
         Assert.DoesNotContain(_directory, store.LastError!, StringComparison.Ordinal);
     }
 

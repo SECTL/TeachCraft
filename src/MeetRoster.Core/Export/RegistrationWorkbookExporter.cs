@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using MeetRoster.Core.Models;
+using TeachCraft.Shared;
 
 namespace MeetRoster.Core.Export;
 
@@ -43,7 +44,7 @@ public static class RegistrationWorkbookExporter
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"{meetClass.Name} 在{step}时失败：{ex.Message}", ex);
+                $"{meetClass.Name} 在{step}时失败：{ErrorText.Describe(ex, step)}", ex);
         }
         finally
         {

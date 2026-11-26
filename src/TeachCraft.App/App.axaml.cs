@@ -9,15 +9,18 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using TeachCraft.App.Cloud;
+using TeachCraft.App.ControlCenter;
 using TeachCraft.App.ViewModels;
 using TeachCraft.App.Views;
 using TeachCraft.Core.Cloud;
+using TeachCraft.Core.Control;
 using TeachCraft.Core.Oobe;
 using TeachCraft.Core.Updating;
 using Homework.App.Cloud;
 using Homework.Core.Roster;
 using SeatGrid.App.Cloud;
 using SeatGrid.Core.Cloud;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App;
 
@@ -120,17 +123,35 @@ public partial class App : Application
             var oobeOverride = readsRealState ? (bool?)null : (isWalkthrough ? showOobe : (bool?)null);
             var cloudRuntime = CloudWiring.Create(
                 isWalkthrough, SectlPlatformDefaults.ClientId, SectlPlatformDefaults.RedirectUri, handler: null);
+            var controlRuntime = ControlWiring.Create(
+                isWalkthrough, BuildIdentity.Current(typeof(MainViewModel)).Describe());
+            IPendingChangelogStore pendingChangelogStore = isWalkthrough
+                ? new NoopPendingChangelogStore()
+                : new PendingChangelogStore();
             var viewModel = new MainViewModel(
-                oobeStateStore: oobeStore, showOobe: oobeOverride, cloudRuntime: cloudRuntime);
+                oobeStateStore: oobeStore, showOobe: oobeOverride, cloudRuntime: cloudRuntime,
+                pendingChangelogStore: pendingChangelogStore, controlRuntime: controlRuntime);
             var window = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = window;
+
+            if (!isWalkthrough && controlRuntime.Service is { } controlService)
+            {
+                if (controlRuntime.Snapshot.Enabled)
+                    _ = controlService.StartAsync();
+
+                desktop.ShutdownRequested += (_, _) =>
+                {
+                    try { Task.Run(() => controlService.DisposeAsync().AsTask()).Wait(1500); }
+                    catch (Exception) { }
+                };
+            }
 
             // 真正启动安装包 / 替换文件只能由 App 层做：它决定何时关窗、何时退出、何时重启。
             // 两条路径都先过同一道「未保存窗口」前置（ConfirmUnsavedBeforeInstall），
             // 确认不通过就不会有任何助手进程被启动（审计 P1-1）。
             viewModel.InstallerRequested += (path, plan) => plan.Action == InstallerAction.ReplacePortable
-                ? this.RunPortableReplace(desktop, path, plan)
-                : this.RunInstallerAsync(desktop, path, plan);
+                ? this.RunPortableReplace(desktop, path, plan, viewModel, pendingChangelogStore)
+                : this.RunInstallerAsync(desktop, path, plan, viewModel, pendingChangelogStore);
 
             // 启动时清掉上次被强杀留下的半截下载（进程被杀时 finally 不会执行）。
             // 这一步不联网、不碰状态文件，失败也不影响启动。
@@ -141,11 +162,25 @@ public partial class App : Application
 
                 // 上一次绿色版自替换的结果。失败时用户刚经历「程序关了又开回来还是旧的」，
                 // 不说清楚他会以为更新没生效，反复点。
-                ReportLastPortableReplace(viewModel);
+                var portableOutcome = ReportLastPortableReplace(viewModel);
 
                 // 安装包路径的自动重启失败痕迹以前只写不读：程序关了没再回来，
                 // 老师不知道安装其实成功了（审计 P3-19）。
                 ReportLastRestartFailure(viewModel);
+
+                // 仅在通过应用内更新模块升级成功并进入目标版本后展示一次更新日志；
+                // 安装失败、取消或外部手动覆盖均不触发，消费即清除标记。
+                var currentVersion = BuildIdentity.Current(typeof(MainViewModel)).Version;
+                var startupChangelog = UpdateChangelogPlanner.ResolveOnStartup(
+                    pendingChangelogStore,
+                    currentVersion,
+                    portableReplaceFailed: portableOutcome == PortableReplaceOutcome.Failed,
+                    EmbeddedChangelogProvider.ReadOrNull());
+                if (startupChangelog is not null)
+                {
+                    viewModel.SetStartupChangelog(startupChangelog);
+                    WireStartupChangelog(window, viewModel);
+                }
             }
 
             if (!CaptureGradeStripIfRequested(desktop) && !CaptureSeatGridIfRequested(desktop) &&
@@ -158,6 +193,7 @@ public partial class App : Application
                 !CaptureMeetRosterIfRequested(desktop) &&
                 !CaptureSeatGridCloudIfRequested(desktop) &&
                 !CaptureHomeworkRosterIfRequested(desktop) &&
+                !CaptureChangelogIfRequested(desktop) &&
                 !RunSliderBenchIfRequested(desktop) &&
                 !RunPerfBenchIfRequested(desktop) &&
                 !ShowGradeWeaveDemoIfRequested(desktop) &&
@@ -1073,7 +1109,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 设计走查：--homework-roster-shot &lt;png&gt;。用内存假桥打开作业整理共享名单拉取窗，
+    /// 设计走查：--homework-roster-shot &lt;png&gt;。用内存假桥打开辑册共享名单拉取窗，
     /// 列出三份合成名单并选中两份后截图；不联网、不读真实凭据、不装配 CloudRuntime。
     /// </summary>
     private static bool CaptureHomeworkRosterIfRequested(IClassicDesktopStyleApplicationLifetime desktop)
@@ -1265,7 +1301,9 @@ public partial class App : Application
     private async Task<string> RunInstallerAsync(
         IClassicDesktopStyleApplicationLifetime desktop,
         string setupPath,
-        InstallerPlan plan)
+        InstallerPlan plan,
+        MainViewModel viewModel,
+        IPendingChangelogStore pendingChangelogStore)
     {
         try
         {
@@ -1300,6 +1338,9 @@ public partial class App : Application
                 StartRestartHelper(installer.Id, Environment.ProcessId, exe);
             }
 
+            if (viewModel.CreatePendingChangelogEntry() is { } pendingEntry)
+                pendingChangelogStore.Save(pendingEntry);
+
             // 到这里安装包已经在跑，可以安全退出。
             // **必须先释放单实例锁**：帮手进程装完后会拉起新版本，
             // 若此时锁仍被本进程持有（Mutex 还没随进程销毁），新进程 TryAcquire 会失败并直接 Exit(0)，
@@ -1328,7 +1369,9 @@ public partial class App : Application
     private async Task<string> RunPortableReplace(
         IClassicDesktopStyleApplicationLifetime desktop,
         string archivePath,
-        InstallerPlan plan)
+        InstallerPlan plan,
+        MainViewModel viewModel,
+        IPendingChangelogStore pendingChangelogStore)
     {
         if (Environment.ProcessPath is not { } exe)
             return "认不出当前程序的路径，无法自动替换，请手动解压更新包。";
@@ -1345,6 +1388,9 @@ public partial class App : Application
                 return "已取消安装。请先保存各窗口的工作，再重新点「下载并安装」。";
 
             StartPortableReplaceHelper(archivePath, targetDir, exe, Environment.ProcessId);
+
+            if (viewModel.CreatePendingChangelogEntry() is { } pendingEntry)
+                pendingChangelogStore.Save(pendingEntry);
 
             // 与安装包路径同理：必须先释放单实例锁，否则重启的新版本 TryAcquire 失败会直接退出。
             ReleaseSingleInstance();
@@ -1451,6 +1497,13 @@ public partial class App : Application
         }
     }
 
+    private enum PortableReplaceOutcome
+    {
+        None,
+        Succeeded,
+        Failed,
+    }
+
     /// <summary>
     /// 读取上一次绿色版自替换的结果并显示给用户。
     ///
@@ -1458,7 +1511,7 @@ public partial class App : Application
     /// 成功时悄悄删掉，不打扰；失败时必须说出来——用户刚经历「程序关了又开回来」，
     /// 不说清楚他会以为更新没生效，反复点「下载并安装」。
     /// </summary>
-    private static void ReportLastPortableReplace(MainViewModel viewModel)
+    private static PortableReplaceOutcome ReportLastPortableReplace(MainViewModel viewModel)
     {
         try
         {
@@ -1466,7 +1519,7 @@ public partial class App : Application
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "TeachCraft", "Update", "last-replace.txt");
 
-            if (!File.Exists(path)) return;
+            if (!File.Exists(path)) return PortableReplaceOutcome.None;
 
             var content = File.ReadAllText(path).Trim();
             File.Delete(path);
@@ -1475,16 +1528,125 @@ public partial class App : Application
             {
                 var reason = content.Length > 5 ? content[5..].Trim() : "未知原因";
                 viewModel.SetStatus($"上次自动替换没有成功：{reason}。请手动解压更新包覆盖旧文件。", error: true);
+                return PortableReplaceOutcome.Failed;
             }
-            else if (content == "OK")
+            if (content == "OK")
             {
                 viewModel.SetStatus("已更新到新版本。");
+                return PortableReplaceOutcome.Succeeded;
             }
         }
         catch (Exception)
         {
             // 读不到就算了，不能因为一条提示拦住启动。
         }
+
+        return PortableReplaceOutcome.None;
+    }
+
+    private static void WireStartupChangelog(MainWindow window, MainViewModel viewModel)
+    {
+        void OnOpened(object? _, EventArgs __)
+        {
+            window.Opened -= OnOpened;
+
+            void ShowNow()
+            {
+                if (viewModel.ConsumeStartupChangelog() is not { } doc) return;
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try
+                    {
+                        var dialog = new UpdateChangelogWindow(doc);
+                        await dialog.ShowDialog(window);
+                    }
+                    catch (Exception)
+                    {
+                        // 弹窗展示失败不阻断主界面使用；标记已在读取时清理，不再重复弹出。
+                    }
+                }, DispatcherPriority.ApplicationIdle);
+            }
+
+            if (viewModel.Oobe.IsOpen)
+            {
+                void OnOobeClosed()
+                {
+                    viewModel.Oobe.Closed -= OnOobeClosed;
+                    ShowNow();
+                }
+
+                viewModel.Oobe.Closed += OnOobeClosed;
+            }
+            else
+            {
+                ShowNow();
+            }
+        }
+
+        window.Opened += OnOpened;
+    }
+
+    /// <summary>
+    /// 设计走查：--changelog-shot &lt;png&gt; [--changelog-from &lt;ver&gt;] [--changelog-to &lt;ver&gt;]。
+    /// 全部使用内存存储与内置 CHANGELOG.md，不联网、不读写真实 %LOCALAPPDATA%。
+    /// </summary>
+    private static bool CaptureChangelogIfRequested(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var args = desktop.Args ?? Array.Empty<string>();
+        var index = Array.IndexOf(args, "--changelog-shot");
+        if (index < 0 || index + 1 >= args.Length) return false;
+
+        var target = Path.GetFullPath(args[index + 1]);
+        var fromIndex = Array.IndexOf(args, "--changelog-from");
+        var toIndex = Array.IndexOf(args, "--changelog-to");
+        var fromText = fromIndex >= 0 && fromIndex + 1 < args.Length ? args[fromIndex + 1] : "1.44.0";
+        var toText = toIndex >= 0 && toIndex + 1 < args.Length
+            ? args[toIndex + 1]
+            : BuildIdentity.Current(typeof(MainViewModel)).Version.ToString();
+
+        Dispatcher.UIThread.Post(async () =>
+        {
+            var exitCode = 0;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                var store = new CapturePendingChangelogStore(new PendingChangelogEntry(fromText, toText));
+                var targetVersion = SemanticVersion.Parse(toText);
+                var doc = UpdateChangelogPlanner.ResolveOnStartup(
+                    store,
+                    targetVersion,
+                    portableReplaceFailed: false,
+                    EmbeddedChangelogProvider.ReadOrNull())
+                    ?? throw new InvalidOperationException("更新日志走查未能生成展示文档。");
+
+                var dialog = new UpdateChangelogWindow(doc);
+                dialog.Show();
+                await Task.Delay(500);
+                dialog.CaptureTo(target);
+                File.WriteAllText(target + ".state.txt",
+                    $"headline={doc.Headline}; releases={doc.Releases.Count}; fallback={doc.IsFallbackSummary}; window={dialog.Bounds.Size}");
+                dialog.Close();
+            }
+            catch (Exception ex)
+            {
+                exitCode = 1;
+                File.WriteAllText(target + ".error.txt", ex.ToString());
+            }
+            finally
+            {
+                desktop.Shutdown(exitCode);
+            }
+        });
+        return true;
+    }
+
+    private sealed class CapturePendingChangelogStore : IPendingChangelogStore
+    {
+        private PendingChangelogEntry? _entry;
+        public CapturePendingChangelogStore(PendingChangelogEntry entry) => _entry = entry;
+        public PendingChangelogEntry? Load() => _entry;
+        public void Save(PendingChangelogEntry entry) => _entry = entry;
+        public void Clear() => _entry = null;
     }
 
     /// <summary>重启帮手失败时留一条本机痕迹，供用户与支持者定位。</summary>
@@ -1527,8 +1689,9 @@ public partial class App : Application
             Directory.CreateDirectory(dir);
             File.WriteAllText(
                 Path.Combine(dir, "restart-failure.txt"),
-                $"自动重启没能安排：{ex.Message}{Environment.NewLine}" +
-                $"请手动打开 TeachCraft。{Environment.NewLine}{DateTimeOffset.Now:O}{Environment.NewLine}");
+                $"自动重启没能安排，请手动打开知微确认安装结果。{Environment.NewLine}" +
+                $"{ErrorText.Describe(ex, "安排自动重启")}{Environment.NewLine}" +
+                $"{DateTimeOffset.Now:O}{Environment.NewLine}");
         }
         catch (Exception)
         {
@@ -2477,7 +2640,7 @@ public partial class App : Application
         public void RememberDocument(string? id, int revision) { }
     }
 
-    /// <summary>走查专用作业整理共享名单假桥：三份合成名单，只读、不联网、不读凭据。</summary>
+    /// <summary>走查专用辑册共享名单假桥：三份合成名单，只读、不联网、不读凭据。</summary>
     private sealed class CaptureHomeworkRosterBridge : IHomeworkRosterBridge
     {
         public IReadOnlyList<HomeworkRosterEntry> Entries { get; } = new[]

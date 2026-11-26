@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Homework.Core;
 using Homework.Core.Scanning;
+using TeachCraft.Shared;
 
 namespace Homework.App.Scanning;
 
@@ -81,7 +82,7 @@ public sealed class ScanInboxItem
 
 /// <summary>
 /// 扫描任务窗口的视图模型。直接扫描与收件文件夹两条路共用同一个导入落点，
-/// 扫描完成后都进入作业整理批次，不再让老师手动找文件。
+/// 扫描完成后都进入辑册批次，不再让老师手动找文件。
 /// </summary>
 public sealed class ScanTaskViewModel : ObservableObject
 {
@@ -876,5 +877,5 @@ public sealed class ScanTaskViewModel : ObservableObject
     }
 
     private static string Describe(Exception ex, string action) =>
-        ex is HomeworkException ? ex.Message : $"处理失败：{ex.Message}";
+        ErrorText.Describe(ex, action);
 }

@@ -5,7 +5,7 @@ using Homework.Core.Recognition;
 namespace TeachCraft.Tests;
 
 /// <summary>
-/// 作业整理工作区视图模型。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚），
+/// 辑册工作区视图模型。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚），
 /// 页来源用临时文件，测试结束即删除。
 /// </summary>
 public sealed class HomeworkWorkspaceViewModelTests : IDisposable

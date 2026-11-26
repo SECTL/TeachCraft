@@ -6,7 +6,7 @@ using Homework.Core.Recognition;
 namespace TeachCraft.Tests;
 
 /// <summary>
-/// 作业整理批次聚合的不变量。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚），
+/// 辑册批次聚合的不变量。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚），
 /// 页来源用临时文件，测试结束即删除。
 /// </summary>
 public sealed class HomeworkBatchTests : IDisposable

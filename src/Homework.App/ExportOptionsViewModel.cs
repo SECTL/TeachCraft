@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Homework.Core;
 using Homework.Core.Export;
 using Homework.Core.Models;
+using TeachCraft.Shared;
 
 namespace Homework.App;
 
@@ -136,11 +137,12 @@ public sealed partial class ExportOptionsViewModel : ObservableObject
         catch (HomeworkException ex)
         {
             _hasPreview = false;
-            Conflicts = [ex.Message];
+            var message = ErrorText.Describe(ex, "生成导出预览");
+            Conflicts = [message];
             Warnings = [];
             PageCount = 0;
             StudentCount = 0;
-            PreviewText = ex.Message;
+            PreviewText = message;
             RaiseExportState();
             return;
         }

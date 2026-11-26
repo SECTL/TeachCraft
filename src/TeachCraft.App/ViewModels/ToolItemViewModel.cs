@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using TeachCraft.Core.Tools;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App.ViewModels;
 
@@ -190,7 +191,7 @@ public partial class ToolItemViewModel : ObservableObject
         catch (ToolboxException ex)
         {
             _excelClassSplitPreview = null;
-            ExcelClassSplitStatus = ex.Message;
+            ExcelClassSplitStatus = ErrorText.Describe(ex, "读取这份 Excel");
         }
         OnPropertyChanged(nameof(CanRunExcelClassSplit));
         OnPropertyChanged(nameof(ExcelClassSplitStatus));

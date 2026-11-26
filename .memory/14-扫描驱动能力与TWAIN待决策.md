@@ -72,7 +72,7 @@ Get-ChildItem 'C:\Program Files\Canon','C:\Program Files (x86)\Canon' -Recurse -
 - 现象：连 Canon 时点「用驱动界面扫描」，程序提示参数错误。`WIA.CommonDialog.ShowAcquireImage` 的 7 参数签名在文档上正确，但 Canon 驱动会按自己的实现挑参数/格式（常见是 PNG 不被接受、AlwaysSelectDevice/UseCommonUI 组合不被接受，或 WIA 1.x 的 6 参数版本）。
 - 处理：`AcquireWithDriverUiCore` 不再只发一种调用，而是依次尝试 6 种组合（7 参数 / BMP、7 参数 / 默认格式、7 参数 / JPEG、7 参数 / 未指定设备、4 参数、6 参数 WIA 1.x），CancelError 一律 false（取消返回 null）。哪种成功用哪种；全部失败时把每种尝试的 `0xErrorCode + Message` 拼进 `HomeworkException`，界面 ScanStatus 会显示完整记录。
 - 仍需用户在 Canon 机器上复核：如果弹的是驱动自己的「参数错误」对话框（不是 COM 异常），把那段完整文字发来，按驱动提示再调整。
-- 相关：BMP 已在支持格式里（收件文件夹 / 导入选择器 / `PageImageDecoder`），驱动界面扫描保存为 bmp 也能进作业整理。
+- 相关：BMP 已在支持格式里（收件文件夹 / 导入选择器 / `PageImageDecoder`），驱动界面扫描保存为 bmp 也能进辑册。
 
 ## HUAWEI Scanner NW 实测（2026-11-23）
 

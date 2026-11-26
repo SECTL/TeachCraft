@@ -194,6 +194,40 @@ public partial class GradeWeaveWindow : Window
     /// <summary>设计走查：收起遮罩。</summary>
     public void HideBusyOverlayForCapture() => ViewModel.IsBusy = false;
 
+    /// <summary>集控只读摘要：仅返回班级名列表与按 ConflictKind 分类的计数，绝不传出教师姓名或课程格。</summary>
+    public (
+        bool HasProject,
+        string ProjectTitle,
+        IReadOnlyList<string> Classes,
+        int ConflictTotal,
+        int TeacherClash,
+        int ClassClash,
+        int TeacherUnavailable,
+        int LayeredClash,
+        int MissingTeacher,
+        int PeriodMismatch,
+        int Unplaced) ReadRemoteSummary()
+    {
+        var project = ViewModel.Project;
+        var hasProject = ViewModel.HasProject;
+        var classes = hasProject
+            ? project.Classes.Select(c => c.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList()
+            : new List<string>();
+        var conflicts = ViewModel.ConflictModels;
+        return (
+            hasProject,
+            ViewModel.ProjectTitle ?? string.Empty,
+            classes,
+            conflicts.Count,
+            conflicts.Count(c => c.Kind == ConflictKind.TeacherClash),
+            conflicts.Count(c => c.Kind == ConflictKind.ClassClash),
+            conflicts.Count(c => c.Kind == ConflictKind.TeacherUnavailable),
+            conflicts.Count(c => c.Kind == ConflictKind.LayeredClash),
+            conflicts.Count(c => c.Kind == ConflictKind.MissingTeacher),
+            conflicts.Count(c => c.Kind == ConflictKind.HourMismatch),
+            conflicts.Count(c => c.Kind == ConflictKind.Unplaced));
+    }
+
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         if (!_closeReady && ViewModel.IsBusy)
@@ -2700,7 +2734,7 @@ public partial class GradeWeaveWindow : Window
     {
         if (ex is GradeWeaveException)
         {
-            ViewModel.SetStatus(ex.Message, true);
+            ViewModel.SetStatus(ErrorText.Describe(ex, prefix), true);
             return;
         }
 

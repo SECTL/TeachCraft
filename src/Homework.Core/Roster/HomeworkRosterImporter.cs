@@ -4,11 +4,12 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ExcelDataReader;
 using Homework.Core.Models;
+using TeachCraft.Shared;
 
 namespace Homework.Core.Roster;
 
 /// <summary>
-/// 作业整理名单导入：xlsx / xls / csv 统一走 ExcelDataReader，
+/// 辑册名单导入：xlsx / xls / csv 统一走 ExcelDataReader，
 /// 先预览工作表与表头，再由用户明确指定列映射后读取。
 /// </summary>
 public static class HomeworkRosterImporter
@@ -158,7 +159,7 @@ public static class HomeworkRosterImporter
         }
         catch (Exception ex)
         {
-            throw new HomeworkException($"读取名单文件失败：{ex.Message}", ex);
+            throw new HomeworkException(ErrorText.Describe(ex, "读取名单文件"), ex);
         }
     }
 

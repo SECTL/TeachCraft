@@ -4,7 +4,7 @@ using Homework.Core.Recognition;
 namespace Homework.Core.Models;
 
 /// <summary>
-/// 作业整理批次聚合：名单、页、匹配与生命周期的唯一入口。
+/// 辑册批次聚合：名单、页、匹配与生命周期的唯一入口。
 /// <para>
 /// 不变量：页顺序由 Index 表达且始终密集；UnknownLabel 单调分配、永不重编号；
 /// 只有 Editing 态可改动；提交前必须每页都已匹配且至少有一页。

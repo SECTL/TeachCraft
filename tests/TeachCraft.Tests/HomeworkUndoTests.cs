@@ -4,7 +4,7 @@ using Homework.Core.Models;
 namespace TeachCraft.Tests;
 
 /// <summary>
-/// 作业整理的快照撤销栈：内容去重、重做清空、容量丢最老、快照值相等。
+/// 辑册的快照撤销栈：内容去重、重做清空、容量丢最老、快照值相等。
 /// </summary>
 public sealed class HomeworkUndoTests
 {

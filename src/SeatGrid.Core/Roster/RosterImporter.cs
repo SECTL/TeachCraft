@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using ExcelDataReader;
 using SeatGrid.Core;
 using SeatGrid.Core.Models;
+using TeachCraft.Shared;
 
 namespace SeatGrid.Core.Roster;
 
@@ -42,7 +43,7 @@ public static class RosterImporter
         }
         catch (Exception ex)
         {
-            throw new SeatGridException($"无法读取这份名单：{ex.Message}", ex);
+            throw new SeatGridException(ErrorText.Describe(ex, "读取这份名单"), ex);
         }
 
         SheetParseResult? best = null;

@@ -303,8 +303,8 @@ public partial class MeetRosterWindow : Window
         catch (Exception ex)
         {
             session?.Dispose();
-            // 复用 WorkbookIO 已经写好的中文话术（损坏 / 被密码保护）。
-            var message = ex is InvalidDataException ? ex.Message : ErrorText.Describe(ex, "打开工作簿");
+            // ErrorText 透传 WorkbookIO 写好的中文话术（损坏 / 被密码保护），其余异常给可执行的中文提示。
+            var message = ErrorText.Describe(ex, "打开工作簿");
             return (null, MeetWorkbookKind.Unknown, message);
         }
     }

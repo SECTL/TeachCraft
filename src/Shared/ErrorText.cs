@@ -19,6 +19,15 @@ internal static class ErrorText
         // 业务异常原样透传：按属性名识别，不用共享接口（见类注释）。
         if (TryUserFacingMessage(ex) is string userFacing) return userFacing;
 
+        // 这些异常常被业务代码带着具体中文原因抛出（如「检测到旧版 .xls，请另存为 .xlsx」
+        // 「共享名单中有重复姓名」）。中文原因已是一句完整的话，原样返回，不再加「失败」前缀；
+        // 英文原文（如系统 IO 提示）不含中文，仍然走下面的类型映射。
+        if (ex is InvalidDataException or InvalidOperationException or ArgumentException
+            && HasChinese(ex.Message))
+        {
+            return ex.Message;
+        }
+
         var reason = ex switch
         {
             UnauthorizedAccessException => "没有权限访问这个文件或文件夹，换一个位置再试。",
@@ -47,11 +56,27 @@ internal static class ErrorText
             : null;
     }
 
+    private static bool HasChinese(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        foreach (var ch in text)
+        {
+            if (ch is >= '\u4e00' and <= '\u9fff') return true;
+        }
+        return false;
+    }
+
     private static bool IsFileLocked(IOException ex)
     {
+        // 先看 Win32 错误码（32 共享冲突 / 33 锁冲突），不依赖系统语言；
+        // 再看文本，兼容非 Windows 平台的英文提示。
+        var code = ex.HResult & 0xFFFF;
+        if (code is 32 or 33) return true;
+
         var text = ex.Message;
         return text.Contains("being used", StringComparison.OrdinalIgnoreCase)
                || text.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
-               || text.Contains("占用", StringComparison.Ordinal);
+               || text.Contains("占用", StringComparison.Ordinal)
+               || text.Contains("另一进程", StringComparison.Ordinal);
     }
 }

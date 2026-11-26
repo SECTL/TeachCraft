@@ -107,9 +107,9 @@ public static class HomeworkExporter
                 {
                     if (File.Exists(file)) File.Delete(file);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    warnings.Add($"取消后未能删除临时文件「{file}」：{ex.Message}");
+                    warnings.Add("取消后未能删除临时文件，请手动清理。");
                 }
             }
             throw;
