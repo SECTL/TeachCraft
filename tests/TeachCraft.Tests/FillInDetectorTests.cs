@@ -227,4 +227,29 @@ public sealed class FillInDetectorTests
 
         Assert.Throws<HomeworkException>(() => Run(bitmap, columns));
     }
+
+    [Fact]
+    public void Detect_LightGray200Mark_TreatedAsBlank()
+    {
+        // 亮度 200 高于墨迹阈值 180，应按未涂黑处理（第 1 列判空，第 2 列实心黑 0 正常识别）。
+        using var lightCol = BuildImage(new[] { (0, 2) }, columns: 2, gray: 200, fill: 0.65);
+        using (var canvas = new SKCanvas(lightCol))
+        using (var ink = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Fill })
+        {
+            // 手工在第 2 列第 4 行涂实心黑，确保唯一差异在亮度。
+            var cellW = (Width * (1 - 2 * FillInOptions.RegionInsetRatio)) / 2.0;
+            var cellH = (Height * (1 - 2 * FillInOptions.RegionInsetRatio)) / FillInOptions.Rows;
+            var ox = Width * FillInOptions.RegionInsetRatio;
+            var oy = Height * FillInOptions.RegionInsetRatio;
+            canvas.DrawRect(
+                (float)(ox + 1.2 * cellW), (float)(oy + 4.2 * cellH),
+                (float)(0.6 * cellW), (float)(0.6 * cellH), ink);
+        }
+
+        using var bitmap = Decode(lightCol);
+        var result = Run(bitmap, 2);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("第 1 列没有涂黑", result.FailureReason);
+    }
 }

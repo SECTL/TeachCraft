@@ -85,10 +85,21 @@ public sealed class WeaveAutosaveStore
     /// <summary>手动保存也走同一把锁，避免与后台自动保存同时写同一个工程文件。</summary>
     public void SaveProjectFile(string json, string path)
     {
+        if (IsWorkbookPath(path))
+            throw new GradeWeaveException("不能把工程直接保存到 Excel 工作簿（.xlsx/.xls），请保存为 .weave.json。");
+
         lock (_gate)
         {
             WeaveProjectIO.SaveJson(json, path);
         }
+    }
+
+    private static bool IsWorkbookPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var ext = Path.GetExtension(path);
+        return string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>开始一份自动保存会话；旧会话的在途写入会被拒绝，避免新工程被旧快照覆盖。</summary>
@@ -130,16 +141,23 @@ public sealed class WeaveAutosaveStore
             string? warning = null;
             if (!string.IsNullOrWhiteSpace(projectPath))
             {
-                try
+                if (IsWorkbookPath(projectPath))
                 {
-                    WeaveProjectIO.SaveJson(json, projectPath);
-                    RememberVersion(sessionId, version);
-                    return new WeaveAutosaveResult(
-                        true, WeaveAutosaveTarget.ProjectFile, Path.GetFullPath(projectPath), null);
+                    warning = "当前工程尚未另存为 .weave.json，自动保存已改存恢复文件，不会覆盖原 Excel 工作簿。";
                 }
-                catch (Exception ex) when (IsFileFailure(ex))
+                else
                 {
-                    warning = $"当前工程文件无法写入，已改存恢复文件：{ErrorText.Describe(ex, "写入工程文件")}";
+                    try
+                    {
+                        WeaveProjectIO.SaveJson(json, projectPath);
+                        RememberVersion(sessionId, version);
+                        return new WeaveAutosaveResult(
+                            true, WeaveAutosaveTarget.ProjectFile, Path.GetFullPath(projectPath), null);
+                    }
+                    catch (Exception ex) when (IsFileFailure(ex))
+                    {
+                        warning = $"当前工程文件无法写入，已改存恢复文件：{ErrorText.Describe(ex, "写入工程文件")}";
+                    }
                 }
             }
 

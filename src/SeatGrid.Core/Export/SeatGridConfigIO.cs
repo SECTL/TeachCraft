@@ -300,9 +300,16 @@ public static class SeatGridConfigIO
         if (!File.Exists(path))
             throw new SeatGridException("找不到配置文件，请重新选择。");
 
-        using var workbook = new XLWorkbook(path);
-        return ReadWorkbook(workbook)
-               ?? throw new SeatGridException("这不是「归位」导出的配置文件或座位表，请选择正确的 xlsx。");
+        try
+        {
+            using var workbook = new XLWorkbook(path);
+            return ReadWorkbook(workbook)
+                   ?? throw new SeatGridException("这不是「归位」导出的配置文件或座位表，请选择正确的 xlsx。");
+        }
+        catch (Exception ex) when (ex is not SeatGridException)
+        {
+            throw new SeatGridException(TeachCraft.Shared.ErrorText.Describe(ex, "读取配置文件"), ex);
+        }
     }
 
     /// <summary>

@@ -163,4 +163,32 @@ public sealed class ScheduleHighlightViewModelTests
             try { Directory.Delete(dir, recursive: true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task AllDaysSelection_IsVirtualAndNeverWrittenIntoProjectDays()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "AllDaysVirtual", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var corpus = MeetPerfCorpus.WriteOrderBook(dir, classes: 4);
+            var vm = new MeetRosterViewModel();
+            await vm.ImportOrderBookAsync(corpus);
+
+            var realDayCount = vm.Project.Days.Count;
+            Assert.DoesNotContain(vm.Project.Days, d => d.Name == "全部");
+
+            vm.SelectSection("schedule");
+            var allDays = Assert.Single(vm.ScheduleDays, d => d.IsAllDays);
+            Assert.Equal("全部", allDays.Name);
+            vm.SelectDay(allDays);
+
+            Assert.Equal(realDayCount, vm.Project.Days.Count);
+            Assert.DoesNotContain(vm.Project.Days, d => d.Name == "全部");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
 }

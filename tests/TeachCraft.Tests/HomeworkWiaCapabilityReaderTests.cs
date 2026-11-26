@@ -120,4 +120,19 @@ public sealed class HomeworkWiaCapabilityReaderTests
         Assert.Equal([ScanColorMode.BlackWhite], capabilities.ColorModes);
         Assert.Equal(100, capabilities.MaxPages);
     }
+
+    [Fact]
+    public void Read_SingleOutOfRangeResolution2000_IsFilteredOut()
+    {
+        var snapshot = new WiaPropertySnapshot(new Dictionary<int, WiaPropertyInfo>
+        {
+            [WiaScanRequest.XResolutionProperty] = WiaPropertyInfo.Single(2000),
+        });
+
+        var capabilities = WiaCapabilityReader.Read(snapshot);
+
+        Assert.False(capabilities.IsReported);
+        Assert.Equal([300], capabilities.Resolutions);
+        Assert.DoesNotContain(2000, capabilities.Resolutions);
+    }
 }

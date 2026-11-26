@@ -135,4 +135,20 @@ public sealed class ControlWiringTests : IDisposable
         Assert.DoesNotContain("sec_very_sensitive_value", loaded.ToString(), StringComparison.Ordinal);
         Assert.Contains("REDACTED", loaded.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Walkthrough_WithAccountTokenAndControlEnabled_MakesZeroNetworkRequests()
+    {
+        new FileControlSettingsStore(_dir).Save(new ControlSettings(Enabled: true, Host: "https://example.invalid"));
+        var handler = new ExplodingHandler();
+        var appVersion = typeof(ControlCenterService).Assembly.GetName().Version!.ToString(3);
+
+        var runtime = ControlWiring.Create(isWalkthrough: true, appVersion: appVersion, appDataRoot: _dir, handler: handler);
+        var vm = new MainViewModel(controlRuntime: runtime);
+        vm.OpenControlPanel();
+
+        Assert.False(vm.Control.IsConfigured);
+        Assert.False(vm.ControlCenter.ControlEnabled);
+        Assert.Equal(0, handler.Requests);
+    }
 }

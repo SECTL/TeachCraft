@@ -2227,4 +2227,59 @@ public sealed class SeatGridTests : IDisposable
             if (student.Id == id) return position;
         return null;
     }
+
+    [Fact]
+    public void ConfigIO_Import_RejectsCorruptAndForeignWorkbooksWithChineseError()
+    {
+        var corrupt = Path.Combine(_root, "corrupt-config.xlsx");
+        File.WriteAllBytes(corrupt, [0x50, 0x4B, 0x00, 0xFF, 0x10]);
+        var corruptEx = Assert.Throws<SeatGridException>(() => SeatGridConfigIO.Import(corrupt));
+        Assert.False(string.IsNullOrWhiteSpace(corruptEx.Message));
+        Assert.DoesNotContain("System.", corruptEx.Message, StringComparison.Ordinal);
+
+        var foreign = Path.Combine(_root, "foreign.xlsx");
+        using (var wb = new ClosedXML.Excel.XLWorkbook())
+        {
+            wb.AddWorksheet("普通工作表").Cell(1, 1).Value = "任意内容";
+            wb.SaveAs(foreign);
+        }
+
+        var foreignEx = Assert.Throws<SeatGridException>(() => SeatGridConfigIO.Import(foreign));
+        Assert.Contains("这不是「归位」导出", foreignEx.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Layout_BoundaryCoordinates_InclusiveAtMaxMinusOne_ExclusiveAtCount()
+    {
+        var layout = new SeatChartLayout(4, 6, 2);
+
+        Assert.True(layout.Contains(new SeatPosition(3, 5, 1)));
+        Assert.False(layout.Contains(new SeatPosition(4, 0, 0)));
+        Assert.False(layout.Contains(new SeatPosition(0, 6, 0)));
+        Assert.False(layout.Contains(new SeatPosition(0, 0, 2)));
+
+        var cornerStudent = new Student { Name = "角位生", Gender = Gender.Female };
+        var settings = new SeatChartSettings { Groups = 4, Rows = 6, Columns = 2 };
+        var assignments = new Dictionary<SeatPosition, Student> { [new SeatPosition(3, 5, 1)] = cornerStudent };
+        var configPath = Path.Combine(_root, "corner.xlsx");
+        SeatGridConfigIO.Export(configPath, settings, [cornerStudent], assignments);
+
+        var imported = SeatGridConfigIO.Import(configPath);
+        Assert.True(imported.Assignments.ContainsKey(new SeatPosition(3, 5, 1)));
+        Assert.Equal("角位生", imported.Assignments[new SeatPosition(3, 5, 1)].Name);
+    }
+
+    [Fact]
+    public void ExcelExport_WhenTargetFileLocked_DescribesLockInChinese()
+    {
+        var (settings, students, assignments) = ChartFixture();
+        var document = SeatChartComposer.Compose(settings, assignments, students.Count);
+        var target = Path.Combine(_root, "locked-seats.xlsx");
+
+        using var lockStream = new FileStream(target, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        var ex = Assert.ThrowsAny<IOException>(() =>
+            SeatChartExcelExporter.ExportSeatChart(document, assignments, students, target, string.Empty));
+        var msg = TeachCraft.Core.Cloud.CloudErrorText.DescribeForUi(ex, "导出 Excel");
+        Assert.Contains("占用", msg, StringComparison.Ordinal);
+    }
 }

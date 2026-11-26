@@ -284,6 +284,7 @@ internal static class JsonHelp
         if (node is JsonValue v)
         {
             if (v.TryGetValue<long>(out var l)) return l;
+            if (v.TryGetValue<int>(out var i)) return i;
             if (v.TryGetValue<double>(out var d)) return (long)d;
             if (v.TryGetValue<string>(out var s) && long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
                 return parsed;
@@ -299,6 +300,7 @@ internal static class JsonHelp
         {
             if (v.TryGetValue<double>(out var d)) return d;
             if (v.TryGetValue<long>(out var l)) return l;
+            if (v.TryGetValue<int>(out var i)) return i;
             if (v.TryGetValue<string>(out var s) && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
                 return parsed;
         }

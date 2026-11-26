@@ -339,4 +339,60 @@ public sealed class ClassBlockTests : IDisposable
         Assert.Contains("ErrorText.Describe(ex, action)", source, StringComparison.Ordinal);
         Assert.DoesNotContain("$" + "\"{prefix}：{ex.Message}\"", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MasterImporter_MissingAllAuxiliarySheets_StillSucceedsWithWarnings()
+    {
+        var path = ClassBlockFixtures.CreateMasterWorkbook(_root, "schedule-only.xlsx");
+        using (var wb = new ClosedXML.Excel.XLWorkbook(path))
+        {
+            foreach (var name in wb.Worksheets.Select(w => w.Name).Where(n => n != "2-课程表").ToList())
+                wb.Worksheet(name).Delete();
+            wb.Worksheet("2-课程表").Cell(8, 1).Clear();
+            wb.Save();
+        }
+
+        var master = MasterScheduleImporter.Import(path);
+
+        Assert.Equal(2, master.Classes.Count);
+        Assert.Contains(master.Warnings, w => w.Contains("班主任", StringComparison.Ordinal));
+        Assert.Contains(master.Warnings, w => w.Contains("午学", StringComparison.Ordinal));
+        Assert.Contains(master.Warnings, w => w.Contains("课后服务", StringComparison.Ordinal));
+        Assert.Contains(master.Warnings, w => w.Contains("早读", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MasterImporter_XlsInput_SuggestsSaveAsXlsx()
+    {
+        var xlsPath = Path.Combine(_root, "legacy.xls");
+        File.WriteAllBytes(xlsPath, [0xD0, 0xCF, 0x11, 0xE0]);
+
+        var ex = Assert.Throws<ClassBlockException>(() => MasterScheduleImporter.Import(xlsPath));
+        Assert.Contains("另存为 xlsx", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ClassBlockPrefsStore_CorruptJson_ResetsToDefault()
+    {
+        var dir = Path.Combine(_root, "prefs-corrupt");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{ invalid json !!!");
+
+        var loaded = ClassBlockPrefsStore.Load(dir);
+        Assert.Empty(loaded.LastTemplateByGrade);
+    }
+
+    [Fact]
+    public void TimetableRenderer_RenderPng_WhenTargetFileLocked_DescribesLockInChinese()
+    {
+        var masterPath = ClassBlockFixtures.CreateMasterWorkbook(_root, "master.xlsx");
+        var master = MasterScheduleImporter.Import(masterPath);
+        var timetable = TimetableBuilder.Build(master, "九1", new TimetableSettings());
+        var lockedPng = Path.Combine(_root, "locked-timetable.png");
+
+        using var lockStream = new FileStream(lockedPng, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        var ex = Assert.ThrowsAny<IOException>(() =>
+            TimetableRenderer.RenderPng(timetable, lockedPng, masterPath));
+        Assert.Contains("占用", TeachCraft.Core.Cloud.CloudErrorText.DescribeForUi(ex, "导出图片"), StringComparison.Ordinal);
+    }
 }

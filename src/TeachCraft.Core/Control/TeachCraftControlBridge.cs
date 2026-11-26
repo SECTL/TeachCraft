@@ -220,7 +220,7 @@ public sealed class TeachCraftControlDispatcher
             {
                 ["is_open"] = summary.IsOpen,
                 ["has_project"] = summary.HasProject,
-                ["project_title"] = summary.ProjectTitle,
+                ["project_title"] = SanitizeGradeWeaveTitle(summary),
                 ["class_count"] = summary.ClassCount,
                 ["classes"] = new JsonArray(summary.Classes.Select(c => (JsonNode?)JsonValue.Create(c)).ToArray()),
                 ["conflict_total"] = summary.ConflictTotal,
@@ -250,8 +250,40 @@ public sealed class TeachCraftControlDispatcher
         ["rows"] = summary.Rows,
         ["columns"] = summary.Columns,
         ["projecting"] = summary.Projecting,
-        ["title"] = summary.Title,
+        ["title"] = SanitizeSeatGridTitle(summary),
     };
+
+    private static readonly System.Text.RegularExpressions.Regex SafeSeatGridTitleRegex = new(
+        @"^(?:[初高][一二三](?:年级)?|[七八九](?:年级)?|[1-9]年级)?\s*(?:[\(（]\s*\d{1,3}\s*[\)）]|\d{1,3})\s*班(?:\s*(?:考场座位表|座位表|考场))?$",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex SafeGradeWeaveTitleRegex = new(
+        @"^(?:[初高][一二三](?:年级)?|[七八九](?:年级)?|[1-9]年级)(?:\s*(?:全年级)?(?:总)?课表(?:编排)?)?$",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string SanitizeSeatGridTitle(SeatGridReadSummary summary)
+    {
+        var raw = (summary.Title ?? string.Empty).Trim();
+        if (raw is "" or "归位 · 未打开" or "班级座位表" or "考场座位表")
+            return raw;
+
+        if (SafeSeatGridTitleRegex.IsMatch(raw))
+            return raw;
+
+        return summary.IsExam ? "考场座位表" : "班级座位表";
+    }
+
+    private static string SanitizeGradeWeaveTitle(GradeWeaveReadSummary summary)
+    {
+        var raw = (summary.ProjectTitle ?? string.Empty).Trim();
+        if (raw is "" or "织序课表编排" or "全年级课表" or "全年级总课表" or "全年级课表编排")
+            return raw;
+
+        if (SafeGradeWeaveTitleRegex.IsMatch(raw))
+            return raw;
+
+        return "织序课表编排";
+    }
 
     private static object FailArgs(string message) => throw new ControlException("bad_args", message);
 

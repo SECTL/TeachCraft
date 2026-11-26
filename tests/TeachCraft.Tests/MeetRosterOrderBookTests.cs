@@ -997,4 +997,100 @@ public sealed class MeetRosterOrderBookTests : IDisposable
         bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
             ? "PNG"
             : "OTHER";
+
+    [Fact]
+    public void ScheduleImporter_ThreeContinuationPages_ReadsAllEntriesBeyondSixteen()
+    {
+        var path = Path.Combine(_root, "three-page-800m.xlsx");
+        using (var wb = new XLWorkbook())
+        {
+            var schedule = wb.AddWorksheet("竞赛日程");
+            schedule.Cell(1, 1).Value = "示例中学运动会";
+            schedule.Cell(2, 1).Value = "2026-11-11 上午 径赛";
+            schedule.Cell(3, 1).Value = "序号";
+            schedule.Cell(3, 4).Value = "比赛项目";
+            schedule.Cell(4, 1).Value = 1;
+            schedule.Cell(4, 2).Value = "七年级";
+            schedule.Cell(4, 3).Value = "女子";
+            schedule.Cell(4, 4).Value = "800米";
+            schedule.Cell(4, 5).Value = "决赛";
+            schedule.Cell(4, 6).Value = "20人/1组/取8名";
+            schedule.Cell(4, 9).Value = "09:00";
+
+            var grouping = wb.AddWorksheet("项目分组表");
+            grouping.Cell(1, 1).Value = "七年级";
+            grouping.Cell(1, 3).Value = "女子800米";
+            grouping.Cell(1, 6).Value = "决赛";
+
+            // 第 1 页（1..8 道）、第 2 页续页（9..16 道）、第 3 页续页（17..20 道）
+            int[] counts = [8, 8, 4];
+            var baseRow = 2;
+            var athleteSeq = 1;
+            for (var p = 0; p < counts.Length; p++)
+            {
+                if (p == 0) grouping.Cell(baseRow, 1).Value = "第 1 组";
+                for (var i = 0; i < counts[p]; i++)
+                {
+                    var col = 2 + i;
+                    var lane = athleteSeq;
+                    grouping.Cell(baseRow, col).Value = lane;
+                    grouping.Cell(baseRow + 1, col).Value = $"{athleteSeq:0000}";
+                    grouping.Cell(baseRow + 2, col).Value = $"选手{athleteSeq:00}";
+                    grouping.Cell(baseRow + 3, col).Value = $"{(i % 4) + 1}班";
+                    athleteSeq++;
+                }
+
+                baseRow += 4;
+            }
+
+            wb.SaveAs(path);
+        }
+
+        var result = ScheduleWorkbookImporter.Import(path);
+        var slot = result.Days.SelectMany(d => d.Slots).Single(s => s.EventName == "800米");
+
+        Assert.Equal(20, slot.Entries.Count);
+        Assert.Equal("选手01", slot.Entries[0].AthleteName);
+        Assert.Equal("选手16", slot.Entries[15].AthleteName);
+        Assert.Equal("选手20", slot.Entries[19].AthleteName);
+        Assert.Contains("第 17 道", slot.Entries[16].Lane, StringComparison.Ordinal);
+        Assert.Contains("第 20 道", slot.Entries[19].Lane, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ApplyTeamMembers_TeamOnlyClassWithoutAthletes_KeepsGroupLaneBibUnchanged()
+    {
+        var project = new MeetProject { Title = "示例中学运动会" };
+        project.Classes.Add(new MeetClass { Name = "七年级9班", Group = "七年级" }); // 无任何运动员或报名
+        var day = new MeetDay { Name = "第一天", DateText = "11 月 11 日" };
+        var slot = new MeetSlot
+        {
+            Time = "10:00",
+            Period = "上午",
+            Grade = "七年级",
+            EventName = "4x100米接力",
+            Gender = "混合",
+            Category = MeetEventCategory.Track,
+        };
+        slot.Entries.Add(new MeetEntry
+        {
+            ClassName = "七年级9班",
+            AthleteName = "七年级9班接力队",
+            Group = "2",
+            Lane = "第 2 组 · 第 5 队",
+            Bib = "0905",
+        });
+        day.Slots.Add(slot);
+        project.Days.Add(day);
+
+        var updated = MeetRoster.Core.Scheduling.MeetScheduleBuilder.ApplyTeamMembers(project);
+
+        Assert.Equal(0, updated);
+        var entry = Assert.Single(slot.Entries);
+        Assert.Equal("2", entry.Group);
+        Assert.Equal("第 2 组 · 第 5 队", entry.Lane);
+        Assert.Equal("0905", entry.Bib);
+        Assert.False(entry.TeamMembersFromRegistration);
+        Assert.Equal(string.Empty, entry.TeamMembers);
+    }
 }

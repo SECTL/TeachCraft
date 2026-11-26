@@ -809,4 +809,45 @@ public sealed class SeatGridUndoTests
         Exam = null,
         Label = "样式",
     };
+
+    [Fact]
+    public void Vm_MirrorColumns_MirrorGroups_RotateGroups_RemoveLastRow_AreUndoable()
+    {
+        var vm = new SeatGridViewModel();
+        vm.GroupCount = 2;
+        vm.RowCount = 2;
+        vm.ColumnCount = 2;
+        vm.LoadRoster(Roster(8));
+
+        IReadOnlyDictionary<string, SeatPosition> Positions() =>
+            vm.Groups
+                .SelectMany(g => g.Rows)
+                .SelectMany(r => r.Seats)
+                .Where(s => !s.IsEmpty)
+                .ToDictionary(s => s.DisplayName, s => s.Position);
+
+        var initial = Positions();
+
+        vm.MirrorColumns();
+        Assert.NotEqual(initial, Positions());
+        vm.Undo();
+        Assert.Equal(initial, Positions());
+
+        vm.MirrorGroups();
+        Assert.NotEqual(initial, Positions());
+        vm.Undo();
+        Assert.Equal(initial, Positions());
+
+        vm.RotateGroups(1);
+        Assert.NotEqual(initial, Positions());
+        vm.Undo();
+        Assert.Equal(initial, Positions());
+
+        var rowsBefore = vm.RowCount;
+        vm.RemoveLastRow();
+        Assert.Equal(rowsBefore - 1, vm.RowCount);
+        vm.Undo();
+        Assert.Equal(rowsBefore, vm.RowCount);
+        Assert.Equal(initial, Positions());
+    }
 }

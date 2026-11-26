@@ -1635,16 +1635,19 @@ public partial class SeatGridViewModel : ObservableObject
             return;
         }
 
-        var unseated = 0;
-        foreach (var position in result.Removed)
+        RecordChange("调整行列", () =>
         {
-            if (!_assignments.Remove(position)) continue;
-            unseated++;
-        }
+            var unseated = 0;
+            foreach (var position in result.Removed)
+            {
+                if (!_assignments.Remove(position)) continue;
+                unseated++;
+            }
 
-        ResizeLayout(result.Layout, unseated > 0
-            ? $"已删除{label}，{unseated} 名学生退回未排。"
-            : $"已删除{label}。", unseated > 0);
+            ResizeLayoutCore(result.Layout, unseated > 0
+                ? $"已删除{label}，{unseated} 名学生退回未排。"
+                : $"已删除{label}。", unseated > 0);
+        });
     }
 
     private void ResizeLayout(SeatChartLayout layout, string message, bool warn = false) =>

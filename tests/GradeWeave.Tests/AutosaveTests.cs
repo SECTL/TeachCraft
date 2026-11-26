@@ -143,4 +143,48 @@ public sealed class AutosaveTests : IDisposable
         Assert.Null(loaded);
         Assert.Null(info);
     }
+
+    [Fact]
+    public void SaveJson_RejectsXlsxPathAndSkipsStaleSessionWrites()
+    {
+        var project = WeaveSamples.CreateDemo();
+        var json = WeaveProjectIO.Serialize(project);
+        var store = new WeaveAutosaveStore(_directory);
+
+        // 1. 传入 .xlsx 路径时绝不可覆盖 Excel 工作簿，必须降级写恢复文件并给出提示。
+        var xlsxPath = Path.Combine(_directory, "imported-master.xlsx");
+        var xlsxSentinel = "ORIGINAL-XLSX-BYTES"u8.ToArray();
+        File.WriteAllBytes(xlsxPath, xlsxSentinel);
+
+        var xlsxResult = store.SaveJson(json, xlsxPath, WeaveAutosaveInfo.FromProject(project, xlsxPath));
+        Assert.Equal(xlsxSentinel, File.ReadAllBytes(xlsxPath));
+        Assert.Equal(WeaveAutosaveTarget.RecoveryFile, xlsxResult.Target);
+        Assert.False(string.IsNullOrWhiteSpace(xlsxResult.Warning));
+        Assert.Throws<global::GradeWeave.Core.GradeWeaveException>(() => store.SaveProjectFile(json, xlsxPath));
+        Assert.Equal(xlsxSentinel, File.ReadAllBytes(xlsxPath));
+
+        // 2. 陈旧会话 ID 或较低版本号的延迟写入必须被跳过，不能覆写新会话的新工程文件。
+        var projPath = Path.Combine(_directory, "active.weave.json");
+        store.BeginSession("sess-1");
+        var r1 = store.SaveJson(json, projPath, WeaveAutosaveInfo.FromProject(project, projPath), 1, "sess-1");
+        Assert.True(r1.Success);
+        Assert.False(r1.Skipped);
+
+        project.SchoolName = "新会话工程";
+        var newJson = WeaveProjectIO.Serialize(project);
+        store.BeginSession("sess-2");
+        var r2 = store.SaveJson(newJson, projPath, WeaveAutosaveInfo.FromProject(project, projPath), 2, "sess-2");
+        Assert.True(r2.Success);
+        Assert.False(r2.Skipped);
+
+        project.SchoolName = "旧会话延迟快照";
+        var staleSessionResult = store.SaveJson(
+            WeaveProjectIO.Serialize(project), projPath, WeaveAutosaveInfo.FromProject(project, projPath), 5, "sess-1");
+        Assert.True(staleSessionResult.Skipped);
+
+        var staleVersionResult = store.SaveJson(
+            WeaveProjectIO.Serialize(project), projPath, WeaveAutosaveInfo.FromProject(project, projPath), 1, "sess-2");
+        Assert.True(staleVersionResult.Skipped);
+        Assert.Equal("新会话工程", WeaveProjectIO.Load(projPath).SchoolName);
+    }
 }

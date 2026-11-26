@@ -3,6 +3,8 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using ClosedXML.Excel;
 using PdfSharp.Pdf.IO;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
 using SkiaSharp;
 using TeachCraft.Core.Tools;
 
@@ -827,7 +829,7 @@ public sealed class ToolboxTests : IDisposable
                     new TableCell(new Paragraph(new Run(new Text("语文")))),
                     new TableCell(new Paragraph(new Run(new Text("73.29")))))));
 
-        main.Document = new Document(body);
+        main.Document = new DocumentFormat.OpenXml.Wordprocessing.Document(body);
         main.Document.Save();
         return path;
     }
@@ -836,5 +838,99 @@ public sealed class ToolboxTests : IDisposable
     {
         using var document = WordprocessingDocument.Open(path, false);
         return document.MainDocumentPart?.Document?.Body?.InnerText ?? string.Empty;
+    }
+
+    [Fact]
+    public void ImageConvert_CorruptImage_ThrowsChineseError()
+    {
+        var corrupt = Path.Combine(_root, "corrupt.png");
+        File.WriteAllBytes(corrupt, [0x01, 0x02, 0x03, 0x04, 0x05]);
+        var output = Path.Combine(_root, "out.jpg");
+
+        var ex = Assert.Throws<ToolboxException>(() => ImageToolbox.Convert(corrupt, output, "jpg"));
+        Assert.Contains("无法识别", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PdfSplit_EncryptedAndCorruptPdf_ThrowChineseErrors()
+    {
+        var encrypted = Path.Combine(_root, "encrypted.pdf");
+        using (var doc = new PdfSharp.Pdf.PdfDocument())
+        {
+            doc.AddPage();
+            doc.SecuritySettings.UserPassword = "user123";
+            doc.SecuritySettings.OwnerPassword = "owner123";
+            doc.Save(encrypted);
+        }
+
+        var encOut = Path.Combine(_root, "enc-out.pdf");
+        var encEx = Assert.Throws<ToolboxException>(() => PdfToolbox.Split(encrypted, encOut, "1"));
+        Assert.Contains("加密", encEx.Message, StringComparison.Ordinal);
+
+        var corrupt = Path.Combine(_root, "not-a-pdf.pdf");
+        File.WriteAllText(corrupt, "definitely not a pdf document");
+        var badEx = Assert.Throws<ToolboxException>(() => PdfToolbox.Split(corrupt, Path.Combine(_root, "bad-out.pdf"), "1"));
+        Assert.Contains("无法读取", badEx.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExamPaperLayout_ZeroPagePdf_RejectsInChinese()
+    {
+        var zeroPdf = MakeZeroPagePdf("zero-pages.pdf");
+        var output = Path.Combine(_root, "zero-layout.pdf");
+
+        var ex = Assert.Throws<ToolboxException>(() =>
+            ExamPaperLayoutToolbox.Layout(zeroPdf, output, ExamPaperLayoutMode.TwoUp));
+        Assert.False(string.IsNullOrWhiteSpace(ex.Message));
+        Assert.True(
+            ex.Message.Contains("没有页面", StringComparison.Ordinal) ||
+            ex.Message.Contains("无法读取", StringComparison.Ordinal),
+            $"意外错误信息：{ex.Message}");
+    }
+
+    [Fact]
+    public void PdfMerge_PreservesInputPageContentOrder()
+    {
+        var pdfA = MakeLabeledPdf("order-a.pdf", "PAGE-ORDER-ALPHA");
+        var pdfB = MakeLabeledPdf("order-b.pdf", "PAGE-ORDER-BETA");
+        var merged = Path.Combine(_root, "merged-order.pdf");
+
+        PdfToolbox.Merge([pdfA, pdfB], merged);
+
+        using var doc = UglyToad.PdfPig.PdfDocument.Open(merged);
+        Assert.Equal(2, doc.NumberOfPages);
+        Assert.Contains("PAGE-ORDER-ALPHA", doc.GetPage(1).Text, StringComparison.Ordinal);
+        Assert.Contains("PAGE-ORDER-BETA", doc.GetPage(2).Text, StringComparison.Ordinal);
+    }
+
+    private string MakeLabeledPdf(string name, string text)
+    {
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        var path = Path.Combine(_root, name);
+        QuestPDF.Fluent.Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(QuestPDF.Helpers.PageSizes.A4);
+                page.Content().Text(text).FontSize(18);
+            });
+        }).GeneratePdf(path);
+        return path;
+    }
+
+    private string MakeZeroPagePdf(string name)
+    {
+        var path = Path.Combine(_root, name);
+        var header = "%PDF-1.4\n";
+        var obj1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+        var obj2 = "2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n";
+        var offset1 = System.Text.Encoding.ASCII.GetByteCount(header);
+        var offset2 = offset1 + System.Text.Encoding.ASCII.GetByteCount(obj1);
+        var xrefOffset = offset2 + System.Text.Encoding.ASCII.GetByteCount(obj2);
+        var pdf = header + obj1 + obj2 +
+                  $"xref\n0 3\n0000000000 65535 f \n{offset1:D10} 00000 n \n{offset2:D10} 00000 n \n" +
+                  $"trailer\n<< /Size 3 /Root 1 0 R >>\nstartxref\n{xrefOffset}\n%%EOF\n";
+        File.WriteAllBytes(path, System.Text.Encoding.ASCII.GetBytes(pdf));
+        return path;
     }
 }

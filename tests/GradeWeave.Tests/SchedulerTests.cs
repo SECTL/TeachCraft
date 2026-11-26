@@ -392,6 +392,59 @@ public sealed class SchedulerTests
         Assert.DoesNotContain(project.Lessons, lesson => lesson.GroupId == group.Id);
     }
 
+    [Fact]
+    public void PartialLayeredPlacement_ReportsExactPlacedOverRequestedWarning()
+    {
+        var project = WeaveSamples.CreateDemo();
+        var group = Assert.Single(project.LayeredGroups);
+        group.IsFlexible = true;
+        group.ResolvedSlots.Clear();
+        // 目标周课时 3 节（Demo 默认英语 5 节，调成至少需 4 节或锁定 2..5 天并把可用正课压到不足）：
+        // 锁定第 2..5 天全天且把第 1 天第 2..7 节锁定，只留第 1 天第 1 节这 1 个空槽。
+        var teacherIds = group.Layers
+            .Where(l => !string.IsNullOrEmpty(l.TeacherId))
+            .Select(l => l.TeacherId!)
+            .Distinct()
+            .ToList();
+        var subj = project.Subjects.Single(s => s.Id == group.SubjectId);
+        subj.WeeklyHours = 3;
+        group.WeeklyHours = 3;
+
+        foreach (var tid in teacherIds)
+        {
+            for (var day = 2; day <= 5; day++)
+            {
+                project.MeetingBlocks.Add(new MeetingBlock
+                {
+                    Name = "部分锁会",
+                    DayIndex = day,
+                    StartPeriod = 1,
+                    EndPeriod = 7,
+                    TeacherIds = [tid],
+                });
+            }
+
+            project.MeetingBlocks.Add(new MeetingBlock
+            {
+                Name = "部分锁会-周一余节",
+                DayIndex = 1,
+                StartPeriod = 2,
+                EndPeriod = 7,
+                TeacherIds = [tid],
+            });
+        }
+
+        var result = new WeaveScheduler().Generate(project, new ScheduleOptions
+        {
+            RandomSeed = 20261026,
+            TimeLimit = TimeSpan.FromSeconds(10),
+        });
+
+        Assert.Contains(result.Messages, m =>
+            m.Contains(group.Name, StringComparison.Ordinal) &&
+            m.Contains("1/3", StringComparison.Ordinal));
+    }
+
     private static string Describe(ScheduleResult result)
     {
         var unplaced = string.Join("；", result.Unplaced.Select(u =>

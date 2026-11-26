@@ -137,4 +137,32 @@ public sealed class HomeworkScanInboxWatcherTests : IDisposable
         Assert.Equal("scan-01.png", renotified[0]);
         Assert.Equal(3, watcher.SeenCount);
     }
+
+    [Fact]
+    public async Task EnqueueExistingFiles_ImportsOnlyImportableFiles_AndIgnoresTempOrText()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "ok-01.png"), "png");
+        await File.WriteAllTextAsync(Path.Combine(_root, "ok-02.pdf"), "pdf");
+        await File.WriteAllTextAsync(Path.Combine(_root, "note.txt"), "text");
+        await File.WriteAllTextAsync(Path.Combine(_root, "~$temp.png"), "lock");
+        await File.WriteAllTextAsync(Path.Combine(_root, "part.tmp"), "tmp");
+        await File.WriteAllTextAsync(Path.Combine(_root, "dl.crdownload"), "cr");
+
+        using var watcher = new ScanInboxWatcher(_root, TimeSpan.FromMilliseconds(35), TimeSpan.FromSeconds(2));
+        var arrived = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var two = new SemaphoreSlim(0);
+        watcher.FileReady += p =>
+        {
+            arrived.Add(Path.GetFileName(p));
+            two.Release();
+        };
+
+        watcher.EnqueueExistingFiles();
+
+        Assert.True(await two.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.True(await two.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Task.Delay(250);
+
+        Assert.Equal(["ok-01.png", "ok-02.pdf"], arrived.OrderBy(n => n, StringComparer.Ordinal).ToArray());
+    }
 }

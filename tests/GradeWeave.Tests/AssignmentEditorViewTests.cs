@@ -297,4 +297,99 @@ public sealed class AssignmentEditorViewTests
 
         Assert.Contains(viewModel.TeacherRoster, item => item.Name == "新教师");
     }
+
+    [Fact]
+    public void FiveViewSwitching_PreservesDraftWithoutPrematureWritebackUntilApply()
+    {
+        var project = WeaveSamples.CreateDemo();
+        var viewModel = new AssignmentEditorViewModel(project);
+        viewModel.NewTeacherName = "周暂存";
+        viewModel.NewTeacherSubject = "历史";
+        viewModel.AddTeacherCommand.Execute(null);
+
+        var row = viewModel.Rows[0];
+        var subjectIndex = 0;
+        var originalTeacher = row.Cells[subjectIndex].Text;
+        row.Cells[subjectIndex].Text = "周暂存";
+
+        // 依次切换 5 个视图，草稿必须保持且尚未写回底层 project
+        int[] modes = [1, 2, 3, 4, 0];
+        foreach (var mode in modes)
+        {
+            viewModel.ViewMode = mode;
+            Assert.Equal(mode == 0, viewModel.IsRosterView);
+            Assert.Equal(mode == 1, viewModel.IsClassView);
+            Assert.Equal(mode == 2, viewModel.IsTeacherView);
+            Assert.Equal(mode == 3, viewModel.IsSubjectView);
+            Assert.Equal(mode == 4, viewModel.IsOverviewView);
+            Assert.DoesNotContain(project.Teachers, t => t.Name == "周暂存");
+            Assert.Equal("周暂存", row.Cells[subjectIndex].Text);
+        }
+
+        row.Cells[subjectIndex].Text = originalTeacher;
+        Assert.True(viewModel.Apply(), viewModel.Error);
+        Assert.Contains(project.Teachers, t => t.Name == "周暂存");
+    }
+
+    [Theory]
+    [InlineData("lesson")]
+    [InlineData("layered")]
+    [InlineData("meeting")]
+    [InlineData("activity")]
+    public void RemoveTeacher_BlocksWhenReferencedByTimetableLayeredMeetingOrActivity(string refKind)
+    {
+        var project = WeaveSamples.CreateDemo();
+        var teacher = new Teacher { Id = "t_ref", Name = "林引用", Subject = "体育" };
+        project.Teachers.Add(teacher);
+
+        switch (refKind)
+        {
+            case "lesson":
+                project.Lessons.Add(new LessonPlacement
+                {
+                    ClassId = project.Classes[0].Id,
+                    SubjectId = project.Subjects[0].Id,
+                    TeacherId = teacher.Id,
+                    DayIndex = 1,
+                    Period = 1,
+                });
+                break;
+            case "layered":
+                project.LayeredGroups.Add(new LayeredClassGroup
+                {
+                    Name = "体育分层",
+                    SubjectId = project.Subjects[0].Id,
+                    Layers = [new LayeredClassLayer { Name = "A层", TeacherId = teacher.Id }],
+                });
+                break;
+            case "meeting":
+                project.MeetingBlocks.Add(new MeetingBlock
+                {
+                    Name = "备课会",
+                    DayIndex = 1,
+                    StartPeriod = 2,
+                    EndPeriod = 2,
+                    TeacherIds = [teacher.Id],
+                });
+                break;
+            case "activity":
+                project.Activities.Add(new ActivityBlock
+                {
+                    Name = "社团课",
+                    DayIndex = 1,
+                    Period = 3,
+                    StartTime = "10:00",
+                    EndTime = "10:40",
+                    TeacherId = teacher.Id,
+                });
+                break;
+        }
+
+        var vm = new AssignmentEditorViewModel(project);
+        var item = Assert.Single(vm.TeacherRoster, t => t.Name == "林引用");
+        vm.RemoveTeacher(item);
+
+        Assert.Contains("已有课表、走班、会议或活动记录", vm.Error, StringComparison.Ordinal);
+        Assert.Contains(vm.TeacherRoster, t => t.Name == "林引用");
+    }
 }
