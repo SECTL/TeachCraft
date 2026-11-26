@@ -73,9 +73,9 @@ $$\text{v}\{Major\}.\{Minor\}.\{Patch\}[-\text{preview}.\{RunNumber\}]$$
 
 工作流：`.github/workflows/release-draft.yml`
 
-本节测试数量以 1.45.0 为当前基线：本轮非单实例 2006 项（TeachCraft.Tests 1730 + GradeStrip.Tests 108 + GradeWeave.Tests 168）全部通过，构建 0 错误；单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时，按既有口径排除。1.44.0 的 1640 项（非单实例）/ 1645 项（全量）、1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项作为历史保留。
+本节测试数量以 1.46.0 仓库加固验证为当前基线：本轮全量 **2070 项**（`TeachCraft.Tests` **1785 项**（含单实例信号 5 项全过 / 非单实例 1780 项）+ `GradeStrip.Tests` **110 项** + `GradeWeave.Tests` **175 项**）全部通过，`dotnet build TeachCraft.slnx -c Release --no-incremental` 0 警告 0 错误。1.45.0 的 2006 项（非单实例）/ 2011 项（全量）、1.44.0 的 1640 项（非单实例）/ 1645 项（全量）、1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项作为历史保留。
 
-1. **测试**：`windows-latest` 上依次运行 `dotnet test tests/GradeStrip.Tests/GradeStrip.Tests.csproj -c Release`（108 项，分晓导入 / 报表 / 导出回归 / Core 导出守卫）、`dotnet test tests/TeachCraft.Tests/TeachCraft.Tests.csproj -c Release`（1730 项，工具箱、时序模板与日块右界、竞名报名/赛程/秩序册/名单导入导出端到端与导出设置、工具说明展开、检查更新页与镜像回退与下载速度、发布身份与版本脚本、归位考场导出与座号、撤销重做与考场快照交叉、清空画布回归、奖状生成、作业整理批次 / 名单 / 拆页 / 导出 / 视图模型 / 应交页数与撤回、填涂识别 / 模板 / 选区、扫描任务 / WIA 映射 / 收件监听 / 扫描能力）与 `dotnet test tests/GradeWeave.Tests/GradeWeave.Tests.csproj -c Release`（168 项，织序自动保存 / 作息时间表 / 导入与拖拽确认 / 编排 / 活动 / 走班与孤儿课 / 手动放课 / 锁课 / 冲突聚合台 / 教师名单与分工五视角 / 导出设置与三样式 / 希沃模板导出 / xls 导入 / 导出 / 工程往返 / 岗位匹配回归），失败则阻止发布。数量为 2026-11-25 `1.45.0` 本地 Release 实测基线，合计 2011 项（非单实例 2006 项；单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时）。
+1. **测试**：`windows-latest` 上依次运行 `dotnet test tests/GradeStrip.Tests/GradeStrip.Tests.csproj -c Release`（110 项，分晓导入 / 报表 / 成绩文本与并列竞争排名 / 导出回归 / Core 导出守卫）、`dotnet test tests/TeachCraft.Tests/TeachCraft.Tests.csproj -c Release`（1785 项，工具箱、时序模板与日块右界、竞名报名/赛程/秩序册/名单导入导出端到端与导出设置、工具说明展开、检查更新页与镜像回退与下载速度、发布身份与版本脚本、归位考场导出与座号、全样式撤销重做与考场快照交叉、清空画布回归、奖状生成、作业整理批次 / 名单 / 拆页 / 导出 / 视图模型 / 应交页数与撤回、填涂识别 / 模板 / 选区、扫描任务 / WIA 映射 / 收件监听 / 扫描能力、SECTL 集控双通道配对与摘要脱敏/看门狗回归）与 `dotnet test tests/GradeWeave.Tests/GradeWeave.Tests.csproj -c Release`（175 项，织序自动保存守卫 / 作息时间表 / 导入与拖拽确认 / 编排 / 活动 / 走班与孤儿课 / 手动放课 / 锁课 / 冲突聚合台 / 教师名单与分工五视角 / 导出设置与三样式 / 希沃模板导出 / xls 导入 / 导出 / 工程往返 / 岗位匹配回归），失败则阻止发布。数量为 2026-11-26 `1.46.0` 加固后本地 Release 实测基线，合计 2070 项全部通过（单实例信号 5 项全过；若本机另有常驻 Debug 实例运行，按既有口径 `--filter "FullyQualifiedName!~SingleInstanceSignalTests"` 排除单实例信号为 2065 项全过）。
 2. **构建矩阵**：7 个 RID × 2 种部署模式 = 14 个包。
 
 | RID | 运行器 | 产物 |
@@ -234,9 +234,9 @@ design-preview               # 已评审的 HTML 视觉稿（只读参考）
 
 ## 九、验证要求
 
-1.45.0 为当前基线：本轮非单实例 2006 项全过（TeachCraft.Tests 1730 + GradeStrip.Tests 108 + GradeWeave.Tests 168），构建 0 错误；单实例信号 5 项中 3 项受本机常驻 Debug 实例干扰超时，按既有口径排除。1.44.0 实测非单实例 1640 项全部通过（全量 1645 项，单实例 5 项中 3 项受本机常驻 Debug 实例干扰超时）；1.43.0 的 1615 项、1.42.0 的 1557 项与 1.41.0 的 1433 项为历史基线。
+1.46.0 加固基线为当前口径：全量 **2070 项**全部通过（`TeachCraft.Tests` **1785 项**含单实例信号 5 项全过 / 非单实例 **1780 项** + `GradeStrip.Tests` **110 项** + `GradeWeave.Tests` **175 项**），`dotnet build TeachCraft.slnx -c Release --no-incremental` 0 警告 0 错误。1.45.0（2006 / 2011 项）、1.44.0（1640 / 1645 项）、1.43.0（1615 项）、1.42.0（1557 项）与 1.41.0（1433 项）为历史基线。
 
-- 提交前必须通过：`dotnet build TeachCraft.slnx -c Release` 与全部 xUnit 测试（2026-11-22 `1.44.0` 实测：GradeStrip.Tests 108 项 + TeachCraft.Tests 1369 项 + GradeWeave.Tests 168 项，合计 1645 项；非单实例 1640 项全过）。
+- 提交前必须通过：`dotnet build TeachCraft.slnx -c Release` 与全部 xUnit 测试（2026-11-26 `1.46.0` 加固后实测：GradeStrip.Tests 110 项 + TeachCraft.Tests 1785 项 + GradeWeave.Tests 175 项，合计 2070 项；若本机另有常驻 Debug 实例干扰单实例信号，非单实例 2065 项全过）。
 - 涉及图片 / PDF 引擎的改动，必须额外用真实文件跑一遍：格式转换、PDF 合并、Word→PDF、PDF 转图片。
 - 涉及归位的改动，必须额外验证：带表头 / 无表头名单识别、配置 xlsx 往返、PNG / PDF / Excel 三种导出。
 - 涉及时序的改动，必须额外验证：真实总表的年级/学期/月份/班级数识别、目标班级 7 节课与课服/午学/晚修提取、PNG 与 PDF 输出。
