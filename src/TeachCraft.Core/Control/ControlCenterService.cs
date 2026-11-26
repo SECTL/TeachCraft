@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.Http;
 using System.Text.Json.Nodes;
 using TeachCraft.Core.Cloud;
+using TeachCraft.Shared;
 
 namespace TeachCraft.Core.Control;
 
@@ -10,7 +11,7 @@ public sealed class ControlCenterOptions
     public bool Enabled { get; init; } = false;
     public string Host { get; init; } = SectlPlatformDefaults.WebBaseUrl;
     public string Platform { get; init; } = SectlControlProtocol.PlatformName;
-    public string AppVersion { get; init; } = "1.46.0";
+    public string AppVersion { get; init; } = typeof(ControlCenterService).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
     public string DeviceUuid { get; init; } = string.Empty;
     public string? DeviceName { get; init; }
     public IReadOnlyList<string> Capabilities { get; init; } = SectlControlProtocol.DefaultCapabilities;
@@ -283,7 +284,7 @@ public sealed class ControlCenterService : IAsyncDisposable
         catch (Exception ex)
         {
             Log($"配对码接入失败：{ex.Message}");
-            return (false, ex.Message, null);
+            return (false, FormatEnrollFailure(ex), null);
         }
         finally
         {
@@ -311,12 +312,19 @@ public sealed class ControlCenterService : IAsyncDisposable
         catch (Exception ex)
         {
             Log($"账号接入失败：{ex.Message}");
-            return (false, ex.Message, null);
+            return (false, FormatEnrollFailure(ex), null);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private static string FormatEnrollFailure(Exception ex)
+    {
+        if (ex is ControlException ce && !string.IsNullOrWhiteSpace(ce.Detail))
+            return ErrorText.Describe(ce, "接入");
+        return "接入失败：请检查地点ID、配对码或网络后重试。";
     }
 
     public async Task<IReadOnlyList<ControlSiteSummary>> FetchSitesWithAccountAsync(string accessToken)
@@ -512,6 +520,8 @@ public sealed class ControlCenterService : IAsyncDisposable
         Volatile.Write(ref _snapshot, snapshot);
         try { StateChanged?.Invoke(this, snapshot); } catch { }
     }
+
+    internal void LogDiagnostic(string message) => Log(message);
 
     private void Log(string message)
     {

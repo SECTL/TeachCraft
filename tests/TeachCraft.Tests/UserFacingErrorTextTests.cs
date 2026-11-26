@@ -20,7 +20,12 @@ public sealed class UserFacingErrorTextTests
         "FailRosterImport(", "warnings.Add(", "warns.Add(", "errors.Add(",
         "issues.Add(", "ResultText =", "ExcelClassSplitStatus =", "PreviewText =",
         "PreviewSummary =", "Conflicts =", "RecognitionFailure",
+        "FeedbackMessage =", "return (false, ", "ReportAsync(",
     ];
+
+    private static readonly Regex ControlSinkWithRawException = new(
+        @"(FeedbackMessage\s*=|return\s*\(\s*false\s*,|ReportAsync\s*\()[^;]{0,500}?(ex\.Message|ex\.ToString\(\)|ex\.GetType\(\)\.Name)",
+        RegexOptions.Compiled | RegexOptions.Singleline);
 
     private static readonly Regex ThrowWithRawMessage = new(
         @"throw new \w+Exception\([^;]{0,500}?\{ex\.Message\}", RegexOptions.Compiled | RegexOptions.Singleline);
@@ -73,5 +78,22 @@ public sealed class UserFacingErrorTextTests
 
         Assert.True(offenders.Count == 0,
             "抛给教师的异常不得直接使用异常原文，请改用 ErrorText.Describe(ex, \"动作\")：\n" + string.Join("\n", offenders));
+    }
+
+    [Fact]
+    public void ControlFeedbackAndReplies_NeverExposeRawExceptionMessages()
+    {
+        var offenders = new List<string>();
+        foreach (var (path, text) in RepoRoot.ReadAll(Path.Combine("src"), ".cs"))
+        {
+            var relative = Path.GetRelativePath(RepoRoot.Path, path).Replace('\\', '/');
+            foreach (Match match in ControlSinkWithRawException.Matches(text))
+            {
+                offenders.Add($"{relative}: {match.Value.Replace('\n', ' ').Trim()}");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "集控反馈、接入返回值与 Hub 回执不得直接携带异常原文：\n" + string.Join("\n", offenders));
     }
 }

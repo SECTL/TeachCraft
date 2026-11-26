@@ -272,10 +272,19 @@ public sealed class TeachCraftControlDispatcher
                 if (_service.Client is { } client)
                     await client.ReportAsync(inv.CommandId, false, new JsonObject { ["cmd"] = inv.Cmd }, "timeout", "窗口响应超时").ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (ControlException ex)
             {
                 if (_service.Client is { } client)
-                    await client.ReportAsync(inv.CommandId, false, new JsonObject { ["cmd"] = inv.Cmd }, "failed", ex.Message).ConfigureAwait(false);
+                {
+                    var message = string.IsNullOrWhiteSpace(ex.Detail) ? "客户端执行失败" : ex.Detail;
+                    await client.ReportAsync(inv.CommandId, false, new JsonObject { ["cmd"] = inv.Cmd }, ex.Code, message).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _service.LogDiagnostic($"异步执行指令 {inv.Cmd}({inv.CommandId}) 失败：{ex.Message}");
+                if (_service.Client is { } client)
+                    await client.ReportAsync(inv.CommandId, false, new JsonObject { ["cmd"] = inv.Cmd }, "failed", "客户端执行失败").ConfigureAwait(false);
             }
         });
 

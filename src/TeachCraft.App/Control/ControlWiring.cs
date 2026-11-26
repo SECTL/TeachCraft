@@ -38,7 +38,9 @@ public static class ControlWiring
             Enabled = settings.Enabled,
             Host = settings.Host,
             Platform = SectlControlProtocol.PlatformName,
-            AppVersion = string.IsNullOrWhiteSpace(appVersion) ? "1.46.0" : appVersion,
+            AppVersion = string.IsNullOrWhiteSpace(appVersion)
+                ? (typeof(ControlWiring).Assembly.GetName().Version?.ToString(3) ?? "0.0.0")
+                : appVersion,
             DeviceUuid = deviceUuid,
             DeviceName = string.IsNullOrWhiteSpace(settings.DeviceName)
                 ? $"{Environment.MachineName}-TeachCraft"

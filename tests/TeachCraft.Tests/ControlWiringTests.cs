@@ -46,8 +46,9 @@ public sealed class ControlWiringTests : IDisposable
     {
         new FileControlSettingsStore(_dir).Save(new ControlSettings(Enabled: true, Host: "https://example.invalid"));
         var handler = new ExplodingHandler();
+        var appVersion = typeof(ControlCenterService).Assembly.GetName().Version!.ToString(3);
 
-        var runtime = ControlWiring.Create(isWalkthrough: true, appVersion: "1.46.0", appDataRoot: _dir, handler: handler);
+        var runtime = ControlWiring.Create(isWalkthrough: true, appVersion: appVersion, appDataRoot: _dir, handler: handler);
 
         Assert.False(runtime.IsConfigured);
         Assert.Null(runtime.Service);
@@ -60,7 +61,8 @@ public sealed class ControlWiringTests : IDisposable
     public void OpenControlPanel_DoesNotGoOnline_AndIsMutuallyExclusive()
     {
         var handler = new ExplodingHandler();
-        var runtime = ControlWiring.Create(isWalkthrough: false, appVersion: "1.46.0", appDataRoot: _dir, handler: handler);
+        var appVersion = typeof(ControlCenterService).Assembly.GetName().Version!.ToString(3);
+        var runtime = ControlWiring.Create(isWalkthrough: false, appVersion: appVersion, appDataRoot: _dir, handler: handler);
         var vm = new MainViewModel(controlRuntime: runtime);
 
         Assert.True(vm.Control.IsConfigured);

@@ -5,6 +5,7 @@ using TeachCraft.App.Cloud;
 using TeachCraft.App.ControlCenter;
 using TeachCraft.Core.Cloud;
 using TeachCraft.Core.Control;
+using TeachCraft.Shared;
 
 namespace TeachCraft.App.ViewModels;
 
@@ -218,7 +219,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "读取地点列表");
         }
         finally
         {
@@ -257,7 +258,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "接入集控");
         }
         finally
         {
@@ -288,7 +289,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "获取班级列表");
         }
         finally
         {
@@ -311,7 +312,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "绑定班级");
         }
         finally
         {
@@ -341,7 +342,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "占用班级");
         }
         finally
         {
@@ -362,7 +363,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "释放占班");
         }
         finally
         {
@@ -384,7 +385,7 @@ public sealed partial class ControlViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            FeedbackMessage = ex.Message;
+            FeedbackMessage = ErrorText.Describe(ex, "读取座签几何");
         }
         finally
         {

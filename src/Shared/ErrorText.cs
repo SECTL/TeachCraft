@@ -48,12 +48,29 @@ internal static class ErrorText
 
     private static string? TryUserFacingMessage(Exception ex)
     {
-        var property = ex.GetType().GetProperty("UserFacingMessage",
+        var type = ex.GetType();
+        var property = type.GetProperty("UserFacingMessage",
             System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-        return property?.PropertyType == typeof(string)
-            && property.GetValue(ex) is string text && !string.IsNullOrWhiteSpace(text)
-            ? text
-            : null;
+        if (property?.PropertyType == typeof(string)
+            && property.GetValue(ex) is string text && !string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        // 集控业务异常通过公开 Detail + Code 给出中文说明，按属性名识别以兼容多程序集链接。
+        var detail = type.GetProperty("Detail",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        var code = type.GetProperty("Code",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (detail?.PropertyType == typeof(string)
+            && code?.PropertyType == typeof(string)
+            && detail.GetValue(ex) is string detailText && !string.IsNullOrWhiteSpace(detailText)
+            && code.GetValue(ex) is string codeText && !string.IsNullOrWhiteSpace(codeText))
+        {
+            return detailText;
+        }
+
+        return null;
     }
 
     private static bool HasChinese(string? text)

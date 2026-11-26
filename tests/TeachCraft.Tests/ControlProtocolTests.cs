@@ -448,4 +448,173 @@ public sealed class ControlProtocolTests : IDisposable
         await Task.Delay(100);
         Assert.Null(credStore.Load());
     }
+
+    [Fact]
+    public async Task CommandErrorReplies_RedactUnexpectedIOException_AndPreserveControlExceptionDetail()
+    {
+        var fakeWs = new MemoryControlWebSocket();
+        var host = new FakeControlHost();
+        var credStore = new NoopControlCredentialStore();
+        credStore.Save(new ControlCredential
+        {
+            DeviceId = "dev_ws_err",
+            DeviceSecret = "sec_ws_err",
+            Host = "https://sectl.cn",
+            SitePublicId = "SC-6M34RQ",
+            SiteName = "实验中学",
+        });
+
+        var logs = new List<string>();
+        await using var service = new ControlCenterService(new ControlCenterOptions
+        {
+            Enabled = true,
+            CredentialStore = credStore,
+            StateStore = new NoopControlStateStore(),
+            WebSocketFactory = () => fakeWs,
+            Log = logs.Add,
+        });
+
+        new TeachCraftControlDispatcher(service, host).RegisterAll();
+
+        // 同步路径抛 IOException（SectlControlClient.HandleCommandAsync）
+        service.RegisterHandler("seatgrid.open", _ => throw new IOException(@"C:\Users\alice\secret.xlsx 被占用"));
+        // 同步路径抛 ControlException（保留中文与 code）
+        service.RegisterHandler("classblock.read", _ => throw new ControlException("bad_args", "考场列数须在 4 至 8 之间"));
+
+        Assert.True(await service.StartAsync());
+
+        var helloReq = await fakeWs.ReadClientMessageAsync();
+        fakeWs.ServerSend(new JsonObject
+        {
+            ["type"] = "res",
+            ["id"] = helloReq["id"]!.GetValue<string>(),
+            ["ok"] = true,
+            ["payload"] = new JsonObject { ["heartbeat_seconds"] = 25, ["offline_after_seconds"] = 75 },
+        });
+
+        async Task<JsonObject> SendAsync(string cmdId, string cmd)
+        {
+            fakeWs.ServerSend(new JsonObject
+            {
+                ["type"] = "evt",
+                ["topic"] = "cmd",
+                ["payload"] = new JsonObject
+                {
+                    ["command_id"] = cmdId,
+                    ["cmd"] = cmd,
+                    ["args"] = new JsonObject(),
+                    ["deadline_ms"] = 4000,
+                    ["expires_at"] = DateTimeOffset.UtcNow.AddSeconds(30).ToUnixTimeMilliseconds(),
+                },
+            });
+
+            var ack = await fakeWs.ReadClientMessageAsync();
+            Assert.Equal("cmd.ack", ack["topic"]!.GetValue<string>());
+            var res = await fakeWs.ReadClientMessageAsync();
+            Assert.Equal("cmd.result", res["topic"]!.GetValue<string>());
+            return res["payload"]!.AsObject();
+        }
+
+        var syncErr = await SendAsync("cmd_sync_io", "seatgrid.open");
+        var syncJson = syncErr.ToJsonString();
+        Assert.False(syncErr["ok"]!.GetValue<bool>());
+        Assert.Equal("failed", syncErr["code"]!.GetValue<string>());
+        Assert.Equal("客户端执行失败", syncErr["message"]!.GetValue<string>());
+        Assert.DoesNotContain("alice", syncJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret.xlsx", syncJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"C:\", syncJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(logs, l => l.Contains("secret.xlsx", StringComparison.Ordinal));
+
+        var syncControlErr = await SendAsync("cmd_sync_ctrl", "classblock.read");
+        Assert.False(syncControlErr["ok"]!.GetValue<bool>());
+        Assert.Equal("bad_args", syncControlErr["code"]!.GetValue<string>());
+        Assert.Equal("考场列数须在 4 至 8 之间", syncControlErr["message"]!.GetValue<string>());
+    }
+
+    private sealed class ThrowingDeferredHost : ITeachCraftControlHost
+    {
+        private readonly Func<Exception> _factory;
+        public ThrowingDeferredHost(Func<Exception> factory) => _factory = factory;
+
+        public Task<string> OpenSeatGridAsync(string? view, CancellationToken ct) => Task.FromException<string>(_factory());
+        public Task<string> SetSeatGridViewAsync(string view, CancellationToken ct) => Task.FromException<string>(_factory());
+        public Task<bool> SetSeatGridProjectionAsync(bool on, CancellationToken ct) => Task.FromException<bool>(_factory());
+        public Task<SeatGridReadSummary> SetSeatGridExamAsync(bool on, int columns, CancellationToken ct) => Task.FromException<SeatGridReadSummary>(_factory());
+        public Task<string?> ShowClassBlockAsync(string? className, CancellationToken ct) => Task.FromException<string?>(_factory());
+        public Task<SeatGridReadSummary> ReadSeatGridAsync(CancellationToken ct) => Task.FromException<SeatGridReadSummary>(_factory());
+        public Task<ClassBlockReadSummary> ReadClassBlockAsync(CancellationToken ct) => Task.FromException<ClassBlockReadSummary>(_factory());
+        public Task<GradeWeaveReadSummary> ReadGradeWeaveAsync(CancellationToken ct) => Task.FromException<GradeWeaveReadSummary>(_factory());
+    }
+
+    [Fact]
+    public async Task DeferredDispatcherErrorReplies_RedactUnexpectedIOException_AndPreserveControlExceptionDetail()
+    {
+        var fakeWs = new MemoryControlWebSocket();
+        var credStore = new NoopControlCredentialStore();
+        credStore.Save(new ControlCredential
+        {
+            DeviceId = "dev_ws_def",
+            DeviceSecret = "sec_ws_def",
+            Host = "https://sectl.cn",
+            SitePublicId = "SC-6M34RQ",
+            SiteName = "实验中学",
+        });
+
+        await using var service = new ControlCenterService(new ControlCenterOptions
+        {
+            Enabled = true,
+            CredentialStore = credStore,
+            StateStore = new NoopControlStateStore(),
+            WebSocketFactory = () => fakeWs,
+        });
+
+        Exception nextEx = new IOException(@"C:\Users\alice\secret.xlsx 被占用");
+        new TeachCraftControlDispatcher(service, new ThrowingDeferredHost(() => nextEx)).RegisterAll();
+        Assert.True(await service.StartAsync());
+
+        var helloReq = await fakeWs.ReadClientMessageAsync();
+        fakeWs.ServerSend(new JsonObject
+        {
+            ["type"] = "res",
+            ["id"] = helloReq["id"]!.GetValue<string>(),
+            ["ok"] = true,
+            ["payload"] = new JsonObject { ["heartbeat_seconds"] = 25, ["offline_after_seconds"] = 75 },
+        });
+
+        async Task<JsonObject> SendAsync(string cmdId, string cmd)
+        {
+            fakeWs.ServerSend(new JsonObject
+            {
+                ["type"] = "evt",
+                ["topic"] = "cmd",
+                ["payload"] = new JsonObject
+                {
+                    ["command_id"] = cmdId,
+                    ["cmd"] = cmd,
+                    ["args"] = new JsonObject(),
+                    ["deadline_ms"] = 4000,
+                    ["expires_at"] = DateTimeOffset.UtcNow.AddSeconds(30).ToUnixTimeMilliseconds(),
+                },
+            });
+
+            _ = await fakeWs.ReadClientMessageAsync();
+            var res = await fakeWs.ReadClientMessageAsync();
+            return res["payload"]!.AsObject();
+        }
+
+        var ioPayload = await SendAsync("cmd_def_io", "seatgrid.read");
+        var ioJson = ioPayload.ToJsonString();
+        Assert.False(ioPayload["ok"]!.GetValue<bool>());
+        Assert.Equal("failed", ioPayload["code"]!.GetValue<string>());
+        Assert.Equal("客户端执行失败", ioPayload["message"]!.GetValue<string>());
+        Assert.DoesNotContain("alice", ioJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("secret.xlsx", ioJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"C:\", ioJson, StringComparison.OrdinalIgnoreCase);
+
+        nextEx = new ControlException("bad_args", "考场列数须在 4 至 8 之间");
+        var ctrlPayload = await SendAsync("cmd_def_ctrl", "classblock.read");
+        Assert.False(ctrlPayload["ok"]!.GetValue<bool>());
+        Assert.Equal("bad_args", ctrlPayload["code"]!.GetValue<string>());
+        Assert.Equal("考场列数须在 4 至 8 之间", ctrlPayload["message"]!.GetValue<string>());
+    }
 }

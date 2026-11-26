@@ -52,7 +52,7 @@ public sealed class SectlControlClientOptions
     public string Platform { get; init; } = SectlControlProtocol.PlatformName;
     public string? DeviceName { get; init; }
     public string DeviceUuid { get; init; } = string.Empty;
-    public string AppVersion { get; init; } = "1.46.0";
+    public string AppVersion { get; init; } = typeof(SectlControlClient).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
     public IReadOnlyList<string> Capabilities { get; init; } = SectlControlProtocol.DefaultCapabilities;
     public IReadOnlyList<string>? AppSupported { get; init; }
     public IControlCredentialStore? CredentialStore { get; init; }
@@ -1004,7 +1004,8 @@ public sealed class SectlControlClient : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            await FinishAsync(false, new JsonObject { ["cmd"] = cmd }, "failed", ex.Message).ConfigureAwait(false);
+            Log($"执行指令 {cmd}({commandId}) 失败：{ex.Message}");
+            await FinishAsync(false, new JsonObject { ["cmd"] = cmd }, "failed", "客户端执行失败").ConfigureAwait(false);
             return;
         }
 

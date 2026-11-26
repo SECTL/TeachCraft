@@ -155,12 +155,12 @@ public sealed class MeetRosterAuditRound2Tests : IDisposable
 
         await vm.ImportScheduleFileAsync(CreateScheduleOnlyWorkbookWithoutGrouping());
         Assert.Single(vm.AllClasses);
-        Assert.Equal(0, vm.Project.Days.SelectMany(d => d.Slots).SelectMany(s => s.Entries).Count());
+        Assert.Empty(vm.Project.Days.SelectMany(d => d.Slots).SelectMany(s => s.Entries));
 
         vm.RemoveClass("八年级3班");
 
         Assert.True(vm.IsDirty);
-        Assert.Equal(0, vm.AllClasses.Count);
+        Assert.Empty(vm.AllClasses);
         Assert.DoesNotContain("清掉", vm.StatusText, StringComparison.Ordinal);
     }
 

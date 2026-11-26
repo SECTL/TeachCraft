@@ -2606,7 +2606,7 @@ public partial class SeatGridViewModel : ObservableObject
         var students = SeatGridRosterProjection.FromStudents(config.Students, _linkedFields);
         var snapshot = new SeatGridRosterInput(
             _linkedRosterVersion, _linkedRosterName, PresentFieldNames(_linkedFields), students);
-        var appVersion = typeof(SeatGridViewModel).Assembly.GetName().Version?.ToString() ?? "1.45.0";
+        var appVersion = typeof(SeatGridViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
         return SeatGridCloudMapper.ToDocument(
             config, name, _linkedRosterId, _linkedRosterVersion, snapshot, appVersion);
     }

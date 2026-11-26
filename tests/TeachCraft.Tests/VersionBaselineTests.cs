@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using TeachCraft.Core.Control;
 
 namespace TeachCraft.Tests;
 
@@ -48,5 +50,31 @@ public sealed class VersionBaselineTests
         var version = BaseVersion();
         Assert.DoesNotContain(version, RepoRoot.Read(".github/workflows/release-draft.yml"));
         Assert.DoesNotContain(version, RepoRoot.Read("build-installer.ps1"));
+    }
+
+    [Fact]
+    public void SourceFiles_NeverHardcodeBaselineVersion()
+    {
+        var version = BaseVersion();
+        var literalPattern = new Regex($@"""{Regex.Escape(version)}""", RegexOptions.Compiled);
+        var offenders = new List<string>();
+        foreach (var (path, text) in RepoRoot.ReadAll("src", ".cs"))
+        {
+            var relative = Path.GetRelativePath(RepoRoot.Path, path).Replace('\\', '/');
+            if (literalPattern.IsMatch(text))
+                offenders.Add(relative);
+        }
+
+        Assert.True(offenders.Count == 0,
+            $"src/**/*.cs 不得硬编码基准版本 {version}：\n" + string.Join("\n", offenders));
+    }
+
+    [Fact]
+    public void ControlOptions_DefaultAppVersionMatchesAssemblyVersion()
+    {
+        var expected = typeof(ControlCenterService).Assembly.GetName().Version!.ToString(3);
+        Assert.Equal(BaseVersion(), expected);
+        Assert.Equal(expected, new ControlCenterOptions().AppVersion);
+        Assert.Equal(expected, new SectlControlClientOptions().AppVersion);
     }
 }
