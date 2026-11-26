@@ -617,4 +617,45 @@ public sealed class ControlProtocolTests : IDisposable
         Assert.Equal("bad_args", ctrlPayload["code"]!.GetValue<string>());
         Assert.Equal("考场列数须在 4 至 8 之间", ctrlPayload["message"]!.GetValue<string>());
     }
+
+    [Fact]
+    public void CommandCache_UsesLruEvictionAt512_AndPersistsOrderAcrossReload()
+    {
+        var statePath = Path.Combine(_dir, "lru-state.json");
+        var fileStore = new FileControlStateStore(statePath);
+        var noopStore = new NoopControlStateStore();
+
+        foreach (IControlStateStore store in new IControlStateStore[] { noopStore, fileStore })
+        {
+            // 1. 插入 513 个不同 command_id -> 第 1 个被驱逐，第 2..513 个命中
+            for (var i = 1; i <= SectlControlProtocol.CommandCacheSize + 1; i++)
+                store.RememberCommand($"cmd_{i:000}", true, new JsonObject { ["seq"] = i });
+
+            Assert.False(store.TryGetCommand("cmd_001", out _, out _, out _));
+            Assert.True(store.TryGetCommand("cmd_002", out _, out _, out _));
+            Assert.True(store.TryGetCommand("cmd_513", out _, out _, out _));
+
+            // 2. 重置并塞满 512 条，先命中第 1 条提升到队尾，再插第 513 条 -> 被驱逐的是第 2 条，不是第 1 条
+            store.Reset();
+            for (var i = 1; i <= SectlControlProtocol.CommandCacheSize; i++)
+                store.RememberCommand($"lru_{i:000}", true, new JsonObject { ["seq"] = i });
+
+            Assert.True(store.TryGetCommand("lru_001", out _, out var hitPayload, out _));
+            Assert.Equal(1, hitPayload["seq"]!.GetValue<int>());
+
+            store.RememberCommand("lru_513", true, new JsonObject { ["seq"] = 513 });
+
+            Assert.True(store.TryGetCommand("lru_001", out _, out _, out _));
+            Assert.False(store.TryGetCommand("lru_002", out _, out _, out _));
+            Assert.True(store.TryGetCommand("lru_513", out _, out _, out _));
+        }
+
+        // 3. state.json 重载后 LRU 顺序与 512 条仍可回放
+        var reloaded = new FileControlStateStore(statePath);
+        Assert.True(reloaded.TryGetCommand("lru_001", out _, out _, out _));
+        Assert.False(reloaded.TryGetCommand("lru_002", out _, out _, out _));
+        Assert.True(reloaded.TryGetCommand("lru_513", out _, out _, out _));
+        for (var i = 3; i <= SectlControlProtocol.CommandCacheSize; i++)
+            Assert.True(reloaded.TryGetCommand($"lru_{i:000}", out _, out _, out _));
+    }
 }

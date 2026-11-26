@@ -41,7 +41,7 @@ public sealed class OrderBookImportResult
 public static class OrderBookImporter
 {
     private static readonly Regex BlockHeader = new(
-        @"^(?<grade>七|八|九|高一|高二|高三)年级?\s*(?<number>\d+)\s*班",
+        @"^(?<grade>七|八|九|高一|高二|高三)(?:年级)?\s*(?<number>\d+)\s*班",
         RegexOptions.Compiled);
 
     /// <summary>

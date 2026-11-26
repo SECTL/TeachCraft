@@ -17,9 +17,11 @@ public static class SeatChartExcelExporter
         IReadOnlyDictionary<SeatPosition, Student> assignments,
         IReadOnlyList<Student> students,
         string path,
+        string sourcePath,
         ArrangeConstraints? constraints = null,
         bool includeSettingsSheet = true)
     {
+        SeatGridExportGuard.EnsureNotOverwritingSource(path, sourcePath);
         var settings = document.Settings;
         using var workbook = new XLWorkbook();
         var sheet = workbook.Worksheets.Add(SeatGridConfigIO.ChartSheetName);

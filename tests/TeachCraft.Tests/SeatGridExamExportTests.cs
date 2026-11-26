@@ -152,7 +152,7 @@ public sealed class SeatGridExamExportTests : IDisposable
         var path = Path.Combine(_root, "exam.xlsx");
 
         SeatChartExcelExporter.ExportSeatChart(
-            document, vm.GetCoreAssignments(), vm.GetModels(), path);
+            document, vm.GetCoreAssignments(), vm.GetModels(), path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         var sheet = workbook.Worksheet("座位表");
@@ -176,7 +176,7 @@ public sealed class SeatGridExamExportTests : IDisposable
         var path = Path.Combine(_root, "exam-marked.xlsx");
 
         SeatChartExcelExporter.ExportSeatChart(
-            document, vm.GetCoreAssignments(), vm.GetModels(), path);
+            document, vm.GetCoreAssignments(), vm.GetModels(), path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         var settings = workbook.Worksheet("座位设置");
@@ -209,7 +209,7 @@ public sealed class SeatGridExamExportTests : IDisposable
         var path = Path.Combine(_root, "exam-reimport.xlsx");
 
         SeatChartExcelExporter.ExportSeatChart(
-            document, vm.GetCoreAssignments(), vm.GetModels(), path);
+            document, vm.GetCoreAssignments(), vm.GetModels(), path, string.Empty);
 
         var error = Assert.Throws<SeatGridException>(() => SeatGridConfigIO.Import(path));
         Assert.Contains("考场", error.Message);
@@ -232,7 +232,7 @@ public sealed class SeatGridExamExportTests : IDisposable
         var path = Path.Combine(_root, "exam-no-constraints.xlsx");
 
         SeatChartExcelExporter.ExportSeatChart(
-            document, vm.GetCoreAssignments(), vm.GetModels(), path, vm.GetCoreConstraints());
+            document, vm.GetCoreAssignments(), vm.GetModels(), path, string.Empty, vm.GetCoreConstraints());
 
         using var workbook = new XLWorkbook(path);
         Assert.False(workbook.Worksheets.Contains("座位约束"));
@@ -434,7 +434,7 @@ public sealed class SeatGridExamExportTests : IDisposable
         var document = vm.ComposeDocument();
         var path = Path.Combine(_root, "daily.xlsx");
         SeatChartExcelExporter.ExportSeatChart(
-            document, vm.GetCoreAssignments(), vm.GetModels(), path);
+            document, vm.GetCoreAssignments(), vm.GetModels(), path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         var settings = workbook.Worksheet("座位设置");
@@ -464,7 +464,7 @@ public sealed class SeatGridExamExportTests : IDisposable
         var document = vm.ComposeDocument();
         var path = Path.Combine(_root, "daily-plain.xlsx");
         SeatChartExcelExporter.ExportSeatChart(
-            document, vm.GetCoreAssignments(), vm.GetModels(), path);
+            document, vm.GetCoreAssignments(), vm.GetModels(), path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         var seats = document.Groups

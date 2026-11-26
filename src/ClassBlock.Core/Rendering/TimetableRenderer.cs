@@ -41,8 +41,9 @@ public static class TimetableRenderer
     private static readonly SKColor Grid = Hex("#2B2A27");
     private static readonly SKColor BreakFill = Hex("#F4F3EF");
 
-    public static void RenderPng(ClassTimetable timetable, string path, float scale = 2.5f)
+    public static void RenderPng(ClassTimetable timetable, string path, string sourcePath, float scale = 2.5f)
     {
+        TimetableExportGuard.EnsureNotOverwritingSource(path, sourcePath);
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
@@ -85,17 +86,18 @@ public static class TimetableRenderer
         return data.ToArray();
     }
 
-    public static string RenderPngToTemp(ClassTimetable timetable, float scale = 2.2f)
+    public static string RenderPngToTemp(ClassTimetable timetable, string sourcePath = "", float scale = 2.2f)
     {
         var directory = Path.Combine(Path.GetTempPath(), "TeachCraft", "ClassBlock");
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"classblock-{Guid.NewGuid():N}.png");
-        RenderPng(timetable, path, scale);
+        RenderPng(timetable, path, sourcePath, scale);
         return path;
     }
 
-    public static void RenderPdf(ClassTimetable timetable, string path)
+    public static void RenderPdf(ClassTimetable timetable, string path, string sourcePath)
     {
+        TimetableExportGuard.EnsureNotOverwritingSource(path, sourcePath);
         var png = RenderPngBytes(timetable, 3.0f);
 
         QuestPDF.Settings.License = LicenseType.Community;

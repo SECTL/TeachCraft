@@ -168,7 +168,8 @@ public partial class ClassBlockWindow : Window
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, SafeFileName("-课程表.pdf"));
 
-            await Task.Run(() => TimetableRenderer.RenderPdf(document, path));
+            var masterPath = _masterPath ?? string.Empty;
+            await Task.Run(() => TimetableRenderer.RenderPdf(document, path, masterPath));
 
             // 渲染成功与「唤起阅读器失败」必须分开报（照归位同款，审计 P3-23）：
             // 没装 PDF 阅读器的新系统上，PDF 其实已经生成在临时目录里，
@@ -210,7 +211,8 @@ public partial class ClassBlockWindow : Window
         try
         {
             var document = ViewModel.BuildDocument();
-            await Task.Run(() => TimetableRenderer.RenderPng(document, path, 2.5f));
+            var masterPath = _masterPath ?? string.Empty;
+            await Task.Run(() => TimetableRenderer.RenderPng(document, path, masterPath, 2.5f));
             ViewModel.SetStatus($"已导出图片：{Path.GetFileName(path)}");
         }
         catch (Exception ex)

@@ -255,7 +255,7 @@ public partial class SeatGridWindow : Window
         if (excel)
         {
             SeatChartExcelExporter.ExportSeatChart(
-                document, ViewModel.GetCoreAssignments(), ViewModel.GetModels(), path);
+                document, ViewModel.GetCoreAssignments(), ViewModel.GetModels(), path, _rosterPath ?? string.Empty);
         }
         else
         {
@@ -1873,8 +1873,9 @@ public partial class SeatGridWindow : Window
             var assignments = ViewModel.GetCoreAssignments();
             var students = ViewModel.GetModels();
             var constraints = ViewModel.GetCoreConstraints();
+            var rosterPath = _rosterPath ?? string.Empty;
             await Task.Run(() => SeatChartExcelExporter.ExportSeatChart(
-                document, assignments, students, path, constraints));
+                document, assignments, students, path, rosterPath, constraints));
             ViewModel.SetStatus($"已导出 Excel：{Path.GetFileName(path)}");
         }
         catch (Exception ex)

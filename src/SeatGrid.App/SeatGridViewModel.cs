@@ -164,6 +164,14 @@ public partial class SeatGridViewModel : ObservableObject
     /// </summary>
     private bool _suspendUndo;
 
+    /// <summary>
+    /// 样式变更重入深度与暂存快照。
+    /// ResetStyle / RecordChange 内部批量赋值时深度大于 0，避免 16 个样式属性各推一步；
+    /// 单次属性编辑在 On*Changing 拍一次快照，在 On*Changed 提交并做内容去重。
+    /// </summary>
+    private int _styleChangeDepth;
+    private SeatStateSnapshot? _pendingStyleSnapshot;
+
     public bool CanUndo => _undo.CanUndo && !IsBusy;
     public bool CanRedo => _undo.CanRedo && !IsBusy;
 
@@ -191,10 +199,43 @@ public partial class SeatGridViewModel : ObservableObject
         }
 
         var before = CaptureState(label);
-        change();
+        _styleChangeDepth++;
+        try
+        {
+            change();
+        }
+        finally
+        {
+            _styleChangeDepth--;
+        }
         _undo.Push(before, label);
         NotifyUndoState();
         ScheduleAutoSync();
+    }
+
+    private void BeginStylePropertyChange<T>(T currentValue, T newValue, string label = "调整样式")
+    {
+        if (_restoring || _suspendUndo || _suppressRebuild || _styleChangeDepth > 0)
+            return;
+        if (EqualityComparer<T>.Default.Equals(currentValue, newValue))
+            return;
+
+        _pendingStyleSnapshot ??= CaptureState(label);
+    }
+
+    private void CommitStylePropertyChange()
+    {
+        var before = _pendingStyleSnapshot;
+        _pendingStyleSnapshot = null;
+        if (before is null || _restoring || _suspendUndo || _suppressRebuild || _styleChangeDepth > 0)
+            return;
+
+        if (!before.ContentEquals(CaptureState(before.Label)))
+        {
+            _undo.Push(before, before.Label);
+            NotifyUndoState();
+            ScheduleAutoSync();
+        }
     }
 
     /// <summary>
@@ -961,35 +1002,89 @@ public partial class SeatGridViewModel : ObservableObject
         UpdatePodium();
     }
 
+    partial void OnPodiumGapChanging(double value)
+    {
+        if (!_interactiveLayoutEdit)
+            BeginStylePropertyChange(_podiumGap, value);
+    }
+
     partial void OnPodiumGapChanged(double value)
     {
         OnPropertyChanged(nameof(PodiumGapLabel));
+        if (_suppressRebuild) return;
+        if (_interactiveLayoutEdit)
+        {
+            QueueInteractiveRefresh(structure: false);
+            return;
+        }
         UpdatePodium();
+        CommitStylePropertyChange();
+    }
+
+    partial void OnNameFontSizeChanging(double value)
+    {
+        if (!_interactiveLayoutEdit)
+            BeginStylePropertyChange(_nameFontSize, value);
     }
 
     partial void OnNameFontSizeChanged(double value)
     {
         OnPropertyChanged(nameof(NameFontSizeLabel));
+        if (_suppressRebuild) return;
+        if (_interactiveLayoutEdit)
+        {
+            QueueInteractiveRefresh(structure: false);
+            return;
+        }
         RefreshSeatVisuals();
+        CommitStylePropertyChange();
     }
 
-    partial void OnBoldNamesChanged(bool value) => RefreshSeatVisuals();
+    partial void OnBoldNamesChanging(bool value) => BeginStylePropertyChange(_boldNames, value);
 
-    partial void OnHideEmptySeatsChanged(bool value) => RefreshSeatVisuals();
+    partial void OnBoldNamesChanged(bool value)
+    {
+        if (_suppressRebuild) return;
+        RefreshSeatVisuals();
+        CommitStylePropertyChange();
+    }
+
+    partial void OnHideEmptySeatsChanging(bool value) => BeginStylePropertyChange(_hideEmptySeats, value);
+
+    partial void OnHideEmptySeatsChanged(bool value)
+    {
+        if (_suppressRebuild) return;
+        RefreshSeatVisuals();
+        CommitStylePropertyChange();
+    }
+
+    partial void OnMarkFemalesChanging(bool value) => BeginStylePropertyChange(_markFemales, value);
 
     partial void OnMarkFemalesChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowGenderLegend));
+        if (_suppressRebuild) return;
         RefreshSeatVisuals();
+        CommitStylePropertyChange();
     }
 
-    partial void OnSpaceTwoCharNamesChanged(bool value) => RefreshSeatVisuals();
+    partial void OnSpaceTwoCharNamesChanging(bool value) => BeginStylePropertyChange(_spaceTwoCharNames, value);
+
+    partial void OnSpaceTwoCharNamesChanged(bool value)
+    {
+        if (_suppressRebuild) return;
+        RefreshSeatVisuals();
+        CommitStylePropertyChange();
+    }
+
+    partial void OnShowGroupRowHintsChanging(bool value) => BeginStylePropertyChange(_showGroupRowHints, value);
 
     partial void OnShowGroupRowHintsChanged(bool value)
     {
         if (_suppressRebuild) return;
         BuildGrid();
         UpdatePodium();
+        CommitStylePropertyChange();
     }
 
     partial void OnBoldTitleChanged(bool value) => OnPropertyChanged(nameof(TitleWeight));
@@ -998,22 +1093,31 @@ public partial class SeatGridViewModel : ObservableObject
 
     partial void OnMonitorChanged(string value) => OnPropertyChanged(nameof(InfoLine));
 
+    partial void OnSeatBackgroundColorChanging(Color value) => BeginStylePropertyChange(_seatBackgroundColor, value);
     partial void OnSeatBackgroundColorChanged(Color value) => ColorChanged();
 
+    partial void OnEmptySeatColorChanging(Color value) => BeginStylePropertyChange(_emptySeatColor, value);
     partial void OnEmptySeatColorChanged(Color value) => ColorChanged();
 
+    partial void OnSeatTextColorChanging(Color value) => BeginStylePropertyChange(_seatTextColor, value);
     partial void OnSeatTextColorChanged(Color value) => ColorChanged();
 
+    partial void OnSeatBorderColorChanging(Color value) => BeginStylePropertyChange(_seatBorderColor, value);
     partial void OnSeatBorderColorChanged(Color value) => ColorChanged();
 
+    partial void OnPodiumBackgroundColorChanging(Color value) => BeginStylePropertyChange(_podiumBackgroundColor, value);
     partial void OnPodiumBackgroundColorChanged(Color value) => ColorChanged();
 
+    partial void OnPodiumTextColorChanging(Color value) => BeginStylePropertyChange(_podiumTextColor, value);
     partial void OnPodiumTextColorChanged(Color value) => ColorChanged();
 
+    partial void OnGroupLabelColorChanging(Color value) => BeginStylePropertyChange(_groupLabelColor, value);
     partial void OnGroupLabelColorChanged(Color value) => ColorChanged();
 
+    partial void OnRowLabelColorChanging(Color value) => BeginStylePropertyChange(_rowLabelColor, value);
     partial void OnRowLabelColorChanged(Color value) => ColorChanged();
 
+    partial void OnFemaleMarkColorChanging(Color value) => BeginStylePropertyChange(_femaleMarkColor, value);
     partial void OnFemaleMarkColorChanged(Color value) => ColorChanged();
 
     partial void OnSearchTextChanged(string value) => RefreshStudents();
@@ -1094,6 +1198,7 @@ public partial class SeatGridViewModel : ObservableObject
         OnPropertyChanged(nameof(GroupLabelBrush));
         OnPropertyChanged(nameof(FemaleMarkBrush));
         RefreshSeatVisuals();
+        CommitStylePropertyChange();
     }
 
     // ----------------------------- 构建网格 -----------------------------

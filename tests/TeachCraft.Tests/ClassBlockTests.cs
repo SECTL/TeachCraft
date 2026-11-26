@@ -1,3 +1,4 @@
+using ClassBlock.Core;
 using ClassBlock.Core.Import;
 using ClassBlock.Core.Models;
 using ClassBlock.Core.Rendering;
@@ -87,11 +88,12 @@ public sealed class ClassBlockTests : IDisposable
     [Fact]
     public void ClassBlock_RendersPngAndPdf()
     {
-        var master = MasterScheduleImporter.Import(ClassBlockFixtures.CreateMasterWorkbook(_root, "master.xlsx"));
+        var masterPath = ClassBlockFixtures.CreateMasterWorkbook(_root, "master.xlsx");
+        var master = MasterScheduleImporter.Import(masterPath);
         var timetable = TimetableBuilder.Build(master, "九1", new TimetableSettings());
 
         var png = Path.Combine(_root, "timetable.png");
-        TimetableRenderer.RenderPng(timetable, png, 2.0f);
+        TimetableRenderer.RenderPng(timetable, png, masterPath, 2.0f);
 
         Assert.True(File.Exists(png));
         Assert.True(new FileInfo(png).Length > 10_000);
@@ -104,11 +106,27 @@ public sealed class ClassBlockTests : IDisposable
         }
 
         var pdf = Path.Combine(_root, "timetable.pdf");
-        TimetableRenderer.RenderPdf(timetable, pdf);
+        TimetableRenderer.RenderPdf(timetable, pdf, masterPath);
 
         Assert.True(File.Exists(pdf));
         Assert.True(new FileInfo(pdf).Length > 10_000);
         Assert.Equal("%PDF", File.ReadAllText(pdf)[..4]);
+    }
+
+    [Fact]
+    public void CoreExport_RefusesToOverwriteMasterWorkbook()
+    {
+        var masterPath = ClassBlockFixtures.CreateMasterWorkbook(_root, "master.xlsx");
+        var master = MasterScheduleImporter.Import(masterPath);
+        var timetable = TimetableBuilder.Build(master, "九1", new TimetableSettings());
+
+        var pngErr = Assert.Throws<ClassBlockException>(() =>
+            TimetableRenderer.RenderPng(timetable, masterPath, masterPath));
+        Assert.Contains("不能覆盖", pngErr.Message, StringComparison.Ordinal);
+
+        var pdfErr = Assert.Throws<ClassBlockException>(() =>
+            TimetableRenderer.RenderPdf(timetable, masterPath, masterPath));
+        Assert.Contains("不能覆盖", pdfErr.Message, StringComparison.Ordinal);
     }
 
     // ------------------------------------------------------------------

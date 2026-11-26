@@ -196,13 +196,20 @@ public sealed class NoopControlStateStore : IControlStateStore
     {
         lock (_lock)
         {
-            var found = _commands.FirstOrDefault(c => string.Equals(c.Id, commandId, StringComparison.Ordinal));
-            if (found is null)
+            var index = _commands.FindIndex(c => string.Equals(c.Id, commandId, StringComparison.Ordinal));
+            if (index < 0)
             {
                 ok = false;
                 payload = new JsonObject();
                 code = string.Empty;
                 return false;
+            }
+
+            var found = _commands[index];
+            if (index != _commands.Count - 1)
+            {
+                _commands.RemoveAt(index);
+                _commands.Add(found);
             }
 
             ok = found.Ok;
@@ -272,14 +279,22 @@ public sealed class FileControlStateStore : IControlStateStore
     {
         lock (_lock)
         {
-            var entry = _commands.FirstOrDefault(e => string.Equals(e.Id, commandId, StringComparison.Ordinal));
-            if (entry is null)
+            var index = _commands.FindIndex(e => string.Equals(e.Id, commandId, StringComparison.Ordinal));
+            if (index < 0)
             {
                 ok = false;
                 payload = new JsonObject();
                 code = string.Empty;
                 return false;
             }
+
+            var entry = _commands[index];
+            if (index != _commands.Count - 1)
+            {
+                _commands.RemoveAt(index);
+                _commands.Add(entry);
+            }
+            Save();
 
             ok = entry.Ok;
             payload = JsonHelp.CloneObject(entry.Payload);
@@ -336,6 +351,8 @@ public sealed class FileControlStateStore : IControlStateStore
                     JsonHelp.AsObject(item["payload"]),
                     JsonHelp.Str(item, "code")));
             }
+            while (_commands.Count > SectlControlProtocol.CommandCacheSize)
+                _commands.RemoveAt(0);
         }
         catch (Exception)
         {

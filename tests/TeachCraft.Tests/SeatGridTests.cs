@@ -240,7 +240,7 @@ public sealed class SeatGridTests : IDisposable
         var (settings, students, assignments) = ChartFixture();
         var path = Path.Combine(_root, "chart.xlsx");
         SeatChartExcelExporter.ExportSeatChart(
-            SeatChartComposer.Compose(settings, assignments, students.Count), assignments, students, path);
+            SeatChartComposer.Compose(settings, assignments, students.Count), assignments, students, path, string.Empty);
 
         using (var workbook = new XLWorkbook(path))
         {
@@ -268,7 +268,7 @@ public sealed class SeatGridTests : IDisposable
         var (settings, students, assignments) = ChartFixture();
         var path = Path.Combine(_root, "legacy-chart.xlsx");
         SeatChartExcelExporter.ExportSeatChart(
-            SeatChartComposer.Compose(settings, assignments, students.Count), assignments, students, path);
+            SeatChartComposer.Compose(settings, assignments, students.Count), assignments, students, path, string.Empty);
         using (var workbook = new XLWorkbook(path))
         {
             workbook.Worksheet("座位设置").Delete();
@@ -466,12 +466,27 @@ public sealed class SeatGridTests : IDisposable
         Assert.True(new FileInfo(pdfPath).Length < 5 * 1024 * 1024);
 
         var excelPath = Path.Combine(_root, "seat.xlsx");
-        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, excelPath);
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, excelPath, string.Empty);
         using var workbook = new XLWorkbook(excelPath);
         Assert.True(workbook.Worksheets.Contains("座位表"));
         Assert.True(workbook.Worksheets.Contains("名单"));
         var sheet = workbook.Worksheet("座位表");
         Assert.Contains("同学1", sheet.CellsUsed().Select(c => c.GetFormattedString()));
+    }
+
+    [Fact]
+    public void CoreExcelExport_RefusesToOverwriteRosterSource()
+    {
+        var source = WriteRoster("roster-source.xlsx", new[] { "姓名", "性别" },
+            new[] { "陈屿", "男" }, new[] { "苏晚晴", "女" });
+        var beforeBytes = File.ReadAllBytes(source);
+        var (settings, students, assignments) = ChartFixture();
+        var document = SeatChartComposer.Compose(settings, assignments, students.Count);
+
+        var ex = Assert.Throws<SeatGridException>(() =>
+            SeatChartExcelExporter.ExportSeatChart(document, assignments, students, source, source));
+        Assert.Contains("不能覆盖", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(beforeBytes, File.ReadAllBytes(source));
     }
 
     // ----------------------------- 1.25.0 约束引擎 -----------------------------
@@ -1073,7 +1088,7 @@ public sealed class SeatGridTests : IDisposable
         var path = Path.Combine(_root, "chart-locks.xlsx");
         SeatChartExcelExporter.ExportSeatChart(
             SeatChartComposer.Compose(settings, assignments, students.Count),
-            assignments, students, path, constraints);
+            assignments, students, path, string.Empty, constraints);
 
         using (var workbook = new XLWorkbook(path))
         {
@@ -1348,7 +1363,7 @@ public sealed class SeatGridTests : IDisposable
         var document = SeatChartComposer.Compose(settings, assignments, students.Count);
 
         var path = Path.Combine(_root, "no-corridor.xlsx");
-        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path);
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         var sheet = workbook.Worksheet("座位表");
@@ -1374,7 +1389,7 @@ public sealed class SeatGridTests : IDisposable
         var document = SeatChartComposer.Compose(settings, assignments, 1);
 
         var path = Path.Combine(_root, "aisle.xlsx");
-        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path);
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         var sheet = workbook.Worksheet("座位表");
@@ -1446,7 +1461,7 @@ public sealed class SeatGridTests : IDisposable
         var document = SeatChartComposer.Compose(settings, assignments, 1);
 
         var path = Path.Combine(_root, "podium-label.xlsx");
-        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path);
+        SeatChartExcelExporter.ExportSeatChart(document, assignments, students, path, string.Empty);
 
         using var workbook = new XLWorkbook(path);
         Assert.Contains("讲台 / 黑板",

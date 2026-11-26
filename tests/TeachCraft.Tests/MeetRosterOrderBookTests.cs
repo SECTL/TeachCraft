@@ -517,6 +517,115 @@ public sealed class MeetRosterOrderBookTests : IDisposable
         Assert.Equal(0, paintedInOtherGrades);
     }
 
+    [Fact]
+    public void OriginalHighlight_HighSchoolClass_PaintsRosterAndGroupingWithoutCrossGradeSpill()
+    {
+        var path = CreateHighSchoolAndJuniorOrderBook();
+        var project = OrderBookImporter.Import(path).Project;
+        var target = Path.Combine(_root, "高中高亮.xlsx");
+
+        MeetOriginalWorkbookHighlighter.Export(
+            project, new MeetExportOptions { ClassName = "高一6班" }, target);
+
+        using var workbook = new XLWorkbook(target);
+        var fill = XLColor.FromHtml("#FBE4D7");
+
+        var roster = workbook.Worksheet("代表队名单");
+        // 高一6班 块（第 1..4 行）全部涂色，九年级6班 块（第 6..9 行）不涂色
+        Assert.Equal(fill, roster.Cell(1, 1).Style.Fill.BackgroundColor);
+        Assert.Equal(fill, roster.Cell(4, 1).Style.Fill.BackgroundColor);
+        Assert.NotEqual(fill, roster.Cell(6, 1).Style.Fill.BackgroundColor);
+
+        var grouping = workbook.Worksheet("项目分组表");
+        // 第 5 行是 高一 块里的 6班，第 12 行是 九年级 块里的 6班
+        Assert.Equal(fill, grouping.Cell(5, 2).Style.Fill.BackgroundColor);
+        Assert.NotEqual(fill, grouping.Cell(12, 2).Style.Fill.BackgroundColor);
+
+        // 不存在的班级仍抛原有中文错误
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            MeetOriginalWorkbookHighlighter.Export(
+                project, new MeetExportOptions { ClassName = "高一9班" },
+                Path.Combine(_root, "高中查无此班.xlsx")));
+        Assert.Contains("没有找到", ex.Message, StringComparison.Ordinal);
+    }
+
+    private string CreateHighSchoolAndJuniorOrderBook()
+    {
+        var path = Path.Combine(_root, "高中秩序册.xlsx");
+        using var workbook = new XLWorkbook();
+
+        var roster = workbook.Worksheets.Add("代表队名单");
+        roster.Cell(1, 1).Value = "高一年级 6班 (1)人";
+        roster.Cell(2, 1).Value = "领队";
+        roster.Cell(2, 2).Value = "沈青禾";
+        roster.Cell(3, 1).Value = "男子";
+        roster.Cell(3, 2).Value = "1001";
+        roster.Cell(3, 3).Value = "陈屿";
+        roster.Cell(4, 1).Value = "女子";
+        roster.Cell(4, 2).Value = "1002";
+        roster.Cell(4, 3).Value = "苏晚晴";
+
+        roster.Cell(6, 1).Value = "九年级 6班 (1)人";
+        roster.Cell(7, 1).Value = "领队";
+        roster.Cell(7, 2).Value = "顾知远";
+        roster.Cell(8, 1).Value = "男子";
+        roster.Cell(8, 2).Value = "2001";
+        roster.Cell(8, 3).Value = "许砚";
+        roster.Cell(9, 1).Value = "女子";
+        roster.Cell(9, 2).Value = "2002";
+        roster.Cell(9, 3).Value = "林溪";
+
+        var schedule = workbook.Worksheets.Add("竞赛日程");
+        schedule.Cell(1, 1).Value = "10月22日上午";
+        schedule.Cell(2, 1).Value = "径赛";
+        schedule.Cell(3, 1).Value = "组别";
+        schedule.Cell(3, 2).Value = "性别";
+        schedule.Cell(3, 3).Value = "项目";
+        schedule.Cell(3, 4).Value = "赛次";
+        schedule.Cell(3, 5).Value = "人数";
+        schedule.Cell(3, 6).Value = "组数";
+        schedule.Cell(3, 7).Value = "录取";
+        schedule.Cell(3, 8).Value = "时间";
+        schedule.Cell(4, 1).Value = "高一";
+        schedule.Cell(4, 2).Value = "男子";
+        schedule.Cell(4, 3).Value = "100米";
+        schedule.Cell(4, 4).Value = "预赛";
+        schedule.Cell(4, 5).Value = 1;
+        schedule.Cell(4, 6).Value = 1;
+        schedule.Cell(4, 7).Value = 8;
+        schedule.Cell(4, 8).Value = "08:30";
+
+        var grouping = workbook.Worksheets.Add("项目分组表");
+        grouping.Cell(1, 1).Value = "高一";
+        grouping.Cell(1, 2).Value = "男子";
+        grouping.Cell(1, 3).Value = "100米";
+        grouping.Cell(1, 6).Value = "预赛";
+        grouping.Cell(2, 1).Value = "第1组";
+        grouping.Cell(2, 2).Value = "1道";
+        grouping.Cell(3, 1).Value = "号码";
+        grouping.Cell(3, 2).Value = "1001";
+        grouping.Cell(4, 1).Value = "姓名";
+        grouping.Cell(4, 2).Value = "陈屿";
+        grouping.Cell(5, 1).Value = "班级";
+        grouping.Cell(5, 2).Value = "6班";
+
+        grouping.Cell(8, 1).Value = "九年级";
+        grouping.Cell(8, 2).Value = "男子";
+        grouping.Cell(8, 3).Value = "100米";
+        grouping.Cell(8, 6).Value = "预赛";
+        grouping.Cell(9, 1).Value = "第1组";
+        grouping.Cell(9, 2).Value = "1道";
+        grouping.Cell(10, 1).Value = "号码";
+        grouping.Cell(10, 2).Value = "2001";
+        grouping.Cell(11, 1).Value = "姓名";
+        grouping.Cell(11, 2).Value = "许砚";
+        grouping.Cell(12, 1).Value = "班级";
+        grouping.Cell(12, 2).Value = "6班";
+
+        workbook.SaveAs(path);
+        return path;
+    }
+
     // ---------- 卡片版式 ----------
 
     [Fact]

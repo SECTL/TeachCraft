@@ -615,6 +615,83 @@ public sealed class SeatGridUndoTests
         Assert.Equal(groupsBefore, vm.GroupCount);
     }
 
+    [Fact]
+    public void Vm_AllStyleProperties_AreUndoableIndividually()
+    {
+        var vm = NewViewModel(8);
+        vm.AutoArrange();
+        vm.Undo(); // 清掉基准外操作或重置基线
+        vm.LoadRoster(Roster(8)); // 干净栈: UndoCount == 0
+
+        void AssertSingleUndoableStep<T>(Func<T> get, Action<T> set, T nextValue, string name)
+        {
+            var prev = get();
+            var beforeCount = vm.UndoCount;
+            set(nextValue);
+            Assert.True(vm.UndoCount == beforeCount + 1, $"{name} 变更应压入 1 步撤销");
+            Assert.Equal(nextValue, get());
+
+            vm.Undo();
+            Assert.Equal(prev, get());
+            vm.Redo();
+            Assert.Equal(nextValue, get());
+        }
+
+        AssertSingleUndoableStep(() => vm.SeatBackgroundColor, v => vm.SeatBackgroundColor = v, Color.Parse("#112233"), nameof(vm.SeatBackgroundColor));
+        AssertSingleUndoableStep(() => vm.EmptySeatColor, v => vm.EmptySeatColor = v, Color.Parse("#223344"), nameof(vm.EmptySeatColor));
+        AssertSingleUndoableStep(() => vm.SeatTextColor, v => vm.SeatTextColor = v, Color.Parse("#334455"), nameof(vm.SeatTextColor));
+        AssertSingleUndoableStep(() => vm.SeatBorderColor, v => vm.SeatBorderColor = v, Color.Parse("#445566"), nameof(vm.SeatBorderColor));
+        AssertSingleUndoableStep(() => vm.PodiumBackgroundColor, v => vm.PodiumBackgroundColor = v, Color.Parse("#556677"), nameof(vm.PodiumBackgroundColor));
+        AssertSingleUndoableStep(() => vm.PodiumTextColor, v => vm.PodiumTextColor = v, Color.Parse("#667788"), nameof(vm.PodiumTextColor));
+        AssertSingleUndoableStep(() => vm.GroupLabelColor, v => vm.GroupLabelColor = v, Color.Parse("#778899"), nameof(vm.GroupLabelColor));
+        AssertSingleUndoableStep(() => vm.RowLabelColor, v => vm.RowLabelColor = v, Color.Parse("#8899AA"), nameof(vm.RowLabelColor));
+        AssertSingleUndoableStep(() => vm.FemaleMarkColor, v => vm.FemaleMarkColor = v, Color.Parse("#99AABB"), nameof(vm.FemaleMarkColor));
+        AssertSingleUndoableStep(() => vm.NameFontSize, v => vm.NameFontSize = v, 20d, nameof(vm.NameFontSize));
+        AssertSingleUndoableStep(() => vm.PodiumGap, v => vm.PodiumGap = v, 40d, nameof(vm.PodiumGap));
+        AssertSingleUndoableStep(() => vm.BoldNames, v => vm.BoldNames = v, true, nameof(vm.BoldNames));
+        AssertSingleUndoableStep(() => vm.HideEmptySeats, v => vm.HideEmptySeats = v, true, nameof(vm.HideEmptySeats));
+        AssertSingleUndoableStep(() => vm.MarkFemales, v => vm.MarkFemales = v, false, nameof(vm.MarkFemales));
+        AssertSingleUndoableStep(() => vm.SpaceTwoCharNames, v => vm.SpaceTwoCharNames = v, false, nameof(vm.SpaceTwoCharNames));
+        AssertSingleUndoableStep(() => vm.ShowGroupRowHints, v => vm.ShowGroupRowHints = v, false, nameof(vm.ShowGroupRowHints));
+    }
+
+    [Fact]
+    public void Vm_StyleInteractiveSession_NoOp_ResetStyle_AndLoadRoster_RespectUndoCounts()
+    {
+        var vm = NewViewModel(8);
+        Assert.False(vm.CanUndo);
+        Assert.Equal(0, vm.UndoCount);
+
+        // 1. 字号 14->20 连续 10 次变更（交互会话）只记 1 步
+        vm.BeginInteractiveLayoutChange();
+        for (var i = 1; i <= 10; i++)
+            vm.NameFontSize = 14 + (i * 0.6);
+        vm.EndInteractiveLayoutChange();
+        Assert.Equal(1, vm.UndoCount);
+        Assert.Equal(20, vm.NameFontSize);
+
+        // 2. PodiumGap 交互会话同样只记 1 步
+        vm.BeginInteractiveLayoutChange();
+        for (var g = 20; g <= 44; g += 4)
+            vm.PodiumGap = g;
+        vm.EndInteractiveLayoutChange();
+        Assert.Equal(2, vm.UndoCount);
+
+        // 3. 同值重复赋值不产生新步
+        var currentColor = vm.SeatBackgroundColor;
+        vm.SeatBackgroundColor = currentColor;
+        Assert.Equal(2, vm.UndoCount);
+
+        // 4. ResetStyle 批量赋值只产生 1 步（不是 16/17 步）
+        vm.ResetStyle();
+        Assert.Equal(3, vm.UndoCount);
+
+        // 5. LoadRoster 期间样式变更不入栈（CanUndo 保持 false）
+        vm.LoadRoster(Roster(10));
+        Assert.False(vm.CanUndo);
+        Assert.Equal(0, vm.UndoCount);
+    }
+
     // ----------------------------- 夹具 -----------------------------
 
     private static SeatGridViewModel NewViewModel(int count)

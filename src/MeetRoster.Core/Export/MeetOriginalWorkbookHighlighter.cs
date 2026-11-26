@@ -36,7 +36,7 @@ public static class MeetOriginalWorkbookHighlighter
         MeetExportSourceGuard.EnsureNotOverwritingSources(
             target, project, "导入的原文件", "原始报名表");
 
-        var className = options.IsAllClasses ? null : options.ClassName;
+        var className = options.IsAllClasses ? null : NormalizeClassName(options.ClassName);
 
         using var stream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var workbook = new XLWorkbook(stream);
@@ -52,7 +52,7 @@ public static class MeetOriginalWorkbookHighlighter
 
         if (painted == 0 && className is not null)
             throw new InvalidOperationException(
-                $"原表里没有找到「{className}」的条目，无法高亮。请确认班级名与秩序册一致。");
+                $"原表里没有找到「{options.ClassName}」的条目，无法高亮。请确认班级名与秩序册一致。");
 
         // 插一张「高亮说明」放在最前，让收到文件的人知道底色是什么意思。
         var note = workbook.Worksheets.Add("高亮说明", 1);
@@ -88,7 +88,7 @@ public static class MeetOriginalWorkbookHighlighter
         {
             var text = Clean(sheet.Cell(row, 1).GetString());
             var match = System.Text.RegularExpressions.Regex.Match(
-                text, @"^(?<grade>七|八|九)年级?\s*(?<number>\d+)\s*班");
+                text, @"^(?<grade>七|八|九|高一|高二|高三)(?:年级)?\s*(?<number>\d+)\s*班");
             if (!match.Success) continue;
             blocks.Add((row, $"{Grade(match.Groups["grade"].Value)}{match.Groups["number"].Value}班"));
         }
@@ -169,11 +169,23 @@ public static class MeetOriginalWorkbookHighlighter
         return grade.Length > 0;
     }
 
-    /// <summary>「6班」+「九年级」→「九年级6班」；已经是全名就原样返回。</summary>
+    /// <summary>「6班」+「九年级」→「九年级6班」；「高一6班」归一化为「高一年级6班」。</summary>
     private static string FullClassName(string text, string grade)
     {
-        if (text.Contains("年级", StringComparison.Ordinal)) return text;
-        return grade.Length == 0 ? text : grade + text;
+        var normalized = NormalizeClassName(text);
+        if (normalized.Contains("年级", StringComparison.Ordinal)) return normalized;
+        return grade.Length == 0 ? normalized : grade + normalized;
+    }
+
+    private static string NormalizeClassName(string? value)
+    {
+        var text = Clean(value ?? string.Empty);
+        if (text.Length == 0) return string.Empty;
+        var match = System.Text.RegularExpressions.Regex.Match(
+            text, @"^(?<grade>七|八|九|高一|高二|高三)(?:年级)?\s*(?<number>\d+)\s*班$");
+        return match.Success
+            ? $"{Grade(match.Groups["grade"].Value)}{match.Groups["number"].Value}班"
+            : text;
     }
 
     private static string NormalizeGrade(string value)
@@ -222,6 +234,9 @@ public static class MeetOriginalWorkbookHighlighter
         "七" => "七年级",
         "八" => "八年级",
         "九" => "九年级",
+        "高一" => "高一年级",
+        "高二" => "高二年级",
+        "高三" => "高三年级",
         _ => value,
     };
 
