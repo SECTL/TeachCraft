@@ -880,6 +880,9 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         SetStatus(message, success: true);
     }
 
+    internal Func<MeetClass, string, string> RegistrationExporter { get; set; } = RegistrationWorkbookExporter.Export;
+    internal Func<MeetClass, string> RegistrationSaver { get; set; } = RegistrationWorkbookExporter.Save;
+
     /// <summary>
     /// 按模板把每个班回写到指定文件夹。
     /// <paramref name="skipClassNames"/> 是「目标就是导入原件」的班级：调用方已经
@@ -907,37 +910,47 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
 
         BeginBusy($"正在导出 {classes.Count} 份报名表…", "按模板逐份回写，文件只写在本机。");
-        SetStatus($"正在导出 {classes.Count} 份报名表…");
-        var errors = new List<string>();
-        var exported = 0;
-        await Task.Run(() =>
+        try
         {
-            foreach (var meetClass in classes)
+            SetStatus($"正在导出 {classes.Count} 份报名表…");
+            var errors = new List<string>();
+            var exported = 0;
+            await Task.Run(() =>
             {
-                try
+                foreach (var meetClass in classes)
                 {
-                    RegistrationWorkbookExporter.Export(meetClass, outputDirectory);
-                    exported++;
+                    try
+                    {
+                        RegistrationExporter(meetClass, outputDirectory);
+                        exported++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{meetClass.Name}：{ErrorText.Describe(ex, "导出")}");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    errors.Add($"{meetClass.Name}：{ErrorText.Describe(ex, "导出")}");
-                }
+            });
+
+            if (exported == 0)
+            {
+                SetStatus("导出失败：" + (errors.FirstOrDefault() ?? "没有可导出的班级"), true);
+                return;
             }
-        });
-        EndBusy();
 
-        if (exported == 0)
-        {
-            SetStatus("导出失败：" + (errors.FirstOrDefault() ?? "没有可导出的班级"), true);
-            return;
+            FinishWriteBack("已导出", exported, classes.Count, errors,
+                successTail: skip.Count > 0
+                    ? $"到 {outputDirectory}（另有 {skip.Count} 份目标就是导入原件，已跳过）"
+                    : $"到 {outputDirectory}",
+                successTailDetail: string.Empty);
         }
-
-        FinishWriteBack("已导出", exported, classes.Count, errors,
-            successTail: skip.Count > 0
-                ? $"到 {outputDirectory}（另有 {skip.Count} 份目标就是导入原件，已跳过）"
-                : $"到 {outputDirectory}",
-            successTailDetail: string.Empty);
+        catch (Exception ex)
+        {
+            SetStatus(ErrorText.Describe(ex, "导出报名表"), true);
+        }
+        finally
+        {
+            EndBusy();
+        }
     }
 
     /// <summary>把当前名单写回各自的原始报名表（先备份 .bak 再替换）。</summary>
@@ -955,37 +968,47 @@ public sealed partial class MeetRosterViewModel : ObservableObject
         }
 
         BeginBusy($"正在保存 {classes.Count} 份报名表…", "先备份为 .bak 再替换原文件。");
-        SetStatus($"正在保存 {classes.Count} 份报名表…");
-
-        var errors = new List<string>();
-        var saved = 0;
-        await Task.Run(() =>
+        try
         {
-            foreach (var meetClass in classes)
+            SetStatus($"正在保存 {classes.Count} 份报名表…");
+
+            var errors = new List<string>();
+            var saved = 0;
+            await Task.Run(() =>
             {
-                try
+                foreach (var meetClass in classes)
                 {
-                    RegistrationWorkbookExporter.Save(meetClass);
-                    saved++;
+                    try
+                    {
+                        RegistrationSaver(meetClass);
+                        saved++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{meetClass.Name}：{ErrorText.Describe(ex, "导出")}");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    errors.Add($"{meetClass.Name}：{ErrorText.Describe(ex, "导出")}");
-                }
+            });
+
+            if (saved == 0)
+            {
+                SetStatus("保存失败：" + (errors.FirstOrDefault() ?? "没有可保存的班级"), true,
+                    string.Join(Environment.NewLine, errors));
+                return;
             }
-        });
-        EndBusy();
 
-        if (saved == 0)
-        {
-            SetStatus("保存失败：" + (errors.FirstOrDefault() ?? "没有可保存的班级"), true,
-                string.Join(Environment.NewLine, errors));
-            return;
+            FinishWriteBack("已保存", saved, classes.Count, errors,
+                successTail: "到原文件 · 原文件备份为 .bak",
+                successTailDetail: string.Empty);
         }
-
-        FinishWriteBack("已保存", saved, classes.Count, errors,
-            successTail: "到原文件 · 原文件备份为 .bak",
-            successTailDetail: string.Empty);
+        catch (Exception ex)
+        {
+            SetStatus(ErrorText.Describe(ex, "保存报名表"), true);
+        }
+        finally
+        {
+            EndBusy();
+        }
     }
 
     /// <summary>

@@ -95,4 +95,46 @@ public sealed class HomeworkScanInboxWatcherTests : IDisposable
         Assert.Same(failed.Task, completed);
         Assert.Equal(Path.GetFullPath(path), Path.GetFullPath(await failed.Task));
     }
+
+    [Fact]
+    public async Task SeenCache_EvictsOldestAtCapacity_AndDeduplicatesRecentFiles()
+    {
+        using var watcher = new ScanInboxWatcher(
+            _root, TimeSpan.FromMilliseconds(35), TimeSpan.FromSeconds(2), maxSeenEntries: 3);
+
+        var received = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var signal = new SemaphoreSlim(0);
+        watcher.FileReady += path =>
+        {
+            received.Enqueue(Path.GetFileName(path));
+            signal.Release();
+        };
+        watcher.Start();
+
+        var f1 = Path.Combine(_root, "scan-01.png");
+        var f2 = Path.Combine(_root, "scan-02.png");
+        var f3 = Path.Combine(_root, "scan-03.png");
+        var f4 = Path.Combine(_root, "scan-04.png");
+
+        foreach (var f in new[] { f1, f2, f3, f4 })
+        {
+            await File.WriteAllTextAsync(f, "png-bytes");
+            Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(6)), $"等待接收 {Path.GetFileName(f)} 超时");
+        }
+
+        Assert.Equal(4, received.Count);
+        Assert.Equal(3, watcher.SeenCount);
+
+        // 显式触发重新导入现有文件：被逐出的第 1 个文件应重新入队，仍驻留在缓存中的后 3 个文件应被去重跳过。
+        while (received.TryDequeue(out _)) { }
+        watcher.EnqueueExistingFiles();
+
+        Assert.True(await signal.WaitAsync(TimeSpan.FromSeconds(6)), "等待被逐出文件重新通知超时");
+        await Task.Delay(250);
+
+        var renotified = received.ToArray();
+        Assert.Single(renotified);
+        Assert.Equal("scan-01.png", renotified[0]);
+        Assert.Equal(3, watcher.SeenCount);
+    }
 }

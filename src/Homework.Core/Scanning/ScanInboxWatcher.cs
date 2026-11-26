@@ -8,8 +8,13 @@ namespace Homework.Core.Scanning;
 /// </summary>
 public sealed class ScanInboxWatcher : IDisposable
 {
+    public const int DefaultMaxSeenEntries = 4096;
+
     private readonly FileSystemWatcher _watcher;
-    private readonly ConcurrentDictionary<string, byte> _seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _seenLock = new();
+    private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<string> _seenOrder = new();
+    private readonly int _maxSeenEntries;
     private readonly ConcurrentDictionary<string, byte> _pending = new(StringComparer.OrdinalIgnoreCase);
     private readonly TimeSpan _settleDelay;
     private readonly TimeSpan _maxWait;
@@ -24,12 +29,14 @@ public sealed class ScanInboxWatcher : IDisposable
     public ScanInboxWatcher(
         string folder,
         TimeSpan? settleDelay = null,
-        TimeSpan? maxWait = null)
+        TimeSpan? maxWait = null,
+        int maxSeenEntries = DefaultMaxSeenEntries)
     {
         if (string.IsNullOrWhiteSpace(folder))
             throw new ArgumentException("收件文件夹不能为空。", nameof(folder));
 
         Folder = Path.GetFullPath(folder);
+        _maxSeenEntries = Math.Max(1, maxSeenEntries);
         _settleDelay = settleDelay ?? TimeSpan.FromMilliseconds(400);
         if (_settleDelay < TimeSpan.FromMilliseconds(50))
             _settleDelay = TimeSpan.FromMilliseconds(50);
@@ -48,6 +55,11 @@ public sealed class ScanInboxWatcher : IDisposable
     }
 
     public string Folder { get; }
+
+    internal int SeenCount
+    {
+        get { lock (_seenLock) return _seen.Count; }
+    }
 
     public bool IsRunning => !_disposed && _watcher.EnableRaisingEvents;
 
@@ -69,8 +81,35 @@ public sealed class ScanInboxWatcher : IDisposable
     public void EnqueueExistingFiles()
     {
         if (_disposed || !Directory.Exists(Folder)) return;
+        var candidates = new List<string>();
         foreach (var path in Directory.EnumerateFiles(Folder))
-            QueueFile(path);
+        {
+            if (!ScanFileClassifier.IsImportable(path)) continue;
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(path);
+            }
+            catch
+            {
+                continue;
+            }
+
+            try
+            {
+                var length = new FileInfo(fullPath).Length;
+                if (length > 0 && IsSeen(SeenKey(fullPath, length))) continue;
+            }
+            catch
+            {
+                // 文件正被占用或暂不可读时交由 QueueFile / WaitAndRaiseAsync 处理。
+            }
+
+            candidates.Add(fullPath);
+        }
+
+        foreach (var fullPath in candidates)
+            QueueFile(fullPath);
     }
 
     private void OnCreated(object sender, FileSystemEventArgs e) => QueueFile(e.FullPath);
@@ -129,7 +168,7 @@ public sealed class ScanInboxWatcher : IDisposable
                 if (length > 0 && stableChecks >= 1 && CanOpenForRead(path))
                 {
                     var key = SeenKey(path, length);
-                    if (_seen.TryAdd(key, 0))
+                    if (TryRememberSeen(key))
                     {
                         if (!_disposed) FileReady?.Invoke(path);
                     }
@@ -145,6 +184,27 @@ public sealed class ScanInboxWatcher : IDisposable
         finally
         {
             _pending.TryRemove(path, out _);
+        }
+    }
+
+    private bool IsSeen(string key)
+    {
+        lock (_seenLock)
+            return _seen.Contains(key);
+    }
+
+    private bool TryRememberSeen(string key)
+    {
+        lock (_seenLock)
+        {
+            if (!_seen.Add(key)) return false;
+            _seenOrder.Enqueue(key);
+            while (_seenOrder.Count > _maxSeenEntries)
+            {
+                var oldest = _seenOrder.Dequeue();
+                _seen.Remove(oldest);
+            }
+            return true;
         }
     }
 

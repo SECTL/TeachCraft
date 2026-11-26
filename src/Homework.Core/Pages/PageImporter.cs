@@ -174,6 +174,9 @@ public static class PageImporter
 
         try
         {
+            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
+                throw new PlatformNotSupportedException("当前系统不支持 PDF 页面渲染。");
+
             using var stream = File.OpenRead(path);
             for (var i = 0; i < pageCount; i++)
             {
@@ -189,9 +192,8 @@ public static class PageImporter
                 try
                 {
                     var dpi = ComputePreviewDpi(previewDpi, maxPoints[i]);
-                    bitmap = PDFtoImage.Conversion.ToImage(
-                        stream, i, leaveOpen: true, password: null,
-                        options: new PDFtoImage.RenderOptions { Dpi = dpi });
+                    bitmap = PageImageDecoder.RenderPdfPage(
+                        stream, i, new PDFtoImage.RenderOptions { Dpi = dpi });
                     bitmap = CapLongEdge(bitmap, PdfPreviewEdge);
 
                     var hash = PageImageDecoder.ComputeContentHash(bitmap);

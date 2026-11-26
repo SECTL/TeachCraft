@@ -20,14 +20,14 @@ public sealed class DpapiTokenProtector : ITokenProtector
 
     public string Protect(string plaintext)
     {
-        if (!IsAvailable) throw new PlatformNotSupportedException("DPAPI 仅在 Windows 可用。");
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("DPAPI 仅在 Windows 可用。");
         return Convert.ToBase64String(ProtectedData.Protect(
             Encoding.UTF8.GetBytes(plaintext), null, DataProtectionScope.CurrentUser));
     }
 
     public string Unprotect(string protectedText)
     {
-        if (!IsAvailable) throw new PlatformNotSupportedException("DPAPI 仅在 Windows 可用。");
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("DPAPI 仅在 Windows 可用。");
         return Encoding.UTF8.GetString(ProtectedData.Unprotect(
             Convert.FromBase64String(protectedText), null, DataProtectionScope.CurrentUser));
     }

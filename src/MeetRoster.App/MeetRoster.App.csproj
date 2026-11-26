@@ -21,4 +21,8 @@
     <ProjectReference Include="..\MeetRoster.Core\MeetRoster.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="TeachCraft.Tests" />
+  </ItemGroup>
+
 </Project>

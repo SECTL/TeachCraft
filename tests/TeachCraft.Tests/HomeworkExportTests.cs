@@ -365,4 +365,62 @@ public sealed class HomeworkExportTests
         Assert.NotNull(result.IndexPath);
         Assert.True(File.Exists(result.IndexPath!));
     }
+
+    [Fact]
+    public void AtomicWrite_OnMidWriteFailure_LeavesNoTempFiles_AndPreservesExistingTargets()
+    {
+        // 场景 A：目标文件尚不存在时中途失败 -> 目标不留半成品、不留 .tmp-* 文件。
+        using (var f1 = new HomeworkExportFixture())
+        {
+            var plan = f1.Plan(HomeworkExportMode.MergePdf);
+            var options = new HomeworkExportOptions(f1.OutputDir, HomeworkExportMode.MergePdf, OverwriteExisting: true);
+
+            Assert.Throws<IOException>(() =>
+                HomeworkExporter.ExecuteWithOverrideForTest(f1.Batch, options, plan, (_, tempPath) =>
+                {
+                    File.WriteAllBytes(tempPath, [0x25, 0x50, 0x44, 0x46, 0x00]); // 半截 PDF 字节
+                    throw new IOException("模拟写入中断");
+                }));
+
+            var leftovers = Directory.GetFiles(f1.OutputDir, "*", SearchOption.AllDirectories);
+            Assert.Empty(leftovers);
+        }
+
+        // 场景 B：目标文件已存在且允许覆盖时中途失败 -> 原字节完整保留、无 .tmp-* 残留。
+        using (var f2 = new HomeworkExportFixture())
+        {
+            var plan = f2.Plan(HomeworkExportMode.MergePdf, overwrite: true);
+            var firstTarget = plan.Entries[0].TargetPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(firstTarget)!);
+            var sentinel = "EXISTING-INTACT-PDF-BYTES"u8.ToArray();
+            File.WriteAllBytes(firstTarget, sentinel);
+
+            var options = new HomeworkExportOptions(f2.OutputDir, HomeworkExportMode.MergePdf, OverwriteExisting: true);
+            Assert.Throws<IOException>(() =>
+                HomeworkExporter.ExecuteWithOverrideForTest(f2.Batch, options, plan, (_, tempPath) =>
+                {
+                    File.WriteAllBytes(tempPath, "PARTIAL-CORRUPT"u8.ToArray());
+                    throw new IOException("模拟覆盖写中断");
+                }));
+
+            Assert.Equal(sentinel, File.ReadAllBytes(firstTarget));
+            Assert.Empty(Directory.GetFiles(f2.OutputDir, "*.tmp-*", SearchOption.AllDirectories));
+        }
+
+        // 场景 C：归档含索引且不允许覆盖时，若索引文件已先存在，抛 HomeworkException、原索引不被破坏且无临时文件残留。
+        using (var f3 = new HomeworkExportFixture())
+        {
+            var plan = f3.Plan(HomeworkExportMode.ArchiveWithIndex, overwrite: false);
+            var indexTarget = plan.IndexPath!;
+            Directory.CreateDirectory(Path.GetDirectoryName(indexTarget)!);
+            var sentinelIndex = "EXISTING-INDEX-WORKBOOK"u8.ToArray();
+            File.WriteAllBytes(indexTarget, sentinelIndex);
+
+            var options = new HomeworkExportOptions(f3.OutputDir, HomeworkExportMode.ArchiveWithIndex, OverwriteExisting: false);
+            Assert.Throws<HomeworkException>(() => HomeworkExporter.Execute(f3.Batch, options, plan));
+
+            Assert.Equal(sentinelIndex, File.ReadAllBytes(indexTarget));
+            Assert.Empty(Directory.GetFiles(f3.OutputDir, "*.tmp-*", SearchOption.AllDirectories));
+        }
+    }
 }

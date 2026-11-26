@@ -79,8 +79,8 @@ public static class ExamPaperLayoutToolbox
         var page = sourcePages[pageIndex.Value];
         var rect = ExamPaperLayoutPlanner.VisiblePageRect(page, slot);
         var (width, height) = ExamPaperLayoutPlanner.RenderPixelSize(page, slot, dpi);
-        using var bitmap = PDFtoImage.Conversion.ToImage(stream, pageIndex.Value, leaveOpen: true,
-            password: null, options: new PDFtoImage.RenderOptions
+        using var bitmap = PdfToolbox.RenderPdfPage(stream, pageIndex.Value,
+            new PDFtoImage.RenderOptions
             {
                 Width = width,
                 Height = height,

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Microsoft.Win32;
 
 namespace TeachCraft.Core.Updating;
@@ -35,6 +36,7 @@ public static class InstallRecordReader
         return records;
     }
 
+    [SupportedOSPlatform("windows")]
     private static void ReadFrom(RegistryView view, List<InstallRecord> records, HashSet<string> seen)
     {
         try

@@ -4,7 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +15,12 @@
     <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" />
+    <!-- PDFsharp 6.2.4 仍声明 Pkcs >= 8.0.1；显式钉到与 TeachCraft.Core 一致的已修补版本，避免 NU1902/NU1903。 -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TeachCraft.Tests" />
   </ItemGroup>
 
 </Project>

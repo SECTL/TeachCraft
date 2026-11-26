@@ -645,6 +645,69 @@ public sealed class ToolboxTests : IDisposable
         Assert.InRange(width96, 1050, 1200);
     }
 
+    [Fact]
+    public void DeleteCancelledOutput_PdfToImages_DeletesOnlyNewPagePngsAndPreservesPreexisting()
+    {
+        var outDir = Path.Combine(_root, "pdf-to-images-cancel");
+        Directory.CreateDirectory(outDir);
+        var preexistingMatch = Path.Combine(outDir, "old-第1页.png");
+        var keepPng = Path.Combine(outDir, "keep.png");
+        var keepTxt = Path.Combine(outDir, "readme.txt");
+        File.WriteAllBytes(preexistingMatch, [1, 2, 3]);
+        File.WriteAllBytes(keepPng, [4, 5, 6]);
+        File.WriteAllText(keepTxt, "keep");
+
+        var before = global::TeachCraft.App.Views.MainWindow.CaptureOutputSnapshot(ToolKind.PdfToImages, outDir);
+        var runStartedUtc = DateTime.UtcNow;
+
+        Assert.False(global::TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.PdfToImages, outDir, before, runStartedUtc));
+
+        var newPage1 = Path.Combine(outDir, "doc-第1页.png");
+        var newPage2 = Path.Combine(outDir, "doc-第2页.png");
+        var unrelatedNewPng = Path.Combine(outDir, "extra.png");
+        File.WriteAllBytes(newPage1, [7, 8]);
+        File.WriteAllBytes(newPage2, [9, 10]);
+        File.WriteAllBytes(unrelatedNewPng, [11, 12]);
+
+        Assert.True(global::TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.PdfToImages, outDir, before, runStartedUtc));
+        Assert.True(Directory.Exists(outDir));
+        Assert.False(File.Exists(newPage1));
+        Assert.False(File.Exists(newPage2));
+        Assert.True(File.Exists(preexistingMatch));
+        Assert.True(File.Exists(keepPng));
+        Assert.True(File.Exists(keepTxt));
+        Assert.True(File.Exists(unrelatedNewPng));
+    }
+
+    [Fact]
+    public void DeleteCancelledOutput_ExcelClassSplit_DeletesOnlyNewWorkbooksAndPreservesPreexisting()
+    {
+        var outDir = Path.Combine(_root, "excel-split-cancel");
+        Directory.CreateDirectory(outDir);
+        var preexistingXlsx = Path.Combine(outDir, "现有成绩表.xlsx");
+        var keepTxt = Path.Combine(outDir, "说明.txt");
+        File.WriteAllBytes(preexistingXlsx, [1, 2, 3]);
+        File.WriteAllText(keepTxt, "keep");
+
+        var before = global::TeachCraft.App.Views.MainWindow.CaptureOutputSnapshot(ToolKind.ExcelClassSplit, outDir);
+        var runStartedUtc = DateTime.UtcNow;
+
+        var newClass1 = Path.Combine(outDir, "八年级1班.xlsx");
+        var newClass2 = Path.Combine(outDir, "八年级2班.xlsx");
+        File.WriteAllBytes(newClass1, [4, 5]);
+        File.WriteAllBytes(newClass2, [6, 7]);
+
+        Assert.True(global::TeachCraft.App.Views.MainWindow.DeleteCancelledOutput(
+            ToolKind.ExcelClassSplit, outDir, before, runStartedUtc));
+        Assert.True(Directory.Exists(outDir));
+        Assert.False(File.Exists(newClass1));
+        Assert.False(File.Exists(newClass2));
+        Assert.True(File.Exists(preexistingXlsx));
+        Assert.True(File.Exists(keepTxt));
+    }
+
     private static int FirstEmbeddedImageWidth(string docxPath)
     {
         using var word = WordprocessingDocument.Open(docxPath, false);

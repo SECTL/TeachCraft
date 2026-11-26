@@ -982,7 +982,7 @@ public partial class MainWindow : Window
         // 取消后是否清掉输出，要看盘上的文件是不是**本轮**写的：同路径重跑时，
         // 上一场留下的完好成品与本轮的半成品都「存在」，只看 File.Exists 分不出来（调研 P2-22）。
         // 所以在本轮开始前拍一份起点快照，连同开始时刻一起交给取消路径。
-        var outputBefore = tool.IsCertificateBatch ? default : CaptureOutputSnapshot(output);
+        var outputBefore = tool.IsCertificateBatch ? default : CaptureOutputSnapshot(tool.Kind, output);
         var runStartedUtc = DateTime.UtcNow;
 
         tool.IsBusy = true;
@@ -1074,8 +1074,11 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>本轮开始前对输出路径拍的快照：是否存在、当时的最后写入时间（UTC）。</summary>
-    public readonly record struct OutputSnapshot(bool Existed, DateTime? LastWriteTimeUtc);
+    /// <summary>本轮开始前对输出路径拍的快照：是否存在、当时的最后写入时间（UTC），以及文件夹型输出的已有文件。</summary>
+    public readonly record struct OutputSnapshot(
+        bool Existed,
+        DateTime? LastWriteTimeUtc,
+        IReadOnlyDictionary<string, DateTime>? DirectoryFiles = null);
 
     /// <summary>
     /// 本轮开始前拍快照。拍不到（路径非法等）就按「不存在」处理——
@@ -1096,18 +1099,40 @@ public partial class MainWindow : Window
         }
     }
 
+    public static OutputSnapshot CaptureOutputSnapshot(ToolKind kind, string output)
+    {
+        if (!ToolItemViewModel.IsFolderOutput(kind))
+            return CaptureOutputSnapshot(output);
+
+        try
+        {
+            if (!Directory.Exists(output))
+                return new OutputSnapshot(false, null, new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase));
+
+            var files = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.EnumerateFiles(output))
+                files[Path.GetFullPath(file)] = File.GetLastWriteTimeUtc(file);
+            return new OutputSnapshot(true, Directory.GetLastWriteTimeUtc(output), files);
+        }
+        catch
+        {
+            return new OutputSnapshot(false, null, new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase));
+        }
+    }
+
     /// <summary>
     /// 取消路径的清理判定（判定 + 一次删除，纯文件操作，便于回归）。
     ///
     /// 只删**本轮产出**的文件：本轮之前不存在，或本轮重写过（写入时间晚于开始时刻）。
-    /// 单纯 <c>File.Exists</c> 区分不了「本轮半成品」与「上一场成品」——同路径重跑时
-    /// 取消于写盘之前，盘上是上一场完好的成品，照删就把老师的成果删掉了（调研 P2-22）。
+    /// 对文件夹型输出，仅清理本轮新增且符合该工具命名规则的文件，运行前已有文件一律不动。
     /// </summary>
     /// <returns>真的删了文件时为 true。</returns>
     public static bool DeleteCancelledOutput(
         ToolKind kind, string output, OutputSnapshot before, DateTime runStartedUtc)
     {
-        if (kind == ToolKind.CertificateBatch || ToolItemViewModel.IsFolderOutput(kind)) return false;
+        if (kind == ToolKind.CertificateBatch) return false;
+        if (ToolItemViewModel.IsFolderOutput(kind))
+            return DeleteCancelledFolderOutput(kind, output, before, runStartedUtc);
         if (!File.Exists(output)) return false;
 
         var writeTime = File.GetLastWriteTimeUtc(output);
@@ -1120,6 +1145,41 @@ public partial class MainWindow : Window
         File.Delete(output);
         return true;
     }
+
+    private static bool DeleteCancelledFolderOutput(
+        ToolKind kind, string outputDirectory, OutputSnapshot before, DateTime runStartedUtc)
+    {
+        if (!Directory.Exists(outputDirectory)) return false;
+
+        var deletedAny = false;
+        foreach (var file in Directory.EnumerateFiles(outputDirectory))
+        {
+            var full = Path.GetFullPath(file);
+            if (!MatchesFolderOutputRule(kind, Path.GetFileName(full))) continue;
+
+            if (before.DirectoryFiles is { } preexisting)
+            {
+                if (preexisting.ContainsKey(full)) continue;
+            }
+            else if (before.Existed || File.GetLastWriteTimeUtc(full) <= runStartedUtc)
+            {
+                continue;
+            }
+
+            File.Delete(full);
+            deletedAny = true;
+        }
+
+        return deletedAny;
+    }
+
+    private static bool MatchesFolderOutputRule(ToolKind kind, string fileName) => kind switch
+    {
+        ToolKind.PdfToImages => System.Text.RegularExpressions.Regex.IsMatch(
+            fileName, @"-第\d+页\.png$", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        ToolKind.ExcelClassSplit => fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
 
     /// <summary>当前在跑的工具任务；面板上的「取消」按钮用它。</summary>
     private CancellationTokenSource? _toolCancellation;

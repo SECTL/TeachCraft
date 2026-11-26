@@ -100,9 +100,7 @@ public static class PageImageDecoder
         {
             using var stream = File.OpenRead(page.SourcePath);
             var pageIndex = Math.Max(0, page.SourcePageNumber - 1);
-            var rendered = PDFtoImage.Conversion.ToImage(
-                stream, pageIndex, leaveOpen: true, password: null,
-                options: new PDFtoImage.RenderOptions { Dpi = pdfDpi });
+            var rendered = RenderPdfPage(stream, pageIndex, new PDFtoImage.RenderOptions { Dpi = pdfDpi });
             try
             {
                 var capped = CapLongEdge(rendered, maxEdge);
@@ -265,5 +263,12 @@ public static class PageImageDecoder
         {
             source.Dispose();
         }
+    }
+
+    internal static SKBitmap RenderPdfPage(Stream stream, int pageIndex, PDFtoImage.RenderOptions options)
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+            return PDFtoImage.Conversion.ToImage(stream, pageIndex, leaveOpen: true, password: null, options: options);
+        throw new PlatformNotSupportedException("当前系统不支持 PDF 页面渲染。");
     }
 }

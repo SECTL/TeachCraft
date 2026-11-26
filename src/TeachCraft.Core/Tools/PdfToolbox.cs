@@ -140,8 +140,7 @@ public static class PdfToolbox
             var options = new PDFtoImage.RenderOptions { Dpi = Math.Clamp(dpi, 72, 300) };
             var pages = Enumerable.Range(0, pageCount);
             var index = 0;
-            foreach (var bitmap in PDFtoImage.Conversion.ToImages(
-                         stream, pages, leaveOpen: true, password: null, options: options))
+            foreach (var bitmap in RenderPdfPages(stream, pages, options))
             {
                 using (bitmap)
                 {
@@ -182,14 +181,12 @@ public static class PdfToolbox
                 using var pdfStream = File.OpenRead(input);
                 for (var index = 0; index < pageCount; index++)
                 {
-                    using var bitmap = PDFtoImage.Conversion.ToImage(
+                    using var bitmap = RenderPdfPage(
                         pdfStream,
                         index,
-                        leaveOpen: true,
-                        password: null,
                         // 与 PdfToImages 及界面 / 说明文案一致：72 起步。曾钳到 96，
                         // 老师选 72 得到的实际是 96 的清晰度，与承诺不符（调研 P2-27）。
-                        options: new PDFtoImage.RenderOptions { Dpi = Math.Clamp(dpi, 72, 300) });
+                        new PDFtoImage.RenderOptions { Dpi = Math.Clamp(dpi, 72, 300) });
 
                     using var png = new MemoryStream();
                     using (var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 92))
@@ -627,5 +624,21 @@ public static class PdfToolbox
         if (message.Contains("not a PDF", StringComparison.OrdinalIgnoreCase))
             return "文件不是有效的 PDF。";
         return "文件无法读取，请确认文件未损坏、未加密后重试。";
+    }
+
+    internal static SkiaSharp.SKBitmap RenderPdfPage(
+        Stream stream, int pageIndex, PDFtoImage.RenderOptions options)
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+            return PDFtoImage.Conversion.ToImage(stream, pageIndex, leaveOpen: true, password: null, options: options);
+        throw new PlatformNotSupportedException("当前系统不支持 PDF 页面渲染。");
+    }
+
+    internal static IEnumerable<SkiaSharp.SKBitmap> RenderPdfPages(
+        Stream stream, IEnumerable<int> pages, PDFtoImage.RenderOptions options)
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+            return PDFtoImage.Conversion.ToImages(stream, pages, leaveOpen: true, password: null, options: options);
+        throw new PlatformNotSupportedException("当前系统不支持 PDF 页面渲染。");
     }
 }

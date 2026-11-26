@@ -6,7 +6,7 @@ namespace TeachCraft.Tests;
 
 /// <summary>
 /// 名单重导后的状态提示。全部使用合成姓名（苏晚晴 / 陈屿 / 许砚），
-/// 页来源用临时文件，测试结束即删除。Core 半（清空 Recognition）尚未落地，本文件不覆盖。
+/// 页来源用临时文件，测试结束即删除。清空 Recognition 已由 HomeworkRecognitionTests 覆盖。
 /// </summary>
 public sealed class HomeworkRosterReloadTests : IDisposable
 {

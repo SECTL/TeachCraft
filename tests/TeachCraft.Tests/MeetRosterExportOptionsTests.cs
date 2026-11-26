@@ -992,4 +992,33 @@ public sealed class MeetRosterExportOptionsTests : IDisposable
         workbook.SaveAs(path);
         return path;
     }
+
+    [Fact]
+    public async Task ExportRegistrationFiles_AndSaveToSource_ResetIsBusyOnSuccessAndFailure()
+    {
+        var vm = new MeetRosterViewModel();
+        await vm.ImportOrderBookAsync(CreateOrderBook());
+        await vm.ImportRegistrationFilesAsync([CreateRegistrationWithTeam()]);
+
+        var outDir = Path.Combine(_root, "reg-export-happy");
+        await vm.ExportRegistrationFilesAsync(outDir);
+        Assert.False(vm.IsBusy);
+        Assert.True(Directory.GetFiles(outDir, "*.xlsx").Length >= 1);
+
+        await vm.SaveToSourceAsync();
+        Assert.False(vm.IsBusy);
+
+        // 注入导出异常：必须走 try/finally 复位 IsBusy，且状态文本不暴露原始 ex.Message。
+        vm.RegistrationExporter = (_, _) => throw new InvalidOperationException("RAW_SECRET_EXPORT_PATH");
+        await vm.ExportRegistrationFilesAsync(Path.Combine(_root, "reg-export-fail"));
+        Assert.False(vm.IsBusy);
+        Assert.DoesNotContain("RAW_SECRET_EXPORT_PATH", vm.StatusText, StringComparison.Ordinal);
+
+        // 注入回写异常（含 IOException）：同样复位 IsBusy 并给出中文提示。
+        vm.RegistrationSaver = _ => throw new IOException("RAW_DISK_LOCK_MSG");
+        await vm.SaveToSourceAsync();
+        Assert.False(vm.IsBusy);
+        Assert.DoesNotContain("RAW_DISK_LOCK_MSG", vm.StatusText, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(vm.StatusText));
+    }
 }

@@ -41,8 +41,8 @@ public static class ExamPaperLayoutPreviewRenderer
         var page = document.Pages[pageIndex.Value];
         var rect = ExamPaperLayoutPlanner.VisiblePageRect(page, slot);
         var (width, height) = ExamPaperLayoutPlanner.RenderPixelSize(page, slot, PreviewDpi);
-        using var bitmap = PDFtoImage.Conversion.ToImage(stream, pageIndex.Value, leaveOpen: true, password: null,
-            options: new PDFtoImage.RenderOptions { Width = width, Height = height, UseTiling = true });
+        using var bitmap = PdfToolbox.RenderPdfPage(stream, pageIndex.Value,
+            new PDFtoImage.RenderOptions { Width = width, Height = height, UseTiling = true });
         var canvasBounds = canvas.LocalClipBounds;
         var destination = new SKRect(
             (float)(rect.X / sheet.Width * canvasBounds.Width),

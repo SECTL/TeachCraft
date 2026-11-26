@@ -30,6 +30,24 @@ public static class HomeworkExporter
         HomeworkExportPlan plan,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
+        => ExecuteCore(batch, options, plan, writeOverride: null, progress, cancellationToken);
+
+    internal static HomeworkExportResult ExecuteWithOverrideForTest(
+        HomeworkBatch batch,
+        HomeworkExportOptions options,
+        HomeworkExportPlan plan,
+        Action<HomeworkExportEntry, string> writeOverride,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
+        => ExecuteCore(batch, options, plan, writeOverride, progress, cancellationToken);
+
+    private static HomeworkExportResult ExecuteCore(
+        HomeworkBatch batch,
+        HomeworkExportOptions options,
+        HomeworkExportPlan plan,
+        Action<HomeworkExportEntry, string>? writeOverride,
+        IProgress<int>? progress,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(batch);
         ArgumentNullException.ThrowIfNull(options);
@@ -57,7 +75,7 @@ public static class HomeworkExporter
             foreach (var entry in plan.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                WriteEntry(entry, batch, options, sources, created);
+                WriteEntry(entry, batch, options, sources, created, writeOverride);
                 written++;
                 completed++;
                 if (total > 0) progress?.Report(completed * 100 / total);
@@ -80,7 +98,8 @@ public static class HomeworkExporter
 
                 var indexDir = Path.GetDirectoryName(indexTarget);
                 if (!string.IsNullOrEmpty(indexDir)) Directory.CreateDirectory(indexDir);
-                HomeworkIndexWorkbook.Write(indexTarget, batch, plan);
+                WriteAtomically(indexTarget, options.OverwriteExisting,
+                    temp => HomeworkIndexWorkbook.Write(temp, batch, plan));
                 if (!indexExisted) created.Add(indexTarget);
                 written++;
                 indexPath = indexTarget;
@@ -121,7 +140,8 @@ public static class HomeworkExporter
         HomeworkBatch batch,
         HomeworkExportOptions options,
         IReadOnlyList<string> sources,
-        List<string> created)
+        List<string> created,
+        Action<HomeworkExportEntry, string>? writeOverride)
     {
         var target = entry.TargetPath;
 
@@ -135,27 +155,62 @@ public static class HomeworkExporter
         var dir = Path.GetDirectoryName(target);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        switch (entry.Kind)
+        WriteAtomically(target, options.OverwriteExisting, temp =>
         {
-            case HomeworkExportEntryKind.ImageCopy:
-            case HomeworkExportEntryKind.FolderCopy:
-                // 图片字节原样复制，绝不重新编码。
-                File.Copy(entry.SourcePath, target, options.OverwriteExisting);
-                break;
+            if (writeOverride is not null)
+            {
+                writeOverride(entry, temp);
+                return;
+            }
 
-            case HomeworkExportEntryKind.PdfPageExtract:
-                ExtractPdfPage(entry.SourcePath, entry.SourcePageNumber, target);
-                break;
+            switch (entry.Kind)
+            {
+                case HomeworkExportEntryKind.ImageCopy:
+                case HomeworkExportEntryKind.FolderCopy:
+                    // 图片字节原样复制，绝不重新编码。
+                    File.Copy(entry.SourcePath, temp, overwrite: true);
+                    break;
 
-            case HomeworkExportEntryKind.MergedPdf:
-                WriteMergedPdf(entry, batch, target);
-                break;
+                case HomeworkExportEntryKind.PdfPageExtract:
+                    ExtractPdfPage(entry.SourcePath, entry.SourcePageNumber, temp);
+                    break;
 
-            default:
-                throw new HomeworkException($"未知的导出类型：{entry.Kind}。");
-        }
+                case HomeworkExportEntryKind.MergedPdf:
+                    WriteMergedPdf(entry, batch, temp);
+                    break;
+
+                default:
+                    throw new HomeworkException($"未知的导出类型：{entry.Kind}。");
+            }
+        });
 
         if (!existed) created.Add(target);
+    }
+
+    private static void WriteAtomically(string target, bool overwriteExisting, Action<string> writeTemp)
+    {
+        var dir = Path.GetDirectoryName(target);
+        var stem = Path.GetFileNameWithoutExtension(target);
+        var ext = Path.GetExtension(target);
+        var temp = string.IsNullOrEmpty(dir)
+            ? $"{stem}.tmp-{Guid.NewGuid():N}{ext}"
+            : Path.Combine(dir, $"{stem}.tmp-{Guid.NewGuid():N}{ext}");
+        try
+        {
+            writeTemp(temp);
+            File.Move(temp, target, overwriteExisting);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temp)) File.Delete(temp);
+            }
+            catch
+            {
+                // 临时文件清理失败不掩盖原始异常。
+            }
+        }
     }
 
     private static void ExtractPdfPage(string source, int pageNumber, string target)
